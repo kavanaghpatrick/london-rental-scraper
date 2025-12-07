@@ -2,10 +2,16 @@
 Scrapy Pipelines for property data processing.
 
 Pipelines:
-1. CleanDataPipeline - Normalize and validate data
-2. DuplicateFilterPipeline - Filter duplicate listings
+1. CleanDataPipeline - Normalize and validate data, generate fingerprints
+2. DuplicateFilterPipeline - Filter duplicate listings within session
 3. JsonWriterPipeline - Write to JSON files
-4. SQLitePipeline - Persist to SQLite database
+4. SQLitePipeline - Persist to SQLite with historical tracking
+
+History tracking (PRD-003):
+- first_seen: Set once on initial insert
+- last_seen: Updated on every scrape
+- price_history: Logged on insert AND on price changes
+- is_active: Set to 1 on every update (separate deactivation process)
 """
 
 import os
@@ -19,15 +25,25 @@ from itemadapter import ItemAdapter
 logger = logging.getLogger(__name__)
 
 
+def _import_fingerprint_service():
+    """Lazy import of fingerprint service to avoid circular imports."""
+    from property_scraper.services.fingerprint import generate_fingerprint
+    return generate_fingerprint
+
+
 class CleanDataPipeline:
-    """Clean and normalize property data."""
+    """Clean and normalize property data, generate fingerprints."""
 
     def __init__(self):
         self.items_processed = 0
         self.fixes_applied = 0
+        self.fingerprints_generated = 0
+        self._generate_fingerprint = None
 
     def open_spider(self, spider):
-        logger.info("[PIPELINE:Clean] Initialized - will normalize prices and clean text")
+        # Lazy load fingerprint service
+        self._generate_fingerprint = _import_fingerprint_service()
+        logger.info("[PIPELINE:Clean] Initialized - will normalize prices, clean text, generate fingerprints")
 
     def process_item(self, item, spider):
         adapter = ItemAdapter(item)
@@ -69,6 +85,15 @@ class CleanDataPipeline:
             adapter['scraped_at'] = datetime.utcnow().isoformat()
             fixes.append('added_timestamp')
 
+        # Generate fingerprint if address or postcode available (PRD-003)
+        if not adapter.get('address_fingerprint'):
+            address = adapter.get('address', '') or ''
+            postcode = adapter.get('postcode', '') or ''
+            if address or postcode:
+                adapter['address_fingerprint'] = self._generate_fingerprint(address, postcode)
+                self.fingerprints_generated += 1
+                fixes.append('generated_fingerprint')
+
         self.items_processed += 1
         if fixes:
             self.fixes_applied += len(fixes)
@@ -79,7 +104,7 @@ class CleanDataPipeline:
     def close_spider(self, spider):
         logger.info(
             f"[PIPELINE:Clean] Complete - {self.items_processed} items, "
-            f"{self.fixes_applied} fixes applied"
+            f"{self.fixes_applied} fixes applied, {self.fingerprints_generated} fingerprints generated"
         )
 
 
@@ -162,7 +187,14 @@ class JsonWriterPipeline:
 
 
 class SQLitePipeline:
-    """Persist items to SQLite database with batched commits."""
+    """Persist items to SQLite with historical tracking (PRD-003).
+
+    Features:
+    - Smart upsert: INSERT new, UPDATE existing (preserves first_seen)
+    - Price history: Logs initial price AND all price changes
+    - SAVEPOINT-based atomicity: Per-item rollback on errors
+    - Compound index: O(1) lookup on (source, property_id)
+    """
 
     BATCH_SIZE = 100  # Commit every N items
 
@@ -170,8 +202,12 @@ class SQLitePipeline:
         self.conn = None
         self.cursor = None
         self.pending_count = 0
-        self.total_inserted = 0
-        self.total_errors = 0
+        self.stats = {
+            'inserted': 0,
+            'updated': 0,
+            'price_changes': 0,
+            'errors': 0,
+        }
         self.batch_count = 0
         self.start_time = None
         self.db_path = None
@@ -182,8 +218,9 @@ class SQLitePipeline:
 
         self.db_path = os.path.join(output_dir, 'rentals.db')
         self.conn = sqlite3.connect(self.db_path)
+        self.conn.execute("PRAGMA foreign_keys = ON")
         self.cursor = self.conn.cursor()
-        self._create_tables()
+        self._ensure_schema()
         self.start_time = time.time()
 
         # Log existing count
@@ -193,189 +230,239 @@ class SQLitePipeline:
         logger.info(f"[PIPELINE:SQLite] Existing records: {existing}")
         logger.info(f"[PIPELINE:SQLite] Batch size: {self.BATCH_SIZE}")
 
-    def _create_tables(self):
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS listings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source TEXT NOT NULL,
-                property_id TEXT NOT NULL,
-                url TEXT,
-                area TEXT,
+    def _ensure_schema(self):
+        """Ensure schema from PRD-001 migration is in place.
 
-                price INTEGER,
-                price_pw INTEGER,
-                price_pcm INTEGER,
-                price_period TEXT,
+        Verifies required columns exist (from migrate_schema_v2.py).
+        Creates compound index for O(1) lookups if missing.
+        """
+        # Check that migration has been run
+        self.cursor.execute("PRAGMA table_info(listings)")
+        columns = {row[1] for row in self.cursor.fetchall()}
 
-                address TEXT,
-                postcode TEXT,
-                latitude REAL,
-                longitude REAL,
-
-                bedrooms INTEGER,
-                bathrooms INTEGER,
-                reception_rooms INTEGER,
-                property_type TEXT,
-                size_sqft INTEGER,
-                size_sqm INTEGER,
-                furnished TEXT,
-                epc_rating TEXT,
-
-                floorplan_url TEXT,
-                room_details TEXT,
-
-                let_agreed INTEGER DEFAULT 0,
-
-                agent_name TEXT,
-                agent_phone TEXT,
-
-                summary TEXT,
-                description TEXT,
-                features TEXT,
-
-                added_date TEXT,
-                scraped_at TEXT,
-
-                UNIQUE(source, property_id)
+        required = {'address_fingerprint', 'first_seen', 'last_seen', 'is_active', 'price_change_count'}
+        missing = required - columns
+        if missing:
+            raise RuntimeError(
+                f"Missing required columns: {missing}. Run migrate_schema_v2.py first."
             )
-        ''')
 
-        # Add new columns to existing table if they don't exist
-        new_columns = [
-            ('reception_rooms', 'INTEGER'),
-            ('size_sqm', 'INTEGER'),
-            ('epc_rating', 'TEXT'),
-            ('floorplan_url', 'TEXT'),
-            ('room_details', 'TEXT'),
-            # Binary floor columns for ML model training
-            ('has_basement', 'INTEGER'),
-            ('has_lower_ground', 'INTEGER'),
-            ('has_ground', 'INTEGER'),
-            ('has_mezzanine', 'INTEGER'),
-            ('has_first_floor', 'INTEGER'),
-            ('has_second_floor', 'INTEGER'),
-            ('has_third_floor', 'INTEGER'),
-            ('has_fourth_plus', 'INTEGER'),
-            ('has_roof_terrace', 'INTEGER'),
-            ('floor_count', 'INTEGER'),
-            ('property_levels', 'TEXT'),  # single_floor, duplex, triplex, multi_floor
-        ]
-        for col_name, col_type in new_columns:
-            try:
-                self.cursor.execute(f'ALTER TABLE listings ADD COLUMN {col_name} {col_type}')
-                logger.info(f"[PIPELINE:SQLite] Added new column: {col_name}")
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+        # Check price_history table exists
+        self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='price_history'"
+        )
+        if not self.cursor.fetchone():
+            raise RuntimeError("price_history table missing. Run migrate_schema_v2.py first.")
 
+        # Create compound index for O(1) lookup (Gemini recommendation)
         self.cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_area ON listings(area)
+            CREATE INDEX IF NOT EXISTS idx_source_prop ON listings(source, property_id)
         ''')
 
-        self.cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_price ON listings(price_pcm)
-        ''')
-
-        self.cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_bedrooms ON listings(bedrooms)
-        ''')
+        # Ensure other useful indexes exist
+        self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_area ON listings(area)')
+        self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_price ON listings(price_pcm)')
+        self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_bedrooms ON listings(bedrooms)')
+        self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_fingerprint ON listings(address_fingerprint)')
+        self.cursor.execute('CREATE INDEX IF NOT EXISTS idx_active ON listings(is_active)')
 
         self.conn.commit()
-        logger.debug("[PIPELINE:SQLite] Tables and indexes created/verified")
+        logger.debug("[PIPELINE:SQLite] Schema verified, indexes ensured")
 
     def process_item(self, item, spider):
-        adapter = ItemAdapter(item)
+        """Smart upsert with historical tracking (PRD-003).
 
-        # Convert features list to JSON string
+        - New listings: INSERT with first_seen=last_seen=now, log initial price
+        - Existing listings: UPDATE preserving first_seen, update last_seen
+        - Price changes: Log to price_history, increment price_change_count
+        - Uses SAVEPOINT for per-item atomicity (Gemini recommendation)
+        """
+        adapter = ItemAdapter(item)
+        now = datetime.utcnow().isoformat()
+
+        source = adapter.get('source')
+        property_id = adapter.get('property_id')
+
+        try:
+            # SAVEPOINT for per-item rollback on errors
+            self.cursor.execute("SAVEPOINT item_process")
+
+            # Check if record exists (O(1) with compound index)
+            self.cursor.execute(
+                '''SELECT id, price_pcm, first_seen, price_change_count
+                   FROM listings WHERE source=? AND property_id=?''',
+                (source, property_id)
+            )
+            existing = self.cursor.fetchone()
+
+            if existing:
+                # UPDATE existing record
+                listing_id, old_price, first_seen, change_count = existing
+                new_price = adapter.get('price_pcm')
+
+                # Detect price change (only if both prices are non-null)
+                if old_price and new_price and old_price != new_price:
+                    self._log_price_change(listing_id, new_price, now)
+                    change_count = (change_count or 0) + 1
+                    self.stats['price_changes'] += 1
+
+                # Update record, preserving first_seen
+                self._update_listing(adapter, listing_id, first_seen, now, change_count or 0)
+                self.stats['updated'] += 1
+            else:
+                # INSERT new record
+                listing_id = self._insert_listing(adapter, now)
+
+                # Log initial price to price_history (Gemini recommendation)
+                if adapter.get('price_pcm'):
+                    self._log_price_change(listing_id, adapter.get('price_pcm'), now)
+
+                self.stats['inserted'] += 1
+
+            # Release savepoint (success)
+            self.cursor.execute("RELEASE SAVEPOINT item_process")
+
+            self.pending_count += 1
+            if self.pending_count >= self.BATCH_SIZE:
+                self.conn.commit()
+                self.batch_count += 1
+                total = self.stats['inserted'] + self.stats['updated']
+                logger.info(
+                    f"[PIPELINE:SQLite] Batch {self.batch_count} committed "
+                    f"({total} total, {self.stats['price_changes']} price changes)"
+                )
+                self.pending_count = 0
+
+        except Exception as e:
+            # Rollback ONLY this item's operations
+            self.cursor.execute("ROLLBACK TO SAVEPOINT item_process")
+            self.stats['errors'] += 1
+            logger.error(f"[PIPELINE:SQLite] Error for {property_id}: {e}")
+
+        return item
+
+    def _log_price_change(self, listing_id, price_pcm, recorded_at):
+        """Log price to history table."""
+        self.cursor.execute('''
+            INSERT INTO price_history (listing_id, price_pcm, recorded_at)
+            VALUES (?, ?, ?)
+        ''', (listing_id, price_pcm, recorded_at))
+
+    def _update_listing(self, adapter, listing_id, first_seen, now, change_count):
+        """Update existing listing, preserving first_seen."""
         features = adapter.get('features', [])
         if isinstance(features, list):
             features = json.dumps(features)
 
-        # Convert room_details to JSON string if it's a dict/list
         room_details = adapter.get('room_details')
         if isinstance(room_details, (dict, list)):
             room_details = json.dumps(room_details)
 
-        try:
-            self.cursor.execute('''
-                INSERT OR REPLACE INTO listings (
-                    source, property_id, url, area,
-                    price, price_pw, price_pcm, price_period,
-                    address, postcode, latitude, longitude,
-                    bedrooms, bathrooms, reception_rooms, property_type,
-                    size_sqft, size_sqm, furnished, epc_rating,
-                    floorplan_url, room_details,
-                    has_basement, has_lower_ground, has_ground, has_mezzanine,
-                    has_first_floor, has_second_floor, has_third_floor,
-                    has_fourth_plus, has_roof_terrace, floor_count, property_levels,
-                    let_agreed,
-                    agent_name, agent_phone,
-                    summary, description, features,
-                    added_date, scraped_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                adapter.get('source'),
-                adapter.get('property_id'),
-                adapter.get('url'),
-                adapter.get('area'),
-                adapter.get('price'),
-                adapter.get('price_pw'),
-                adapter.get('price_pcm'),
-                adapter.get('price_period'),
-                adapter.get('address'),
-                adapter.get('postcode'),
-                adapter.get('latitude'),
-                adapter.get('longitude'),
-                adapter.get('bedrooms'),
-                adapter.get('bathrooms'),
-                adapter.get('reception_rooms'),
-                adapter.get('property_type'),
-                adapter.get('size_sqft'),
-                adapter.get('size_sqm'),
-                adapter.get('furnished'),
-                adapter.get('epc_rating'),
-                adapter.get('floorplan_url'),
-                room_details,
-                adapter.get('has_basement'),
-                adapter.get('has_lower_ground'),
-                adapter.get('has_ground'),
-                adapter.get('has_mezzanine'),
-                adapter.get('has_first_floor'),
-                adapter.get('has_second_floor'),
-                adapter.get('has_third_floor'),
-                adapter.get('has_fourth_plus'),
-                adapter.get('has_roof_terrace'),
-                adapter.get('floor_count'),
-                adapter.get('property_levels'),
-                1 if adapter.get('let_agreed') else 0,
-                adapter.get('agent_name'),
-                adapter.get('agent_phone'),
-                adapter.get('summary'),
-                adapter.get('description'),
-                features,
-                adapter.get('added_date'),
-                adapter.get('scraped_at'),
-            ))
+        self.cursor.execute('''
+            UPDATE listings SET
+                url=?, area=?, price=?, price_pw=?, price_pcm=?, price_period=?,
+                address=?, postcode=?, latitude=?, longitude=?,
+                bedrooms=?, bathrooms=?, reception_rooms=?, property_type=?,
+                size_sqft=?, size_sqm=?, furnished=?, epc_rating=?,
+                floorplan_url=?, room_details=?,
+                has_basement=?, has_lower_ground=?, has_ground=?, has_mezzanine=?,
+                has_first_floor=?, has_second_floor=?, has_third_floor=?,
+                has_fourth_plus=?, has_roof_terrace=?, floor_count=?, property_levels=?,
+                let_agreed=?, agent_name=?, agent_phone=?,
+                summary=?, description=?, features=?, added_date=?,
+                address_fingerprint=?,
+                last_seen=?, is_active=1, price_change_count=?,
+                scraped_at=?
+            WHERE id=?
+        ''', (
+            adapter.get('url'), adapter.get('area'),
+            adapter.get('price'), adapter.get('price_pw'),
+            adapter.get('price_pcm'), adapter.get('price_period'),
+            adapter.get('address'), adapter.get('postcode'),
+            adapter.get('latitude'), adapter.get('longitude'),
+            adapter.get('bedrooms'), adapter.get('bathrooms'),
+            adapter.get('reception_rooms'), adapter.get('property_type'),
+            adapter.get('size_sqft'), adapter.get('size_sqm'),
+            adapter.get('furnished'), adapter.get('epc_rating'),
+            adapter.get('floorplan_url'), room_details,
+            adapter.get('has_basement'), adapter.get('has_lower_ground'),
+            adapter.get('has_ground'), adapter.get('has_mezzanine'),
+            adapter.get('has_first_floor'), adapter.get('has_second_floor'),
+            adapter.get('has_third_floor'), adapter.get('has_fourth_plus'),
+            adapter.get('has_roof_terrace'), adapter.get('floor_count'),
+            adapter.get('property_levels'),
+            1 if adapter.get('let_agreed') else 0,
+            adapter.get('agent_name'), adapter.get('agent_phone'),
+            adapter.get('summary'), adapter.get('description'),
+            features, adapter.get('added_date'),
+            adapter.get('address_fingerprint'),
+            now, change_count,
+            adapter.get('scraped_at'),
+            listing_id
+        ))
 
-            self.total_inserted += 1
-            self.pending_count += 1
+    def _insert_listing(self, adapter, now):
+        """Insert new listing with first_seen=last_seen=now.
 
-            # Batch commits for performance
-            if self.pending_count >= self.BATCH_SIZE:
-                self.conn.commit()
-                self.batch_count += 1
-                logger.info(
-                    f"[PIPELINE:SQLite] Batch {self.batch_count} committed "
-                    f"({self.total_inserted} total)"
-                )
-                self.pending_count = 0
+        Returns the lastrowid for price history logging.
+        """
+        features = adapter.get('features', [])
+        if isinstance(features, list):
+            features = json.dumps(features)
 
-        except sqlite3.Error as e:
-            self.total_errors += 1
-            logger.error(
-                f"[PIPELINE:SQLite] Insert failed for {adapter.get('property_id')}: {e}"
+        room_details = adapter.get('room_details')
+        if isinstance(room_details, (dict, list)):
+            room_details = json.dumps(room_details)
+
+        self.cursor.execute('''
+            INSERT INTO listings (
+                source, property_id, url, area,
+                price, price_pw, price_pcm, price_period,
+                address, postcode, latitude, longitude,
+                bedrooms, bathrooms, reception_rooms, property_type,
+                size_sqft, size_sqm, furnished, epc_rating,
+                floorplan_url, room_details,
+                has_basement, has_lower_ground, has_ground, has_mezzanine,
+                has_first_floor, has_second_floor, has_third_floor,
+                has_fourth_plus, has_roof_terrace, floor_count, property_levels,
+                let_agreed, agent_name, agent_phone,
+                summary, description, features, added_date,
+                address_fingerprint,
+                first_seen, last_seen, is_active, price_change_count,
+                scraped_at
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, 1, 0, ?
             )
+        ''', (
+            adapter.get('source'), adapter.get('property_id'),
+            adapter.get('url'), adapter.get('area'),
+            adapter.get('price'), adapter.get('price_pw'),
+            adapter.get('price_pcm'), adapter.get('price_period'),
+            adapter.get('address'), adapter.get('postcode'),
+            adapter.get('latitude'), adapter.get('longitude'),
+            adapter.get('bedrooms'), adapter.get('bathrooms'),
+            adapter.get('reception_rooms'), adapter.get('property_type'),
+            adapter.get('size_sqft'), adapter.get('size_sqm'),
+            adapter.get('furnished'), adapter.get('epc_rating'),
+            adapter.get('floorplan_url'), room_details,
+            adapter.get('has_basement'), adapter.get('has_lower_ground'),
+            adapter.get('has_ground'), adapter.get('has_mezzanine'),
+            adapter.get('has_first_floor'), adapter.get('has_second_floor'),
+            adapter.get('has_third_floor'), adapter.get('has_fourth_plus'),
+            adapter.get('has_roof_terrace'), adapter.get('floor_count'),
+            adapter.get('property_levels'),
+            1 if adapter.get('let_agreed') else 0,
+            adapter.get('agent_name'), adapter.get('agent_phone'),
+            adapter.get('summary'), adapter.get('description'),
+            features, adapter.get('added_date'),
+            adapter.get('address_fingerprint'),
+            now, now,  # first_seen = last_seen = now
+            adapter.get('scraped_at'),
+        ))
 
-        return item
+        return self.cursor.lastrowid
 
     def close_spider(self, spider):
         if self.conn:
@@ -390,7 +477,11 @@ class SQLitePipeline:
 
             # Log final count
             self.cursor.execute('SELECT COUNT(*) FROM listings')
-            count = self.cursor.fetchone()[0]
+            total_records = self.cursor.fetchone()[0]
+
+            # Count price history entries
+            self.cursor.execute('SELECT COUNT(*) FROM price_history')
+            price_history_count = self.cursor.fetchone()[0]
 
             # Get area breakdown
             self.cursor.execute('''
@@ -403,9 +494,12 @@ class SQLitePipeline:
 
             logger.info("[PIPELINE:SQLite] Complete:")
             logger.info(f"  Database: {self.db_path}")
-            logger.info(f"  Total records: {count}")
-            logger.info(f"  Inserted this run: {self.total_inserted}")
-            logger.info(f"  Errors: {self.total_errors}")
+            logger.info(f"  Total records: {total_records}")
+            logger.info(f"  Inserted: {self.stats['inserted']}")
+            logger.info(f"  Updated: {self.stats['updated']}")
+            logger.info(f"  Price changes logged: {self.stats['price_changes']}")
+            logger.info(f"  Price history entries: {price_history_count}")
+            logger.info(f"  Errors: {self.stats['errors']}")
             logger.info(f"  Batches: {self.batch_count + 1}")
             logger.info(f"  Duration: {elapsed:.1f}s")
             logger.info("[PIPELINE:SQLite] By area:")

@@ -90,3 +90,10 @@ class PropertyItem(scrapy.Item):
     # Dates
     added_date = scrapy.Field()
     scraped_at = scrapy.Field()
+
+    # Historical tracking (PRD-003)
+    address_fingerprint = scrapy.Field()  # SHA256 hash for cross-source dedup
+    first_seen = scrapy.Field()           # ISO timestamp of first scrape
+    last_seen = scrapy.Field()            # ISO timestamp of most recent scrape
+    is_active = scrapy.Field()            # 1 if still available, 0 if delisted
+    price_change_count = scrapy.Field()   # Number of price changes detected
