@@ -47,6 +47,7 @@ logs/
 # Output folder - selective inclusion
 output/*.jsonl
 output/*_backup*.db
+output/*.pre_v*_backup
 output/*.csv
 
 # Keep the main database and analysis PNGs
