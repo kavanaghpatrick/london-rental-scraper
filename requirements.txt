@@ -1,0 +1,12 @@
+# Scrapy Property Scraper - Dependencies
+
+# Core
+scrapy>=2.11.0
+itemadapter>=0.8.0
+
+# JavaScript rendering (for OpenRent and other JS-heavy sites)
+scrapy-playwright>=0.0.33
+playwright>=1.40.0
+
+# Data processing
+python-dateutil>=2.8.2
