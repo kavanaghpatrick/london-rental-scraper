@@ -283,6 +283,12 @@ class SQLitePipeline:
         source = adapter.get('source')
         property_id = adapter.get('property_id')
 
+        # CRITICAL FIX (Gemini review): Separate item processing from batch commit.
+        # Previously, if commit() failed after RELEASE SAVEPOINT, the except block
+        # would try to ROLLBACK TO SAVEPOINT that no longer exists, causing a crash.
+        # Now: Item processing has its own try/except, batch commit has separate handling.
+
+        item_success = False
         try:
             # SAVEPOINT for per-item rollback on errors
             self.cursor.execute("SAVEPOINT item_process")
@@ -321,23 +327,32 @@ class SQLitePipeline:
 
             # Release savepoint (success)
             self.cursor.execute("RELEASE SAVEPOINT item_process")
-
-            self.pending_count += 1
-            if self.pending_count >= self.BATCH_SIZE:
-                self.conn.commit()
-                self.batch_count += 1
-                total = self.stats['inserted'] + self.stats['updated']
-                logger.info(
-                    f"[PIPELINE:SQLite] Batch {self.batch_count} committed "
-                    f"({total} total, {self.stats['price_changes']} price changes)"
-                )
-                self.pending_count = 0
+            item_success = True
 
         except Exception as e:
-            # Rollback ONLY this item's operations
-            self.cursor.execute("ROLLBACK TO SAVEPOINT item_process")
+            # Rollback ONLY this item's operations (savepoint still exists here)
+            try:
+                self.cursor.execute("ROLLBACK TO SAVEPOINT item_process")
+            except sqlite3.Error:
+                pass  # Savepoint may not exist if error was in SAVEPOINT creation
             self.stats['errors'] += 1
             logger.error(f"[PIPELINE:SQLite] Error for {property_id}: {e}")
+
+        # Batch commit - separate from item try/except to avoid savepoint issues
+        if item_success:
+            self.pending_count += 1
+            if self.pending_count >= self.BATCH_SIZE:
+                try:
+                    self.conn.commit()
+                    self.batch_count += 1
+                    total = self.stats['inserted'] + self.stats['updated']
+                    logger.info(
+                        f"[PIPELINE:SQLite] Batch {self.batch_count} committed "
+                        f"({total} total, {self.stats['price_changes']} price changes)"
+                    )
+                    self.pending_count = 0
+                except sqlite3.Error as e:
+                    logger.error(f"[PIPELINE:SQLite] Batch commit failed: {e}")
 
         return item
 
@@ -498,12 +513,17 @@ class SQLitePipeline:
 
     def close_spider(self, spider):
         if self.conn:
-            # Commit any remaining items
+            # CRITICAL FIX (Grok review): Wrap final commit in try/except
+            # Previously, if final commit failed, it could crash and skip logging.
             if self.pending_count > 0:
-                self.conn.commit()
-                logger.info(
-                    f"[PIPELINE:SQLite] Final batch committed ({self.pending_count} items)"
-                )
+                try:
+                    self.conn.commit()
+                    logger.info(
+                        f"[PIPELINE:SQLite] Final batch committed ({self.pending_count} items)"
+                    )
+                except sqlite3.Error as e:
+                    logger.error(f"[PIPELINE:SQLite] Final commit failed: {e}")
+                    self.stats['errors'] += self.pending_count
 
             elapsed = time.time() - self.start_time if self.start_time else 0
 

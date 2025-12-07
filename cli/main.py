@@ -288,12 +288,20 @@ def mark_inactive(
     if not execute:
         console.print("[yellow]Dry run.[/yellow] Use --execute to apply changes.")
     else:
-        cursor.execute("""
-            UPDATE listings SET is_active = 0
-            WHERE is_active = 1 AND last_seen < ?
-        """, (cutoff,))
-        conn.commit()
-        console.print(f"[green]Marked {count} listings as inactive.[/green]")
+        # CRITICAL FIX (Grok review): Wrap update in try/except with rollback
+        # Previously, if UPDATE or commit failed, database could be left inconsistent.
+        try:
+            cursor.execute("""
+                UPDATE listings SET is_active = 0
+                WHERE is_active = 1 AND last_seen < ?
+            """, (cutoff,))
+            conn.commit()
+            console.print(f"[green]Marked {count} listings as inactive.[/green]")
+        except Exception as e:
+            conn.rollback()
+            console.print(f"[red]Error:[/red] Failed to mark listings as inactive: {e}")
+            conn.close()
+            raise typer.Exit(1)
 
     conn.close()
 

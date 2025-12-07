@@ -49,9 +49,11 @@ class TestExtractStreetNumberAndUnit:
         assert unit == ""
 
     def test_with_letter_suffix(self):
+        # UPDATED (Gemini review fix): Letter suffix is now part of street_num
+        # to prevent hash collisions between 100a and 100b buildings
         num, unit = extract_street_number_and_unit("123a High Street")
-        assert num == "123"
-        assert unit == "a"
+        assert num == "123a"
+        assert unit == ""  # Letter suffix not treated as unit
 
     def test_flat_prefix(self):
         num, unit = extract_street_number_and_unit("Flat 1, 123 High Street")
@@ -169,19 +171,22 @@ class TestTextualUnits:
 
 
 class TestLetterSuffixSplit:
-    """Test that 123a splits into number 123 and unit a."""
+    """Test that 123a keeps suffix in street_num (prevents hash collisions)."""
 
     def test_letter_suffix_split(self):
+        # UPDATED (Gemini review fix): Letter suffix stays with street_num
+        # to prevent "Flat 1, 100a" and "Flat 1, 100b" from colliding
         num, unit = extract_street_number_and_unit("123A High Street")
-        assert num == "123"
-        assert unit == "a"
+        assert num == "123a"  # Suffix included in street_num
+        assert unit == ""  # Not used as unit
 
-    def test_flat_a_vs_123a(self):
-        """Flat A, 123 High St and 123A High St should both extract unit."""
-        _, unit1 = extract_street_number_and_unit("Flat A, 123 High Street")
-        _, unit2 = extract_street_number_and_unit("123A High Street")
-        # Both should have a unit
-        assert unit1 or unit2
+    def test_100a_vs_100b_different_fingerprints(self):
+        """100a High St and 100b High St should produce DIFFERENT fingerprints."""
+        # This is the key test - the bug that was fixed
+        fp1 = generate_fingerprint("Flat 1, 100a High Street", "SW1A 1AA")
+        fp2 = generate_fingerprint("Flat 1, 100b High Street", "SW1A 1AA")
+        # These are different buildings, must have different fingerprints!
+        assert fp1 != fp2
 
 
 class TestRealWorldCases:

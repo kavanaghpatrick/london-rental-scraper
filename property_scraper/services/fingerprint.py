@@ -119,9 +119,12 @@ def extract_street_number_and_unit(address: str) -> Tuple[str, str]:
         street_num = match.group(1)
         letter_suffix = match.group(2) or ""
 
-        # If we found a letter suffix and no unit yet, use it as unit
-        if letter_suffix and not unit:
-            unit = letter_suffix
+        # CRITICAL FIX (Gemini review): Always include letter suffix in street_num
+        # Previously: "Flat 1, 100a" and "Flat 1, 100b" both produced street_num="100"
+        # causing hash collisions and data corruption (merging distinct properties).
+        # Now: street_num includes suffix ("100a", "100b") ensuring unique fingerprints.
+        if letter_suffix:
+            street_num += letter_suffix
 
         return street_num, unit
 
