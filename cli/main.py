@@ -73,6 +73,16 @@ def run_spider(
     env = os.environ.copy()
     env["SCRAPY_SETTINGS_MODULE"] = settings_module
 
+    # If dry_run, disable SQLite pipeline to prevent database writes
+    # (Fix for Codex review: dry_run flag was being ignored)
+    if dry_run:
+        # Override ITEM_PIPELINES to exclude SQLitePipeline
+        cmd.extend([
+            "-s", "ITEM_PIPELINES={'property_scraper.pipelines.CleanDataPipeline': 100, "
+                  "'property_scraper.pipelines.DuplicateFilterPipeline': 200, "
+                  "'property_scraper.pipelines.JsonWriterPipeline': 300}"
+        ])
+
     # Create log file
     log_dir = PROJECT_ROOT / "logs"
     log_dir.mkdir(exist_ok=True)

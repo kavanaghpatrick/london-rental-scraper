@@ -17,16 +17,20 @@ import re
 from typing import Optional, Tuple
 
 # Textual unit descriptors (no number required)
-TEXTUAL_UNITS = frozenset([
-    'basement', 'ground', 'lower', 'upper', 'top',
-    'studio', 'penthouse', 'maisonette', 'mews',
-])
+# IMPORTANT: Use tuple (ordered) instead of frozenset to ensure deterministic
+# iteration order across Python runs with different PYTHONHASHSEED values.
+# Ordered alphabetically for consistent fingerprint generation.
+# (Fix for Codex review: frozenset iteration was non-deterministic)
+TEXTUAL_UNITS = (
+    'basement', 'ground', 'lower', 'maisonette', 'mews',
+    'penthouse', 'studio', 'top', 'upper',
+)
 
 # Unit prefixes that expect a number
-UNIT_PREFIXES = frozenset([
-    'flat', 'apartment', 'apt', 'unit', 'suite', 'room',
-    'floor', 'level',
-])
+# IMPORTANT: Use tuple for deterministic iteration order.
+UNIT_PREFIXES = (
+    'apartment', 'apt', 'flat', 'floor', 'level', 'room', 'suite', 'unit',
+)
 
 # Suffix canonicalization map (normalize to full form)
 SUFFIX_CANONICAL = {
