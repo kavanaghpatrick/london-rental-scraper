@@ -218,7 +218,10 @@ class RightmoveEnricherSpider(scrapy.Spider):
             )
 
     def _extract_sqft_via_ocr(self, floorplan_url):
-        """Download floorplan and extract sqft using OCR."""
+        """Download floorplan and extract sqft using OCR.
+
+        Uses ThreadPoolExecutor to avoid blocking the Scrapy reactor.
+        """
         if not self.use_ocr or not self.executor:
             return None
 
@@ -226,6 +229,7 @@ class RightmoveEnricherSpider(scrapy.Spider):
             import requests
 
             def download_and_extract(url):
+                """Blocking function to run in executor thread."""
                 resp = requests.get(url, timeout=15)
                 if resp.status_code != 200:
                     return None
@@ -233,13 +237,9 @@ class RightmoveEnricherSpider(scrapy.Spider):
                 result = extractor.extract_from_bytes(resp.content)
                 return result.total_sqft if result else None
 
-            # Run synchronously for now (within Scrapy callback)
-            resp = __import__('requests').get(floorplan_url, timeout=15)
-            if resp.status_code != 200:
-                return None
-            extractor = FloorplanExtractor()
-            result = extractor.extract_from_bytes(resp.content)
-            return result.total_sqft if result else None
+            # Submit to executor and wait for result (non-blocking to reactor)
+            future = self.executor.submit(download_and_extract, floorplan_url)
+            return future.result(timeout=25)
 
         except Exception as e:
             self.logger.debug(f"[OCR] Error extracting sqft: {e}")

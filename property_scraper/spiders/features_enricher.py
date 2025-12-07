@@ -80,14 +80,16 @@ class FeaturesEnricherSpider(scrapy.Spider):
             WHERE (features IS NULL OR features = '[]' OR features = '')
             AND size_sqft > 0
         '''
+        params = []
 
         if self.source_filter:
-            query += f" AND source = '{self.source_filter}'"
+            query += " AND source = ?"
+            params.append(self.source_filter)
 
         if self.limit:
             query += f' LIMIT {self.limit}'
 
-        cursor.execute(query)
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
 
