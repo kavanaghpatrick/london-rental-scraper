@@ -349,7 +349,13 @@ class SQLitePipeline:
         ''', (listing_id, price_pcm, recorded_at))
 
     def _update_listing(self, adapter, listing_id, first_seen, now, change_count):
-        """Update existing listing, preserving first_seen."""
+        """Update existing listing, preserving first_seen.
+
+        Uses COALESCE for 'sticky' fields (address, sqft, bedrooms, etc.) to prevent
+        NULL values from overwriting existing data. This protects against data loss
+        when a spider temporarily fails to extract a field that was previously captured.
+        (Fix for Codex review finding: unconditional updates could erase enriched data)
+        """
         features = adapter.get('features', [])
         if isinstance(features, list):
             features = json.dumps(features)
@@ -358,24 +364,50 @@ class SQLitePipeline:
         if isinstance(room_details, (dict, list)):
             room_details = json.dumps(room_details)
 
+        # Use COALESCE for sticky fields - preserve existing data if new value is NULL
+        # Sticky fields: structural data that doesn't change (sqft, beds, baths, address, etc.)
+        # Non-sticky fields: always update (url, price, let_agreed, timestamps, descriptions)
         self.cursor.execute('''
             UPDATE listings SET
-                url=?, area=?, price=?, price_pw=?, price_pcm=?, price_period=?,
-                address=?, postcode=?, latitude=?, longitude=?,
-                bedrooms=?, bathrooms=?, reception_rooms=?, property_type=?,
-                size_sqft=?, size_sqm=?, furnished=?, epc_rating=?,
-                floorplan_url=?, room_details=?,
-                has_basement=?, has_lower_ground=?, has_ground=?, has_mezzanine=?,
-                has_first_floor=?, has_second_floor=?, has_third_floor=?,
-                has_fourth_plus=?, has_roof_terrace=?, floor_count=?, property_levels=?,
-                let_agreed=?, agent_name=?, agent_phone=?,
+                url=?,
+                area=COALESCE(?, area),
+                price=?, price_pw=?, price_pcm=?, price_period=?,
+                address=COALESCE(?, address),
+                postcode=COALESCE(?, postcode),
+                latitude=COALESCE(?, latitude),
+                longitude=COALESCE(?, longitude),
+                bedrooms=COALESCE(?, bedrooms),
+                bathrooms=COALESCE(?, bathrooms),
+                reception_rooms=COALESCE(?, reception_rooms),
+                property_type=COALESCE(?, property_type),
+                size_sqft=COALESCE(?, size_sqft),
+                size_sqm=COALESCE(?, size_sqm),
+                furnished=COALESCE(?, furnished),
+                epc_rating=COALESCE(?, epc_rating),
+                floorplan_url=COALESCE(?, floorplan_url),
+                room_details=COALESCE(?, room_details),
+                has_basement=COALESCE(?, has_basement),
+                has_lower_ground=COALESCE(?, has_lower_ground),
+                has_ground=COALESCE(?, has_ground),
+                has_mezzanine=COALESCE(?, has_mezzanine),
+                has_first_floor=COALESCE(?, has_first_floor),
+                has_second_floor=COALESCE(?, has_second_floor),
+                has_third_floor=COALESCE(?, has_third_floor),
+                has_fourth_plus=COALESCE(?, has_fourth_plus),
+                has_roof_terrace=COALESCE(?, has_roof_terrace),
+                floor_count=COALESCE(?, floor_count),
+                property_levels=COALESCE(?, property_levels),
+                let_agreed=?,
+                agent_name=COALESCE(?, agent_name),
+                agent_phone=COALESCE(?, agent_phone),
                 summary=?, description=?, features=?, added_date=?,
-                address_fingerprint=?,
+                address_fingerprint=COALESCE(?, address_fingerprint),
                 last_seen=?, is_active=1, price_change_count=?,
                 scraped_at=?
             WHERE id=?
         ''', (
-            adapter.get('url'), adapter.get('area'),
+            adapter.get('url'),
+            adapter.get('area'),
             adapter.get('price'), adapter.get('price_pw'),
             adapter.get('price_pcm'), adapter.get('price_period'),
             adapter.get('address'), adapter.get('postcode'),
