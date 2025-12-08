@@ -42,13 +42,17 @@ class KnightFrankSpider(scrapy.Spider):
         'W1',  # Mayfair
     ]
 
-    def __init__(self, max_properties=500, fetch_details=False, fetch_floorplans=False, *args, **kwargs):
+    def __init__(self, max_properties=None, fetch_details=False, fetch_floorplans=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        try:
-            self.max_properties = int(max_properties)
-        except (ValueError, TypeError):
-            self.max_properties = 500
+        # Parse max_properties (None = unlimited, use high cap)
+        if max_properties is None or str(max_properties).lower() in ('none', '0', ''):
+            self.max_properties = None
+        else:
+            try:
+                self.max_properties = int(max_properties)
+            except (ValueError, TypeError):
+                self.max_properties = None
 
         # Enable detail page fetching for descriptions
         self.fetch_details = str(fetch_details).lower() in ('true', '1', 'yes')
@@ -77,7 +81,7 @@ class KnightFrankSpider(scrapy.Spider):
         self.logger.info("=" * 70)
         self.logger.info("KNIGHT FRANK SPIDER INITIALIZED")
         self.logger.info("=" * 70)
-        self.logger.info(f"[CONFIG] Max properties: {self.max_properties}")
+        self.logger.info(f"[CONFIG] Max properties: {self.max_properties or 'unlimited'}")
         self.logger.info(f"[CONFIG] Target postcodes: {', '.join(self.TARGET_POSTCODES)}")
         self.logger.info(f"[CONFIG] Fetch details: {self.fetch_details}")
         self.logger.info(f"[CONFIG] Fetch floorplans: {self.fetch_floorplans}")
@@ -90,8 +94,12 @@ class KnightFrankSpider(scrapy.Spider):
         base_url = 'https://www.knightfrank.co.uk/properties/residential/to-let/uk/all-types/all-beds'
 
         # Calculate how many pages we need (48 per page)
-        pages_needed = (self.max_properties // 48) + 1
-        pages_needed = min(pages_needed, 30)  # Cap at 30 pages
+        # Use 50 pages for unlimited (2400 properties), otherwise calculate from max_properties
+        if self.max_properties is None:
+            pages_needed = 50  # ~2400 properties max
+        else:
+            pages_needed = (self.max_properties // 48) + 1
+            pages_needed = min(pages_needed, 50)  # Cap at 50 pages
 
         self.logger.info(f"[REQUEST] Will fetch {pages_needed} pages")
 

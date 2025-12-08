@@ -39,7 +39,7 @@ class FoxtonsSpider(scrapy.Spider):
         'Notting-Hill': 'notting-hill',
     }
 
-    def __init__(self, areas=None, max_pages=10, *args, **kwargs):
+    def __init__(self, areas=None, max_pages=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         if areas:
@@ -47,11 +47,15 @@ class FoxtonsSpider(scrapy.Spider):
         else:
             self.areas = self.DEFAULT_AREAS
 
-        try:
-            self.max_pages = int(max_pages)
-        except (ValueError, TypeError):
-            self.logger.warning(f"[CONFIG] Invalid max_pages '{max_pages}', using default 10")
-            self.max_pages = 10
+        # Parse max_pages (None = unlimited)
+        if max_pages is None or str(max_pages).lower() in ('none', '0', ''):
+            self.max_pages = None
+        else:
+            try:
+                self.max_pages = int(max_pages)
+            except (ValueError, TypeError):
+                self.logger.warning(f"[CONFIG] Invalid max_pages '{max_pages}', using unlimited")
+                self.max_pages = None
 
         # Stats tracking
         self.stats = {
@@ -68,7 +72,7 @@ class FoxtonsSpider(scrapy.Spider):
         self.logger.info("FOXTONS SPIDER INITIALIZED")
         self.logger.info("=" * 70)
         self.logger.info(f"[CONFIG] Areas: {', '.join(self.areas)}")
-        self.logger.info(f"[CONFIG] Max pages per area: {self.max_pages}")
+        self.logger.info(f"[CONFIG] Max pages per area: {self.max_pages or 'unlimited'}")
         self.logger.info("=" * 70)
 
     def start_requests(self):
@@ -168,7 +172,9 @@ class FoxtonsSpider(scrapy.Spider):
 
         # Check for pagination - Foxtons uses page parameter
         # Only follow if we got a full page (100) and haven't hit max
-        if total_count >= 100 and page < self.max_pages:
+        should_continue = total_count >= 100 and (self.max_pages is None or page < self.max_pages)
+
+        if should_continue:
             next_page = page + 1
             next_url = f'https://www.foxtons.co.uk/properties-to-rent/{area}/?page={next_page}'
 
@@ -186,7 +192,7 @@ class FoxtonsSpider(scrapy.Spider):
                 errback=self.handle_error
             )
         else:
-            reason = "max pages reached" if page >= self.max_pages else "no more results"
+            reason = "max pages reached" if self.max_pages and page >= self.max_pages else "no more results"
             self.logger.info(f"[COMPLETE] {area}: Stopped at page {page} ({reason})")
 
     def parse_property(self, prop: dict, area: str) -> PropertyItem:
@@ -201,8 +207,18 @@ class FoxtonsSpider(scrapy.Spider):
         # Basic info
         item['source'] = 'foxtons'
         item['property_id'] = prop_ref
-        item['url'] = f"https://www.foxtons.co.uk/properties/{prop_ref}"
         item['area'] = area
+
+        # Extract postcode district for URL (Foxtons uses /properties-to-rent/{postcode}/{ref})
+        address = prop.get('streetName', '')
+        postcode_match = re.search(r'([A-Z]{1,2}\d{1,2}[A-Z]?)', address.upper())
+        postcode_district = postcode_match.group(1) if postcode_match else None
+
+        if postcode_district:
+            item['url'] = f"https://www.foxtons.co.uk/properties-to-rent/{postcode_district}/{prop_ref}"
+        else:
+            # Fallback: try to use area as postcode hint
+            item['url'] = f"https://www.foxtons.co.uk/properties-to-rent/{area.lower()}/{prop_ref}"
 
         # Price - Foxtons provides pricePcm as string
         price_pcm_str = prop.get('pricePcm', '0')

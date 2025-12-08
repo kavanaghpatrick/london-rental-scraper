@@ -56,7 +56,12 @@ class FloorplanEnricherSpider(scrapy.Spider):
         'foxtons': {
             'domain': 'foxtons.co.uk',
             'needs_playwright': False,
-            'url_template': 'https://www.foxtons.co.uk/properties/{property_id}',
+            'url_template': None,  # Use database URLs (format: /properties-to-rent/{area}/{property_id})
+        },
+        'rightmove': {
+            'domain': 'rightmove.co.uk',
+            'needs_playwright': False,
+            'url_template': 'https://www.rightmove.co.uk/properties/{property_id}',
         },
     }
 
@@ -81,6 +86,7 @@ class FloorplanEnricherSpider(scrapy.Spider):
             'total_to_enrich': 0,
             'enriched': 0,
             'floorplans_found': 0,
+            'descriptions_found': 0,
             'sqft_from_ocr': 0,
             'failed': 0,
             'start_time': time.time(),
@@ -97,17 +103,21 @@ class FloorplanEnricherSpider(scrapy.Spider):
         self.logger.info(f"[CONFIG] Use OCR: {self.use_ocr}")
 
     def start_requests(self):
-        """Read properties from database that need floorplan URLs."""
+        """Read properties from database that need enrichment (floorplan or description)."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # Find listings without floorplan URL that have a valid detail URL
+        # Find listings missing floorplan URL OR description
         query = '''
-            SELECT property_id, url, address, price_pcm, bedrooms, size_sqft
+            SELECT property_id, url, address, price_pcm, bedrooms, size_sqft,
+                   floorplan_url, description
             FROM listings
             WHERE source = ?
-            AND (floorplan_url IS NULL OR floorplan_url = '')
+            AND (
+                (floorplan_url IS NULL OR floorplan_url = '')
+                OR (description IS NULL OR description = '')
+            )
             AND url IS NOT NULL AND LENGTH(url) > 10
         '''
         params = [self.source]
@@ -120,7 +130,7 @@ class FloorplanEnricherSpider(scrapy.Spider):
         conn.close()
 
         self.stats['total_to_enrich'] = len(rows)
-        self.logger.info(f"[START] Found {len(rows)} {self.source} listings needing floorplan URLs")
+        self.logger.info(f"[START] Found {len(rows)} {self.source} listings needing enrichment")
 
         for i, row in enumerate(rows):
             if i % 50 == 0:
@@ -172,17 +182,20 @@ class FloorplanEnricherSpider(scrapy.Spider):
             return
 
         floorplan_url = None
+        description = None
 
         try:
-            # Source-specific extraction
+            # Source-specific extraction - now extracts both floorplan and description
             if self.source == 'knightfrank':
-                floorplan_url = await self._extract_knightfrank(playwright_page, response)
+                floorplan_url, description = await self._extract_knightfrank(playwright_page, response)
             elif self.source == 'chestertons':
-                floorplan_url = await self._extract_chestertons(playwright_page, response)
+                floorplan_url, description = await self._extract_chestertons(playwright_page, response)
             elif self.source == 'savills':
-                floorplan_url = await self._extract_savills(playwright_page, response)
+                floorplan_url, description = await self._extract_savills(playwright_page, response)
             elif self.source == 'foxtons':
-                floorplan_url = self._extract_foxtons(response)
+                floorplan_url, description = self._extract_foxtons(response)
+            elif self.source == 'rightmove':
+                floorplan_url, description = self._extract_rightmove(response)
 
         except Exception as e:
             self.logger.debug(f"[PARSE] {prop_id}: extraction error - {e}")
@@ -193,20 +206,24 @@ class FloorplanEnricherSpider(scrapy.Spider):
 
         self.stats['enriched'] += 1
 
-        if floorplan_url:
-            self.stats['floorplans_found'] += 1
-            self.update_database(prop_id, floorplan_url)
-            self.logger.debug(f"[FOUND] {prop_id}: {floorplan_url[:60]}...")
+        # Update database with whatever we found
+        if floorplan_url or description:
+            if floorplan_url:
+                self.stats['floorplans_found'] += 1
+            if description:
+                self.stats['descriptions_found'] += 1
+            self.update_database(prop_id, floorplan_url, description)
+            self.logger.debug(f"[FOUND] {prop_id}: floorplan={bool(floorplan_url)}, desc={len(description) if description else 0} chars")
 
             # OCR if no existing sqft
-            if self.use_ocr and not response.meta.get('existing_sqft'):
+            if self.use_ocr and floorplan_url and not response.meta.get('existing_sqft'):
                 ocr_sqft = self._extract_sqft_via_ocr(floorplan_url)
                 if ocr_sqft:
                     self.stats['sqft_from_ocr'] += 1
                     self.update_database_sqft(prop_id, ocr_sqft)
                     self.logger.debug(f"[OCR] {prop_id}: extracted {ocr_sqft} sqft")
         else:
-            self.logger.debug(f"[MISS] {prop_id}: no floorplan found")
+            self.logger.debug(f"[MISS] {prop_id}: no floorplan or description found")
 
         # Progress logging
         if self.stats['enriched'] % 25 == 0:
@@ -217,11 +234,26 @@ class FloorplanEnricherSpider(scrapy.Spider):
             )
 
     async def _extract_knightfrank(self, page, response):
-        """Extract floorplan URL from Knight Frank detail page."""
+        """Extract floorplan URL and description from Knight Frank detail page."""
         if not page:
-            return None
+            return None, None
 
         await page.wait_for_timeout(2000)
+
+        # Extract description first (before navigating away from main content)
+        description = await page.evaluate('''() => {
+            // Look for property description section
+            const descEl = document.querySelector('.property-description, .kf-description, [class*="description"]');
+            if (descEl) return descEl.innerText.trim();
+
+            // Try data-testid or common patterns
+            const sections = document.querySelectorAll('[class*="PropertyDetails"], [class*="property-details"]');
+            for (const sec of sections) {
+                const text = sec.innerText.trim();
+                if (text.length > 100) return text;
+            }
+            return null;
+        }''')
 
         # Click floorplan tab
         clicked = await page.evaluate('''() => {
@@ -255,48 +287,131 @@ class FloorplanEnricherSpider(scrapy.Spider):
             return match ? match[0] : null;
         }''')
 
-        return floorplan_url
+        return floorplan_url, description
 
     async def _extract_chestertons(self, page, response):
-        """Extract floorplan URL from Chestertons detail page."""
+        """Extract floorplan URL and description from Chestertons detail page."""
         if not page:
-            return None
+            return None, None
+
+        # Check if page is still valid
+        try:
+            if page.is_closed():
+                self.logger.debug("[CHESTERTONS] Page already closed")
+                return None, None
+        except Exception:
+            return None, None
+
+        # Skip Cloudflare check - pages load fine with headed browser
+        # Just wait a moment for page to fully render
+        await page.wait_for_timeout(3000)
 
         await page.wait_for_timeout(2000)
 
-        # Click floor plans tab
-        clicked = await page.evaluate('''() => {
-            const tabs = document.querySelectorAll('button, [role="tab"], a, .tab');
-            for (const tab of tabs) {
-                const text = (tab.innerText || tab.textContent || '').toLowerCase();
-                if (text.includes('floor') && text.includes('plan')) {
-                    tab.click();
-                    return true;
-                }
-            }
-            return false;
-        }''')
+        # Extract description first - WITH TIMEOUT
+        # Test script found descriptions in <div class="mb-24"> after tab headers
+        description = None
+        try:
+            description = await asyncio.wait_for(
+                page.evaluate('''() => {
+                    // Chestertons uses mb-24 divs - find ones with property description text
+                    const mb24Divs = document.querySelectorAll('.mb-24, [class*="mb-24"]');
+                    for (const div of mb24Divs) {
+                        const text = div.innerText || '';
+                        // Skip nav/header elements - look for actual property description
+                        if (text.length > 200 &&
+                            !text.startsWith('Directions') &&
+                            !text.startsWith('Share Property')) {
+                            // Extract just the description part (after tab headers)
+                            const lines = text.split('\\n').filter(l => l.trim());
+                            // Skip tab headers like "Property Details", "Location & Nearby", etc.
+                            const descStart = lines.findIndex(l =>
+                                l.length > 50 &&
+                                !['Property Details', 'Location & Nearby', 'EPC', 'Brochure',
+                                  'Directions', 'Share Property', 'Back to results'].includes(l.trim())
+                            );
+                            if (descStart >= 0) {
+                                return lines.slice(descStart).join(' ').trim();
+                            }
+                        }
+                    }
+
+                    // Fallback: Look for any large text block that looks like a description
+                    const allDivs = document.querySelectorAll('div, section, article');
+                    for (const el of allDivs) {
+                        const text = (el.innerText || '').trim();
+                        // Property descriptions typically start with certain patterns
+                        if (text.length > 150 && text.length < 3000 &&
+                            (text.match(/^(A |An |This |The |Stunning |Beautiful |Spacious |Luxur)/i) ||
+                             text.match(/apartment|flat|property|bedroom|floor|interior/i))) {
+                            // Make sure it's not containing navigation elements
+                            const childCount = el.querySelectorAll('button, a, nav').length;
+                            if (childCount < 3) {
+                                return text;
+                            }
+                        }
+                    }
+
+                    return null;
+                }'''),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            self.logger.debug("[CHESTERTONS] Description extraction timed out")
+        except Exception as e:
+            self.logger.debug(f"[CHESTERTONS] Description error: {e}")
+
+        # Click floor plans tab - WITH TIMEOUT
+        clicked = False
+        try:
+            clicked = await asyncio.wait_for(
+                page.evaluate('''() => {
+                    const tabs = document.querySelectorAll('button, [role="tab"], a, .tab');
+                    for (const tab of tabs) {
+                        const text = (tab.innerText || tab.textContent || '').toLowerCase();
+                        if (text.includes('floor') && text.includes('plan')) {
+                            tab.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }'''),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            self.logger.debug("[CHESTERTONS] Tab click timed out")
+        except Exception as e:
+            self.logger.debug(f"[CHESTERTONS] Tab click error: {e}")
 
         if clicked:
             await page.wait_for_timeout(2000)
 
-        # Find floorplan URL
-        floorplan_url = await page.evaluate('''() => {
-            const imgs = document.querySelectorAll('img');
-            for (const img of imgs) {
-                const src = img.src || img.getAttribute('data-src') || '';
-                if (src.includes('homeflow-assets.co.uk') &&
-                    src.includes('floorplan')) {
-                    return src;
-                }
-            }
-            return null;
-        }''')
+        # Find floorplan URL - WITH TIMEOUT
+        floorplan_url = None
+        try:
+            floorplan_url = await asyncio.wait_for(
+                page.evaluate('''() => {
+                    const imgs = document.querySelectorAll('img');
+                    for (const img of imgs) {
+                        const src = img.src || img.getAttribute('data-src') || '';
+                        if (src.includes('homeflow-assets.co.uk') &&
+                            src.includes('floorplan')) {
+                            return src;
+                        }
+                    }
+                    return null;
+                }'''),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            self.logger.debug("[CHESTERTONS] Floorplan extraction timed out")
+        except Exception as e:
+            self.logger.debug(f"[CHESTERTONS] Floorplan error: {e}")
 
-        return floorplan_url
+        return floorplan_url, description
 
     async def _extract_savills(self, page, response):
-        """Extract floorplan URL from Savills detail page.
+        """Extract floorplan URL and description from Savills detail page.
 
         Savills floorplans are GIF files that appear after clicking the PLANS button.
         The floorplan can be identified by:
@@ -305,9 +420,24 @@ class FloorplanEnricherSpider(scrapy.Spider):
         3. Image is from assets.savills.com/properties/
         """
         if not page:
-            return None
+            return None, None
 
         await page.wait_for_timeout(2000)
+
+        # Extract description first (before clicking away)
+        description = await page.evaluate('''() => {
+            // Savills uses sv- prefix for classes
+            const descEl = document.querySelector('.sv-property-description, .sv-description, [class*="description"]');
+            if (descEl) return descEl.innerText.trim();
+
+            // Try to find main property content
+            const sections = document.querySelectorAll('.sv-property-details, .property-details, .sv-content');
+            for (const sec of sections) {
+                const text = sec.innerText.trim();
+                if (text.length > 100) return text;
+            }
+            return null;
+        }''')
 
         # Click the PLANS button (not a tab - it's a button with specific class)
         clicked = await page.evaluate('''() => {
@@ -354,22 +484,45 @@ class FloorplanEnricherSpider(scrapy.Spider):
             return match ? match[0] : null;
         }''')
 
-        return floorplan_url
+        return floorplan_url, description
 
     def _extract_foxtons(self, response):
-        """Extract floorplan URL from Foxtons JSON (no Playwright needed)."""
+        """Extract floorplan URL and description from Foxtons JSON (no Playwright needed)."""
+        floorplan_url = None
+        description = None
+
         # Extract __NEXT_DATA__ JSON
         script = response.css('script#__NEXT_DATA__::text').get()
         if not script:
-            return None
+            return None, None
 
         try:
             data = json.loads(script)
             props = data.get('props', {}).get('pageProps', {})
-            page_data = props.get('pageData', {}).get('data', {})
 
-            # Get property blob
-            prop_blob = page_data.get('propertyBlob', {}) or {}
+            # NEW PATH (2025): propertyDetail.propertyBlob
+            property_detail = props.get('propertyDetail', {}) or {}
+            prop_blob = property_detail.get('propertyBlob', {}) or {}
+
+            # Fallback to old path: pageData.data.propertyBlob
+            if not prop_blob:
+                page_data = props.get('pageData', {}).get('data', {})
+                prop_blob = page_data.get('propertyBlob', {}) or {}
+
+            # Extract description directly from propertyBlob (new structure)
+            description = prop_blob.get('description', '') or prop_blob.get('descriptionShort', '')
+
+            # Fallback: try propertyInfo.description (old structure)
+            if not description:
+                property_info = prop_blob.get('propertyInfo', {}) or {}
+                description = property_info.get('description', '')
+
+            # Also get key features if available
+            features = prop_blob.get('keyFeatures', []) or prop_blob.get('features', []) or []
+            if features and description:
+                description = description + '\n\nFeatures:\n' + '\n'.join(f'- {f}' for f in features)
+
+            # Get floorplan from assets (try new then old structure)
             asset_info = prop_blob.get('assetInfo', {}) or {}
             assets = asset_info.get('assets', {}) or {}
             floorplan_data = assets.get('floorplan', {}) or {}
@@ -377,16 +530,89 @@ class FloorplanEnricherSpider(scrapy.Spider):
             # Get large floorplan URL
             if floorplan_data.get('large') and floorplan_data['large'].get('filename'):
                 filename = floorplan_data['large']['filename']
-                return f"https://assets.foxtons.co.uk/{filename}"
-
-            if floorplan_data.get('small') and floorplan_data['small'].get('filename'):
+                floorplan_url = f"https://assets.foxtons.co.uk/{filename}"
+            elif floorplan_data.get('small') and floorplan_data['small'].get('filename'):
                 filename = floorplan_data['small']['filename']
-                return f"https://assets.foxtons.co.uk/{filename}"
+                floorplan_url = f"https://assets.foxtons.co.uk/{filename}"
 
         except (json.JSONDecodeError, KeyError, TypeError):
             pass
 
-        return None
+        return floorplan_url, description
+
+    def _extract_rightmove(self, response):
+        """Extract floorplan URL AND description from Rightmove page.
+
+        Rightmove floorplan URLs contain '_FLP_' in the filename:
+        https://media.rightmove.co.uk/XXXk/XXXXXX/ID/XXXXX_FLP_00_0000.jpeg
+
+        Returns: (floorplan_url, description)
+        """
+        floorplan_url = None
+        description = None
+
+        # Strategy 1: Search HTML for FLP URLs directly (most reliable)
+        flp_pattern = r'https://media\.rightmove\.co\.uk/[^"\'<>\s]*_FLP_[^"\'<>\s]*'
+        matches = re.findall(flp_pattern, response.text, re.I)
+
+        if matches:
+            # Filter out thumbnails (prefer full size images)
+            full_size = [m for m in matches if '_max_' not in m]
+            if full_size:
+                floorplan_url = full_size[0]
+            else:
+                floorplan_url = matches[0]
+
+        # Strategy 2: Try __NEXT_DATA__ JSON (for floorplan and description)
+        script = response.css('script#__NEXT_DATA__::text').get()
+        if script:
+            try:
+                data = json.loads(script)
+                props = data.get('props', {})
+                page_props = props.get('pageProps', {})
+                property_data = page_props.get('propertyData', {})
+
+                # Extract description from text object
+                text_data = property_data.get('text', {})
+                description = text_data.get('description', '')
+
+                # Also get key features and append
+                key_features = property_data.get('keyFeatures', [])
+                if key_features:
+                    description = (description or '') + '\n\nKey Features:\n' + '\n'.join(f'- {f}' for f in key_features)
+
+                # Check images array for floorplan type (if not found above)
+                if not floorplan_url:
+                    images = property_data.get('images', [])
+                    for img in images:
+                        url = img.get('url', '') or img.get('srcUrl', '')
+                        if '_FLP_' in url or '_flp_' in url.lower():
+                            floorplan_url = url
+                            break
+
+                # Check floorplans array directly
+                if not floorplan_url:
+                    floorplans = property_data.get('floorplans', [])
+                    if floorplans:
+                        for fp in floorplans:
+                            url = fp.get('url', '') or fp.get('srcUrl', '')
+                            if url:
+                                floorplan_url = url
+                                break
+
+            except (json.JSONDecodeError, KeyError, TypeError):
+                pass
+
+        # Fallback: Extract description via regex if __NEXT_DATA__ failed
+        if not description:
+            # Look for description in raw JSON embedded in HTML
+            desc_match = re.search(r'"description"\s*:\s*"([^"]{100,})"', response.text)
+            if desc_match:
+                description = desc_match.group(1)
+                # Unescape JSON string
+                description = description.replace('\\n', '\n').replace('\\r', '').replace('\\"', '"')
+
+        return floorplan_url, description
 
     def _extract_sqft_via_ocr(self, floorplan_url):
         """Download floorplan and extract sqft using OCR."""
@@ -408,16 +634,34 @@ class FloorplanEnricherSpider(scrapy.Spider):
             self.logger.debug(f"[OCR] Error: {e}")
             return None
 
-    def update_database(self, property_id: str, floorplan_url: str):
-        """Update the database with floorplan URL."""
+    def update_database(self, property_id: str, floorplan_url: str, description: str = None):
+        """Update the database with floorplan URL and/or description."""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute('''
+
+            # Build dynamic update based on what we have
+            updates = []
+            params = []
+
+            if floorplan_url:
+                updates.append('floorplan_url = ?')
+                params.append(floorplan_url)
+
+            if description:
+                updates.append('description = ?')
+                params.append(description)
+
+            if not updates:
+                return
+
+            params.extend([self.source, property_id])
+
+            cursor.execute(f'''
                 UPDATE listings
-                SET floorplan_url = ?
+                SET {', '.join(updates)}
                 WHERE source = ? AND property_id = ?
-            ''', (floorplan_url, self.source, property_id))
+            ''', params)
             conn.commit()
             conn.close()
         except sqlite3.Error as e:
@@ -447,13 +691,16 @@ class FloorplanEnricherSpider(scrapy.Spider):
         elapsed = time.time() - self.stats['start_time']
         pct = (self.stats['floorplans_found'] / self.stats['enriched'] * 100) if self.stats['enriched'] else 0
 
+        desc_pct = (self.stats['descriptions_found'] / self.stats['enriched'] * 100) if self.stats['enriched'] else 0
+
         self.logger.info("")
         self.logger.info("=" * 70)
-        self.logger.info(f"FLOORPLAN ENRICHMENT COMPLETE - {self.source.upper()}")
+        self.logger.info(f"ENRICHMENT COMPLETE - {self.source.upper()}")
         self.logger.info("=" * 70)
         self.logger.info(f"[SUMMARY] Duration: {elapsed:.1f}s")
         self.logger.info(f"[SUMMARY] Properties processed: {self.stats['enriched']}")
         self.logger.info(f"[SUMMARY] Floorplans found: {self.stats['floorplans_found']} ({pct:.0f}%)")
+        self.logger.info(f"[SUMMARY] Descriptions found: {self.stats['descriptions_found']} ({desc_pct:.0f}%)")
         self.logger.info(f"[SUMMARY] Sqft from OCR: {self.stats['sqft_from_ocr']}")
         self.logger.info(f"[SUMMARY] Failed requests: {self.stats['failed']}")
         self.logger.info("=" * 70)

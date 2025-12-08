@@ -42,13 +42,17 @@ class ChestertonsSpider(scrapy.Spider):
         'NW1', 'NW3', 'NW8',  # St John's Wood, Hampstead
     ]
 
-    def __init__(self, max_properties=500, fetch_details=False, fetch_floorplans=False, *args, **kwargs):
+    def __init__(self, max_properties=None, fetch_details=False, fetch_floorplans=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        try:
-            self.max_properties = int(max_properties)
-        except (ValueError, TypeError):
-            self.max_properties = 500
+        # Parse max_properties (None = unlimited)
+        if max_properties is None or str(max_properties).lower() in ('none', '0', ''):
+            self.max_properties = None
+        else:
+            try:
+                self.max_properties = int(max_properties)
+            except (ValueError, TypeError):
+                self.max_properties = None
 
         # Enable detail page fetching for descriptions
         self.fetch_details = str(fetch_details).lower() in ('true', '1', 'yes')
@@ -77,7 +81,7 @@ class ChestertonsSpider(scrapy.Spider):
         self.logger.info("=" * 70)
         self.logger.info("CHESTERTONS SPIDER INITIALIZED")
         self.logger.info("=" * 70)
-        self.logger.info(f"[CONFIG] Max properties: {self.max_properties}")
+        self.logger.info(f"[CONFIG] Max properties: {self.max_properties or 'unlimited'}")
         self.logger.info(f"[CONFIG] Target postcodes: {', '.join(self.TARGET_POSTCODES)}")
         self.logger.info(f"[CONFIG] Fetch details: {self.fetch_details}")
         self.logger.info(f"[CONFIG] Fetch floorplans: {self.fetch_floorplans}")
@@ -133,8 +137,12 @@ class ChestertonsSpider(scrapy.Spider):
 
         # Calculate how many Load More clicks we need
         # Each click loads 12 more properties, starting with 12
-        clicks_needed = (self.max_properties - 12) // 12
-        clicks_needed = max(0, min(clicks_needed, 150))  # Cap at 150 clicks (1,812 properties)
+        # Use 150 clicks for unlimited (~1,800 properties), otherwise calculate from max_properties
+        if self.max_properties is None:
+            clicks_needed = 150  # ~1,812 properties max
+        else:
+            clicks_needed = (self.max_properties - 12) // 12
+            clicks_needed = max(0, min(clicks_needed, 150))  # Cap at 150 clicks
 
         self.logger.info(f"[PAGINATION] Will click Load More up to {clicks_needed} times")
 

@@ -32,7 +32,7 @@ class RightmoveSpider(scrapy.Spider):
         'Knightsbridge', 'Notting-Hill'
     ]
 
-    def __init__(self, areas=None, max_pages=20, fetch_details=False, *args, **kwargs):
+    def __init__(self, areas=None, max_pages=None, fetch_details=True, fetch_floorplans=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Parse areas argument
@@ -41,15 +41,23 @@ class RightmoveSpider(scrapy.Spider):
         else:
             self.areas = self.DEFAULT_AREAS
 
-        # Safe parsing of max_pages
-        try:
-            self.max_pages = int(max_pages)
-        except (ValueError, TypeError):
-            self.logger.warning(f"[CONFIG] Invalid max_pages '{max_pages}', using default 20")
-            self.max_pages = 20
+        # Safe parsing of max_pages (None = unlimited)
+        if max_pages is None or str(max_pages).lower() in ('none', '0', ''):
+            self.max_pages = None  # Unlimited
+        else:
+            try:
+                self.max_pages = int(max_pages)
+            except (ValueError, TypeError):
+                self.logger.warning(f"[CONFIG] Invalid max_pages '{max_pages}', using unlimited")
+                self.max_pages = None
 
         # Enable detail page fetching for sqft and descriptions
         self.fetch_details = str(fetch_details).lower() in ('true', '1', 'yes')
+
+        # Enable floorplan extraction (implies fetch_details)
+        self.fetch_floorplans = str(fetch_floorplans).lower() in ('true', '1', 'yes')
+        if self.fetch_floorplans:
+            self.fetch_details = True  # Need detail page for floorplans
 
         # Enhanced stats tracking
         self.stats = {
@@ -62,6 +70,7 @@ class RightmoveSpider(scrapy.Spider):
             'requests_failed': 0,
             'bytes_downloaded': 0,
             'sqft_found': 0,
+            'floorplans_found': 0,
             'details_fetched': 0,
             'start_time': time.time(),
         }
@@ -70,9 +79,13 @@ class RightmoveSpider(scrapy.Spider):
         self.logger.info("RIGHTMOVE SPIDER INITIALIZED")
         self.logger.info("=" * 70)
         self.logger.info(f"[CONFIG] Areas to scrape: {', '.join(self.areas)}")
-        self.logger.info(f"[CONFIG] Max pages per area: {self.max_pages}")
+        self.logger.info(f"[CONFIG] Max pages per area: {self.max_pages or 'unlimited'}")
         self.logger.info(f"[CONFIG] Fetch details: {self.fetch_details}")
-        self.logger.info(f"[CONFIG] Estimated max listings: ~{len(self.areas) * self.max_pages * 24}")
+        self.logger.info(f"[CONFIG] Fetch floorplans: {self.fetch_floorplans}")
+        if self.max_pages:
+            self.logger.info(f"[CONFIG] Estimated max listings: ~{len(self.areas) * self.max_pages * 24}")
+        else:
+            self.logger.info(f"[CONFIG] Scraping all available pages")
         self.logger.info("=" * 70)
 
     def start_requests(self):
@@ -233,7 +246,10 @@ class RightmoveSpider(scrapy.Spider):
         pagination = search_results.get('pagination', {})
         next_index = pagination.get('next')
 
-        if next_index and page < self.max_pages - 1:
+        # Follow pagination if there's a next page and we haven't hit max_pages limit
+        should_continue = next_index and (self.max_pages is None or page < self.max_pages - 1)
+
+        if should_continue:
             next_url = f'https://www.rightmove.co.uk/property-to-rent/{area}.html?index={next_index}'
 
             self.logger.debug(f"[PAGINATION] {area}: Following to page {page+2} (index={next_index})")
@@ -250,7 +266,7 @@ class RightmoveSpider(scrapy.Spider):
                 errback=self.handle_error
             )
         else:
-            if page >= self.max_pages - 1:
+            if self.max_pages and page >= self.max_pages - 1:
                 self.logger.info(f"[COMPLETE] {area}: Reached max pages ({self.max_pages})")
             else:
                 self.logger.info(f"[COMPLETE] {area}: No more pages (stopped at {page+1})")
@@ -403,6 +419,14 @@ class RightmoveSpider(scrapy.Spider):
                 text_data = property_data.get('text', {})
                 description = text_data.get('description', '')
 
+                # Extract floorplan URL if enabled
+                if self.fetch_floorplans:
+                    floorplan_url = self._extract_floorplan_url(property_data, response.text)
+                    if floorplan_url:
+                        item['floorplan_url'] = floorplan_url
+                        self.stats['floorplans_found'] += 1
+                        self.logger.debug(f"[FLOORPLAN] {prop_id}: {floorplan_url[:60]}...")
+
             except (json.JSONDecodeError, KeyError, TypeError) as e:
                 self.logger.debug(f"[DETAIL-PARSE] {prop_id}: JSON parse issue - {e}")
 
@@ -419,6 +443,14 @@ class RightmoveSpider(scrapy.Spider):
                 if match:
                     sqft = int(match.group(1))
                     break
+
+        # Extract floorplan URL (works even without JSON)
+        if self.fetch_floorplans and not item.get('floorplan_url'):
+            floorplan_url = self._extract_floorplan_url({}, response.text)
+            if floorplan_url:
+                item['floorplan_url'] = floorplan_url
+                self.stats['floorplans_found'] += 1
+                self.logger.debug(f"[FLOORPLAN] {prop_id}: {floorplan_url[:60]}...")
 
         # Update item with enriched data
         if sqft and 100 < sqft < 50000:  # Sanity check
@@ -445,6 +477,50 @@ class RightmoveSpider(scrapy.Spider):
             )
 
         yield PropertyItem(**item)
+
+    def _extract_floorplan_url(self, property_data: dict, response_text: str = None) -> str | None:
+        """Extract floorplan URL from Rightmove property data.
+
+        Rightmove floorplan URLs contain '_FLP_' in the filename:
+        https://media.rightmove.co.uk/XXXk/XXXXXX/ID/XXXXX_FLP_00_0000.jpeg
+
+        Note: Detail pages don't use __NEXT_DATA__, so we also search HTML directly.
+        """
+        # Strategy 1: Search HTML for FLP URLs directly (most reliable for detail pages)
+        if response_text:
+            flp_pattern = r'https://media\.rightmove\.co\.uk/[^"\'<>\s]*_FLP_[^"\'<>\s]*'
+            matches = re.findall(flp_pattern, response_text, re.I)
+            if matches:
+                # Filter out thumbnails (prefer full size images)
+                full_size = [m for m in matches if '_max_' not in m]
+                if full_size:
+                    return full_size[0]
+                return matches[0]
+
+        # Strategy 2: Check JSON data (works for search results)
+        images = property_data.get('images', [])
+        for img in images:
+            url = img.get('url', '') or img.get('srcUrl', '')
+            if '_FLP_' in url or '_flp_' in url.lower():
+                return url
+
+        # Strategy 3: Check floorplans array directly
+        floorplans = property_data.get('floorplans', [])
+        if floorplans:
+            for fp in floorplans:
+                url = fp.get('url', '') or fp.get('srcUrl', '')
+                if url:
+                    return url
+
+        # Strategy 4: Check media array
+        media = property_data.get('media', [])
+        for item in media:
+            if item.get('type', '').lower() == 'floorplan':
+                url = item.get('url', '') or item.get('srcUrl', '')
+                if url:
+                    return url
+
+        return None
 
     def closed(self, reason):
         """Log comprehensive summary when spider closes."""

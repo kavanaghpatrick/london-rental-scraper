@@ -1,31 +1,50 @@
 # CLAUDE.md - London Rental Property Scraper
 
-> Scrapy-based scraping framework for London rental listings with price prediction models.
+> Scrapy-based scraping framework for London rental listings with historical tracking and price prediction.
 
 ---
 
 ## Quick Reference
 
 ```bash
-# Explore a new site before building a spider
-python site_explorer.py savills                    # Quick exploration
-python site_explorer.py rightmove --floorplans     # Deep floorplan analysis
-python site_explorer.py custom --url "https://example.com" --detail-pattern "/property/"
+# === CLI (PREFERRED) ===
+python -m cli.main scrape --all              # Run all spiders (fast, search results only)
+python -m cli.main scrape --all --full       # Run all with full data (sqft + floorplans from detail pages)
+python -m cli.main scrape --source savills   # Single spider
+python -m cli.main scrape -s rightmove -d -f # Single spider with details + floorplans
+python -m cli.main enrich-floorplans         # Fetch missing floorplan URLs (all sources)
+python -m cli.main ocr-enrich                # OCR floorplans for sqft & floor data
+python -m cli.main status                    # Show database stats
+python -m cli.main mark-inactive --days 7    # Mark stale listings inactive
 
-# Run any spider
-scrapy crawl <spider_name> -a max_properties=500
+# === RECOMMENDED: FULL DATA SCRAPE ===
+python -m cli.main scrape --all --full       # Slower but gets sqft + floorplans upfront
+python -m cli.main dedupe --merge --execute  # Cross-source dedupe
 
-# Common spiders
-scrapy crawl savills -a max_pages=84      # Best sqft coverage (99.9%)
-scrapy crawl knightfrank -a max_properties=500
-scrapy crawl foxtons
-scrapy crawl rightmove -a areas=Chelsea,Kensington
+# === ALTERNATIVE: FAST SCRAPE + ENRICHMENT ===
+python -m cli.main scrape --all              # 1. Fast scrape (search results only)
+python -m cli.main enrich-floorplans         # 2. Backfill floorplan URLs
+python -m cli.main ocr-enrich                # 3. OCR: extract sqft & floors
+python -m cli.main dedupe --merge --execute  # 4. Cross-source dedupe
 
-# Enrichers (add sqft to existing listings)
-scrapy crawl rightmove_enricher -a limit=100
+# === FULL SCRAPE WITH VALIDATION ===
+./scripts/run_full_scrape.sh                 # Full automated scrape
+./scripts/run_full_scrape.sh --http          # HTTP spiders only (faster)
+./scripts/run_full_scrape.sh --quick         # Limited pages (testing)
 
-# Check database
-sqlite3 output/rentals.db "SELECT source, COUNT(*), SUM(CASE WHEN size_sqft > 0 THEN 1 ELSE 0 END) FROM listings GROUP BY source;"
+# === VALIDATION TESTS ===
+pytest tests/test_scrape_validation.py -v -k "pre_scrape"   # Before scraping
+pytest tests/test_scrape_validation.py -v -k "post_scrape"  # After scraping
+python3 tests/test_scrape_validation.py --snapshot          # Save baseline
+python3 tests/test_scrape_validation.py --report            # Compare changes
+
+# === DIRECT SPIDER RUNS ===
+SCRAPY_SETTINGS_MODULE=property_scraper.settings scrapy crawl savills
+SCRAPY_SETTINGS_MODULE=property_scraper.settings_standard scrapy crawl rightmove
+
+# === DATABASE ===
+sqlite3 output/rentals.db "SELECT source, COUNT(*), SUM(is_active) FROM listings GROUP BY source;"
+sqlite3 output/rentals.db "SELECT COUNT(*) FROM price_history WHERE recorded_at LIKE '$(date +%Y-%m-%d)%';"
 ```
 
 ---
@@ -34,27 +53,27 @@ sqlite3 output/rentals.db "SELECT source, COUNT(*), SUM(CASE WHEN size_sqft > 0 
 
 ```
 scrapy_project/
-├── site_explorer.py       # Unified site exploration tool (run before building spiders)
+├── cli/                   # Typer CLI (PRD-001)
+│   ├── main.py            # Commands: scrape, status, mark-inactive, dedupe
+│   └── registry.py        # Spider configs (settings, type: playwright/http)
 ├── property_scraper/
-│   ├── spiders/           # All spiders live here
-│   │   ├── savills_spider.py      # Playwright, click pagination
-│   │   ├── knightfrank_spider.py  # Playwright, offset pagination
-│   │   ├── chestertons_spider.py  # Playwright, "Load More" button
-│   │   ├── foxtons_spider.py      # Standard HTTP, __NEXT_DATA__
-│   │   ├── rightmove_spider.py    # Standard HTTP, __NEXT_DATA__
-│   │   └── rightmove_enricher.py  # Enriches existing DB records
+│   ├── spiders/           # All spiders
+│   ├── services/
+│   │   └── fingerprint.py # Address fingerprinting (PRD-002)
+│   ├── pipelines.py       # Smart upsert with history (PRD-003/004)
 │   ├── items.py           # PropertyItem schema
-│   ├── pipelines.py       # Clean → Dedupe → JSON → SQLite
-│   ├── middlewares.py     # User-agent rotation, rate limiting
-│   ├── settings.py        # Playwright-enabled settings
-│   └── settings_standard.py  # Non-Playwright settings
+│   ├── settings.py        # Playwright settings
+│   └── settings_standard.py  # HTTP settings
+├── tests/
+│   ├── test_scrape_validation.py  # Pre/post scrape validation
+│   ├── test_pipeline.py   # Pipeline unit tests
+│   └── test_fingerprint.py # Fingerprint tests
+├── scripts/
+│   └── run_full_scrape.sh # Automated scrape orchestration
 ├── output/
 │   └── rentals.db         # SQLite database
-├── exploration/           # Output from site_explorer.py
-├── docs/
-│   └── PRD_site_explorer.md  # Design doc for site explorer
-├── rental_price_models_v7.py  # Best model: Optuna-tuned XGBoost (R²=0.908)
-└── rental_price_models_v6.py  # Previous best model
+└── docs/
+    └── RESTART_PROMPT.md  # Session restart instructions
 ```
 
 ---
@@ -130,42 +149,55 @@ SCRAPY_SETTINGS_MODULE=property_scraper.settings_standard scrapy crawl rightmove
 ## Database Schema
 
 ```sql
+-- Main listings table with historical tracking (PRD-003/004)
 CREATE TABLE listings (
     id INTEGER PRIMARY KEY,
-    source TEXT,           -- savills, knightfrank, rightmove, etc.
-    property_id TEXT,      -- Unique per source
+    source TEXT,               -- savills, knightfrank, rightmove, etc.
+    property_id TEXT,          -- Unique per source
+    address_fingerprint TEXT,  -- 16-char hash for cross-source dedupe (PRD-002)
+    first_seen TEXT,           -- When listing first appeared
+    last_seen TEXT,            -- When last scraped (updated each run)
+    is_active INTEGER DEFAULT 1,  -- 0 = stale/removed
+    price_change_count INTEGER DEFAULT 0,
     url TEXT,
     address TEXT,
-    postcode TEXT,         -- SW1, W8, NW3, etc.
-    area TEXT,             -- Chelsea, Kensington, etc.
+    postcode TEXT,
     price_pcm INTEGER,
-    price_pw INTEGER,
+    size_sqft INTEGER,
     bedrooms INTEGER,
-    bathrooms INTEGER,
-    size_sqft INTEGER,     -- Critical for model training
-    property_type TEXT,
-    furnished TEXT,
-    features TEXT,         -- JSON string
-    summary TEXT,
-    description TEXT,
-    latitude REAL,
-    longitude REAL,
-    let_agreed BOOLEAN,
-    agent_name TEXT,
-    added_date TEXT,
-    scraped_at TEXT,
+    -- ... other fields ...
     UNIQUE(source, property_id)
 );
+
+-- Price history table (PRD-004)
+CREATE TABLE price_history (
+    id INTEGER PRIMARY KEY,
+    listing_id INTEGER,
+    old_price INTEGER,
+    new_price INTEGER,
+    recorded_at TEXT,
+    FOREIGN KEY (listing_id) REFERENCES listings(id)
+);
 ```
+
+**Key Behaviors**:
+- `first_seen`: Set once on INSERT, never overwritten
+- `last_seen`: Updated on every scrape (indicates listing still active)
+- `price_history`: New row added when price changes
+- `is_active`: Set to 0 by `mark-inactive` for listings not seen in N days
 
 ---
 
 ## Pipeline Order
 
-1. **CleanDataPipeline** - Normalizes prices, cleans whitespace, ensures timestamps
+1. **CleanDataPipeline** - Normalizes prices, cleans whitespace
 2. **DuplicateFilterPipeline** - Filters by `source:property_id` within session
 3. **JsonWriterPipeline** - Writes `{area}_listings.jsonl` files
-4. **SQLitePipeline** - Upserts to SQLite with `INSERT OR REPLACE`
+4. **SQLitePipeline** - Smart upsert (PRD-003):
+   - Generates `address_fingerprint` via fingerprint service
+   - Checks if listing exists → UPDATE (preserve `first_seen`) or INSERT
+   - Detects price changes → logs to `price_history`
+   - Uses SAVEPOINT for per-item atomicity
 
 ---
 
@@ -211,15 +243,16 @@ python3 dedupe_cross_source.py --remove --execute
 
 ## Current Data Status (Dec 2025)
 
-| Source | Total | With sqft | Coverage | Avg Price | Avg Sqft |
-|--------|-------|-----------|----------|-----------|----------|
-| savills | 712 | 711 | 99.9% | £7,284 | 1,413 |
-| rightmove | 2,092 | 591 | 28.3% | £13,241 | 719 |
-| knightfrank | 545 | 505 | 92.7% | £9,446 | 1,555 |
-| chestertons | 451 | 320 | 71.0% | £8,302 | 1,277 |
-| foxtons | 218 | 214 | 98.2% | £6,099 | 1,020 |
+| Source | Total | Active | With sqft |
+|--------|-------|--------|-----------|
+| rightmove | 1,223 | 1,223 | ~28% |
+| knightfrank | 498 | 498 | ~93% |
+| chestertons | 386 | 386 | ~71% |
+| savills | 372 | 372 | ~99% |
+| foxtons | 141 | 141 | ~98% |
+| johndwood | 30 | 30 | varies |
 
-**Total: 2,341 properties with sqft data for model training**
+**Total: 2,650 listings with historical tracking enabled**
 
 ---
 
@@ -270,10 +303,55 @@ await page.wait_for_timeout(2000)  # Extra render time
 
 ---
 
+## Address Fingerprinting (PRD-002)
+
+Located in `property_scraper/services/fingerprint.py`. Creates 16-char hashes for cross-source deduplication.
+
+**Algorithm**:
+1. Normalize address (lowercase, strip punctuation, expand abbreviations)
+2. Extract components: flat/unit, street number (with letter suffix), street name, postcode
+3. MD5 hash → first 16 chars
+
+**Example**: `"Flat 2, 100A King's Road, SW3 4TX"` → `a1b2c3d4e5f6g7h8`
+
+**Usage**: Listings with same fingerprint across sources are likely duplicates.
+
+---
+
+## Test Suite
+
+```bash
+# All unit tests (45 tests)
+pytest tests/ -v
+
+# Pre-scrape validation (run BEFORE scraping)
+pytest tests/test_scrape_validation.py -v -k "pre_scrape"
+
+# Post-scrape validation (run AFTER scraping)
+pytest tests/test_scrape_validation.py -v -k "post_scrape"
+
+# Data integrity checks (run anytime)
+pytest tests/test_scrape_validation.py -v -k "integrity"
+```
+
+**Snapshot workflow** (for comparing before/after scrape):
+```bash
+python3 tests/test_scrape_validation.py --snapshot  # Save baseline
+# ... run scrape ...
+python3 tests/test_scrape_validation.py --report    # Compare changes
+```
+
+---
+
 ## Development Tips
 
-1. **Always clear cache** before debugging pagination: `rm -rf .scrapy/httpcache/<spider>`
-2. **Test with small limits first**: `-a max_pages=3` or `-a max_properties=50`
-3. **Check logs for extraction patterns**: Look for `[DISCOVERY]` lines
-4. **For React sites**: Assume URL params don't work, use click navigation
-5. **For sqft**: Premium agents (Savills, Knight Frank) have best coverage
+1. **Use the CLI**: `python -m cli.main scrape --all` instead of manual scrapy commands
+2. **Test with limits**: `python -m cli.main scrape --source rightmove --max-pages 3`
+3. **Clear cache** before debugging: `rm -rf .scrapy/httpcache/<spider>`
+4. **Check logs**: Look for `[DISCOVERY]` and `[UPSERT]` lines
+5. **Playwright sites**: savills, knightfrank, chestertons (use `settings.py`)
+6. **HTTP sites**: rightmove, foxtons (use `settings_standard.py`)
+7. **403 errors = USE PLAYWRIGHT**: Sites like Chestertons block HTTP requests with 403. Use Playwright with headed mode for manual CAPTCHA solving:
+   ```bash
+   SCRAPY_SETTINGS_MODULE=property_scraper.settings_headed scrapy crawl floorplan_enricher -a source=chestertons
+   ```

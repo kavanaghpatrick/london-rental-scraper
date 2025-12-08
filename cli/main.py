@@ -45,6 +45,8 @@ def run_spider(
     max_pages: int | None = None,
     max_properties: int | None = None,
     dry_run: bool = False,
+    fetch_details: bool = False,
+    fetch_floorplans: bool = False,
 ) -> tuple[bool, str]:
     """
     Run a spider using subprocess (avoids Twisted reactor issues).
@@ -63,6 +65,14 @@ def run_spider(
     if max_properties:
         cmd.extend(["-a", f"max_properties={max_properties}"])
 
+    # Fetch details (sqft, descriptions) from detail pages - slower but more complete
+    if fetch_details:
+        cmd.extend(["-a", "fetch_details=true"])
+
+    # Fetch floorplan URLs from detail pages
+    if fetch_floorplans:
+        cmd.extend(["-a", "fetch_floorplans=true"])
+
     # Choose settings based on spider type
     if config.requires_playwright:
         settings_module = "property_scraper.settings"
@@ -72,6 +82,8 @@ def run_spider(
     # Set environment
     env = os.environ.copy()
     env["SCRAPY_SETTINGS_MODULE"] = settings_module
+    # Add project root to PYTHONPATH so scrapy can find property_scraper module
+    env["PYTHONPATH"] = str(PROJECT_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
 
     # If dry_run, disable SQLite pipeline to prevent database writes
     # (Fix for Codex review: dry_run flag was being ignored)
@@ -118,11 +130,19 @@ def scrape(
     max_pages: int = typer.Option(None, "--max-pages", help="Max pages per spider"),
     max_properties: int = typer.Option(None, "--max-properties", help="Max properties total"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Parse but don't save to DB"),
+    fetch_details: bool = typer.Option(False, "--fetch-details", "-d", help="Fetch sqft/descriptions from detail pages (slower but more complete)"),
+    fetch_floorplans: bool = typer.Option(False, "--fetch-floorplans", "-f", help="Fetch floorplan URLs from detail pages"),
+    full: bool = typer.Option(False, "--full", help="Enable both --fetch-details and --fetch-floorplans for maximum data"),
 ):
     """Run property scrapers."""
     if not all and not source:
         console.print("[red]Error:[/red] Must specify --all or --source")
         raise typer.Exit(1)
+
+    # --full enables both fetch options
+    if full:
+        fetch_details = True
+        fetch_floorplans = True
 
     # Get spiders to run
     if all:
@@ -134,7 +154,15 @@ def scrape(
             raise typer.Exit(1)
         spiders_to_run = [source.lower()]
 
-    console.print(f"\n[bold]Running {len(spiders_to_run)} spider(s)...[/bold]\n")
+    console.print(f"\n[bold]Running {len(spiders_to_run)} spider(s)...[/bold]")
+    if fetch_details or fetch_floorplans:
+        options = []
+        if fetch_details:
+            options.append("fetch-details")
+        if fetch_floorplans:
+            options.append("fetch-floorplans")
+        console.print(f"[dim]Options: {', '.join(options)} (slower but more complete)[/dim]")
+    console.print()
 
     results = []
     for spider_name in spiders_to_run:
@@ -153,6 +181,8 @@ def scrape(
                 max_pages=max_pages or config.default_max_pages,
                 max_properties=max_properties,
                 dry_run=dry_run,
+                fetch_details=fetch_details,
+                fetch_floorplans=fetch_floorplans,
             )
 
             progress.remove_task(task)
@@ -406,6 +436,127 @@ def dedupe(
     conn.close()
 
 
+@app.command("enrich-floorplans")
+def enrich_floorplans(
+    source: str = typer.Option(None, "--source", "-s", help="Specific source to enrich"),
+    limit: int = typer.Option(None, "--limit", "-l", help="Max listings to process per source"),
+    use_ocr: bool = typer.Option(False, "--ocr", help="Run OCR to extract sqft from floorplans"),
+):
+    """Fetch missing floorplan URLs for all sources."""
+    # Sources to enrich (HTTP sources first for speed)
+    all_sources = ['foxtons', 'rightmove', 'savills', 'knightfrank', 'chestertons']
+
+    if source:
+        if source.lower() not in all_sources:
+            console.print(f"[red]Error:[/red] Unknown source: {source}")
+            console.print(f"Available: {', '.join(all_sources)}")
+            raise typer.Exit(1)
+        sources_to_run = [source.lower()]
+    else:
+        sources_to_run = all_sources
+
+    console.print(f"\n[bold]Enriching floorplans for {len(sources_to_run)} source(s)...[/bold]\n")
+
+    results = []
+    for src in sources_to_run:
+        # Determine settings based on source type
+        needs_playwright = src in ['savills', 'knightfrank', 'chestertons']
+        settings_module = "property_scraper.settings" if needs_playwright else "property_scraper.settings_standard"
+
+        # Build command - ALWAYS disable cache for enricher
+        # Playwright sources need fresh pages to click tabs (PLANS, Floorplan, etc.)
+        # HTTP cache returns stale HTML without floorplan URLs
+        cmd = ["scrapy", "crawl", "floorplan_enricher", "-a", f"source={src}",
+               "-s", "HTTPCACHE_ENABLED=False"]
+        if limit:
+            cmd.extend(["-a", f"limit={limit}"])
+        if use_ocr:
+            cmd.extend(["-a", "use_ocr=true"])
+
+        env = os.environ.copy()
+        env["SCRAPY_SETTINGS_MODULE"] = settings_module
+        env["PYTHONPATH"] = str(PROJECT_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+
+        log_dir = PROJECT_ROOT / "logs"
+        log_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = log_dir / f"floorplan_enricher_{src}_{timestamp}.log"
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(f"[cyan]{src}[/cyan]: Enriching floorplans...", total=None)
+
+            try:
+                with open(log_file, "w") as f:
+                    result = subprocess.run(
+                        cmd,
+                        cwd=PROJECT_ROOT,
+                        env=env,
+                        stdout=f,
+                        stderr=subprocess.STDOUT,
+                        timeout=3600,
+                    )
+                success = result.returncode == 0
+                message = f"Log: {log_file.name}"
+            except subprocess.TimeoutExpired:
+                success = False
+                message = "Timeout after 1 hour"
+            except Exception as e:
+                success = False
+                message = f"Error: {e}"
+
+            progress.remove_task(task)
+
+        status = "[green]OK[/green]" if success else "[red]FAIL[/red]"
+        console.print(f"  {status} [bold]{src}[/bold]: {message}")
+        results.append((src, success))
+
+    # Summary
+    console.print()
+    success_count = sum(1 for _, s in results if s)
+    console.print(f"[bold green]Complete![/bold green] Enriched {success_count}/{len(results)} sources.")
+
+
+@app.command("ocr-enrich")
+def ocr_enrich(
+    source: str = typer.Option(None, "--source", "-s", help="Specific source to process"),
+    limit: int = typer.Option(None, "--limit", "-l", help="Max listings to process"),
+    workers: int = typer.Option(4, "--workers", "-w", help="Concurrent workers"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without updating DB"),
+):
+    """Run OCR on floorplan images to extract sqft and floor data."""
+    script_path = PROJECT_ROOT / "scripts" / "ocr_enrich.py"
+
+    if not script_path.exists():
+        console.print("[red]Error:[/red] scripts/ocr_enrich.py not found")
+        raise typer.Exit(1)
+
+    cmd = ["python3", str(script_path)]
+    if source:
+        cmd.extend(["--source", source])
+    if limit:
+        cmd.extend(["--limit", str(limit)])
+    if workers:
+        cmd.extend(["--workers", str(workers)])
+    if dry_run:
+        cmd.append("--dry-run")
+
+    console.print(f"\n[bold]Running OCR enrichment...[/bold]\n")
+
+    try:
+        result = subprocess.run(cmd, cwd=PROJECT_ROOT)
+        if result.returncode != 0:
+            console.print("[red]OCR enrichment failed[/red]")
+            raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled[/yellow]")
+        raise typer.Exit(1)
+
+
 @app.command()
 def spiders():
     """List available spiders."""
@@ -419,10 +570,11 @@ def spiders():
 
     for spider in get_all_spiders():
         spider_type = "[magenta]Playwright[/magenta]" if spider.requires_playwright else "[cyan]HTTP[/cyan]"
+        max_pages_display = str(spider.default_max_pages) if spider.default_max_pages else "all"
         table.add_row(
             spider.name,
             spider_type,
-            str(spider.default_max_pages),
+            max_pages_display,
             spider.description,
         )
 

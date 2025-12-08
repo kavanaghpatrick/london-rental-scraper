@@ -20,7 +20,7 @@ SPIDERS = {
         name='savills',
         spider_class='property_scraper.spiders.savills_spider.SavillsSpider',
         requires_playwright=True,
-        default_max_pages=84,
+        default_max_pages=None,  # Unlimited - scrape all available
         priority=1,
         description='Savills - Premium agent, best sqft coverage (99.9%)',
     ),
@@ -28,7 +28,7 @@ SPIDERS = {
         name='knightfrank',
         spider_class='property_scraper.spiders.knightfrank_spider.KnightFrankSpider',
         requires_playwright=True,
-        default_max_pages=50,
+        default_max_pages=None,  # Unlimited
         priority=2,
         description='Knight Frank - Premium agent, excellent sqft (93%)',
     ),
@@ -36,7 +36,7 @@ SPIDERS = {
         name='chestertons',
         spider_class='property_scraper.spiders.chestertons_spider.ChestertonsSpider',
         requires_playwright=True,
-        default_max_pages=50,
+        default_max_pages=None,  # Unlimited
         priority=3,
         description='Chestertons - Premium agent with Cloudflare',
     ),
@@ -44,7 +44,7 @@ SPIDERS = {
         name='foxtons',
         spider_class='property_scraper.spiders.foxtons_spider.FoxtonsSpider',
         requires_playwright=False,
-        default_max_pages=100,
+        default_max_pages=None,  # Unlimited
         priority=4,
         description='Foxtons - Fast HTTP spider, excellent sqft (98%)',
     ),
@@ -52,7 +52,7 @@ SPIDERS = {
         name='rightmove',
         spider_class='property_scraper.spiders.rightmove_spider.RightmoveSpider',
         requires_playwright=False,
-        default_max_pages=100,
+        default_max_pages=None,  # Unlimited - scrape all available
         priority=5,
         description='Rightmove - Aggregator, needs enrichment for sqft',
     ),

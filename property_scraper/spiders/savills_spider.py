@@ -45,18 +45,26 @@ class SavillsSpider(scrapy.Spider):
         'NW1', 'NW3', 'NW8',  # St John's Wood, Hampstead
     ]
 
-    def __init__(self, max_properties=500, max_pages=50, fetch_floorplans=False, *args, **kwargs):
+    def __init__(self, max_properties=None, max_pages=None, fetch_floorplans=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        try:
-            self.max_properties = int(max_properties)
-        except (ValueError, TypeError):
-            self.max_properties = 500
+        # Parse max_properties (None = unlimited)
+        if max_properties is None or str(max_properties).lower() in ('none', '0', ''):
+            self.max_properties = None
+        else:
+            try:
+                self.max_properties = int(max_properties)
+            except (ValueError, TypeError):
+                self.max_properties = None
 
-        try:
-            self.max_pages = int(max_pages)
-        except (ValueError, TypeError):
-            self.max_pages = 50
+        # Parse max_pages (None = unlimited)
+        if max_pages is None or str(max_pages).lower() in ('none', '0', ''):
+            self.max_pages = None
+        else:
+            try:
+                self.max_pages = int(max_pages)
+            except (ValueError, TypeError):
+                self.max_pages = None
 
         # Enable floorplan extraction via detail pages
         self.fetch_floorplans = str(fetch_floorplans).lower() in ('true', '1', 'yes')
@@ -80,8 +88,8 @@ class SavillsSpider(scrapy.Spider):
         self.logger.info("=" * 70)
         self.logger.info("SAVILLS SPIDER INITIALIZED")
         self.logger.info("=" * 70)
-        self.logger.info(f"[CONFIG] Max properties: {self.max_properties}")
-        self.logger.info(f"[CONFIG] Max pages: {self.max_pages}")
+        self.logger.info(f"[CONFIG] Max properties: {self.max_properties or 'unlimited'}")
+        self.logger.info(f"[CONFIG] Max pages: {self.max_pages or 'unlimited'}")
         self.logger.info(f"[CONFIG] Target postcodes: {', '.join(self.TARGET_POSTCODES)}")
         self.logger.info(f"[CONFIG] Fetch floorplans: {self.fetch_floorplans}")
         self.logger.info(f"[CONFIG] OCR available: {OCR_AVAILABLE}")
@@ -131,7 +139,9 @@ class SavillsSpider(scrapy.Spider):
         current_page = 1
         seen_ids = set()  # Track property IDs to avoid duplicates
 
-        while current_page <= self.max_pages and self.stats['total'] < self.max_properties:
+        # Continue while within limits (None = unlimited)
+        while (self.max_pages is None or current_page <= self.max_pages) and \
+              (self.max_properties is None or self.stats['total'] < self.max_properties):
             # Extract property data from current page
             cards_data = await playwright_page.evaluate('''() => {
                 const results = [];
@@ -277,7 +287,7 @@ class SavillsSpider(scrapy.Spider):
                         else:
                             yield item
 
-                        if self.stats['total'] >= self.max_properties:
+                        if self.max_properties and self.stats['total'] >= self.max_properties:
                             self.logger.info(
                                 f"[COMPLETE] Reached max properties ({self.max_properties})"
                             )
@@ -291,7 +301,7 @@ class SavillsSpider(scrapy.Spider):
             )
 
             # Navigate to next page by clicking NEXT button
-            if has_next and current_page < self.max_pages:
+            if has_next and (self.max_pages is None or current_page < self.max_pages):
                 try:
                     # Find and click the Next button (case-insensitive)
                     clicked = await playwright_page.evaluate('''() => {
@@ -377,12 +387,14 @@ class SavillsSpider(scrapy.Spider):
             return None
 
         # Extract property ID from URL
-        # Format: /property/gb-res-sal-svl-SVL165229
-        id_match = re.search(r'/property/([^/]+)', href)
+        # Format: /property-detail/gbkerekel220052l (full URL from Savills search)
+        id_match = re.search(r'/property-detail/([^/?#]+)', href)
         if id_match:
             prop_id = id_match.group(1)
         else:
-            prop_id = f"savills_{hash(href or text) % 1000000}"
+            # Fallback - use URL as ID to ensure consistency across runs
+            # (hash() varies between Python sessions due to seed randomization)
+            prop_id = href.split('/')[-1] if href else f"savills_{abs(hash(text)) % 1000000}"
 
         item['source'] = 'savills'
         item['property_id'] = prop_id
@@ -563,10 +575,58 @@ class SavillsSpider(scrapy.Spider):
         yield PropertyItem(**item)
 
     async def _extract_floorplan_data(self, page, item):
-        """Click Plans tab and extract floorplan URL."""
+        """Click Plans tab and extract floorplan URL and description."""
         data = {}
 
         try:
+            # First, extract description before clicking away from main content
+            description = await page.evaluate('''() => {
+                // Savills description is typically in the property description section
+                const descSelectors = [
+                    '.property-description',
+                    '.sv-description',
+                    '[class*="description"]',
+                    '.full-description',
+                    '.property-details__description',
+                    'section[class*="description"] p',
+                    '.property-summary'
+                ];
+
+                for (const selector of descSelectors) {
+                    const el = document.querySelector(selector);
+                    if (el) {
+                        const text = el.innerText.trim();
+                        if (text && text.length > 100) {
+                            return text;
+                        }
+                    }
+                }
+
+                // Fallback: Look for large text blocks that might be descriptions
+                const allDivs = document.querySelectorAll('div, section, p');
+                for (const el of allDivs) {
+                    const text = el.innerText.trim();
+                    if (text.length > 200 && text.length < 3000 &&
+                        (text.match(/^(A |An |This |The |Stunning |Beautiful |Spacious |Luxur)/i) ||
+                         text.match(/apartment|flat|property|bedroom|floor|interior/i))) {
+                        // Make sure it's not a container with lots of nested elements
+                        const childCount = el.querySelectorAll('button, a, nav, h1, h2').length;
+                        if (childCount < 5) {
+                            return text;
+                        }
+                    }
+                }
+                return null;
+            }''')
+
+            if description:
+                # Clean up the description
+                description = re.sub(r'\s+', ' ', description).strip()
+                if len(description) > 5000:
+                    description = description[:5000]
+                data['description'] = description
+                self.logger.debug(f"[DESCRIPTION] Found: {len(description)} chars")
+
             # Savills has a "Plans" tab - click it
             clicked = await page.evaluate('''() => {
                 const tabs = document.querySelectorAll('[role="tab"], button, a');

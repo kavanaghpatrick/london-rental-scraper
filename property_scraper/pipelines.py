@@ -109,35 +109,60 @@ class CleanDataPipeline:
 
 
 class DuplicateFilterPipeline:
-    """Filter duplicate listings by source + property_id."""
+    """
+    Filter duplicate listings by:
+    1. source + property_id (exact same listing)
+    2. fingerprint + price + bedrooms (same property, different listing IDs)
+
+    The second check catches same property listed by multiple agents on aggregators
+    like Rightmove, where each agent creates a new listing ID for the same flat.
+    """
 
     def __init__(self):
-        self.seen = set()
-        self.duplicates_filtered = 0
+        self.seen_ids = set()  # source:property_id
+        self.seen_properties = set()  # fingerprint:price:beds (content-based dedupe)
+        self.id_duplicates = 0
+        self.content_duplicates = 0
 
     def open_spider(self, spider):
-        logger.info("[PIPELINE:Dedupe] Initialized - tracking source:property_id pairs")
+        logger.info("[PIPELINE:Dedupe] Initialized - tracking IDs and content signatures")
 
     def process_item(self, item, spider):
+        from scrapy.exceptions import DropItem
         adapter = ItemAdapter(item)
         source = adapter.get('source', '')
         prop_id = adapter.get('property_id', '')
 
-        key = f"{source}:{prop_id}"
+        # Check 1: Exact ID match (same listing scraped twice)
+        id_key = f"{source}:{prop_id}"
+        if id_key in self.seen_ids:
+            self.id_duplicates += 1
+            raise DropItem(f"Duplicate item: {id_key}")
+        self.seen_ids.add(id_key)
 
-        if key in self.seen:
-            self.duplicates_filtered += 1
-            logger.debug(f"[PIPELINE:Dedupe] Filtered duplicate: {key}")
-            from scrapy.exceptions import DropItem
-            raise DropItem(f"Duplicate item: {key}")
+        # Check 2: Content-based match (same property, different listing ID)
+        # Only apply to aggregators where multi-agent listings are common
+        fingerprint = adapter.get('address_fingerprint', '')
+        price = adapter.get('price_pcm', 0)
+        beds = adapter.get('bedrooms', 0)
 
-        self.seen.add(key)
+        if fingerprint and price:
+            content_key = f"{source}:{fingerprint}:{price}:{beds}"
+            if content_key in self.seen_properties:
+                self.content_duplicates += 1
+                logger.warning(
+                    f"[PIPELINE:Dedupe] Content duplicate filtered: {prop_id} "
+                    f"(same as existing {fingerprint[:8]}... @ £{price})"
+                )
+                raise DropItem(f"Content duplicate: {fingerprint[:8]}:{price}:{beds}")
+            self.seen_properties.add(content_key)
+
         return item
 
     def close_spider(self, spider):
         logger.info(
-            f"[PIPELINE:Dedupe] Complete - {len(self.seen)} unique, "
-            f"{self.duplicates_filtered} duplicates filtered"
+            f"[PIPELINE:Dedupe] Complete - {len(self.seen_ids)} unique IDs, "
+            f"{self.id_duplicates} ID dupes, {self.content_duplicates} content dupes filtered"
         )
 
 

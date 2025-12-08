@@ -277,10 +277,19 @@ class JohnDWoodSpider(scrapy.Spider):
                 data.address = titleEl ? titleEl.innerText.trim() : null;
 
                 // Price - look for £X,XXX pw or pcm patterns
-                const priceMatch = text.match(/£([\\d,]+)\\s*(pw|pcm|per\\s*week|per\\s*month)/i);
+                // John D Wood typically shows weekly prices (pw)
+                const priceMatch = text.match(/£([\\d,]+)\\s*(pw|pcm|p\\.?w\\.?|p\\.?c\\.?m\\.?|per\\s*week|per\\s*month|weekly|monthly)?/i);
                 if (priceMatch) {
                     data.price = parseInt(priceMatch[1].replace(/,/g, ''));
-                    data.price_period = priceMatch[2].toLowerCase().includes('week') ? 'pw' : 'pcm';
+                    const period = (priceMatch[2] || '').toLowerCase();
+                    // Default to pw (weekly) for John D Wood if no period specified
+                    // Only treat as monthly if explicitly says pcm/month
+                    if (period.includes('month') || period.includes('pcm')) {
+                        data.price_period = 'pcm';
+                    } else {
+                        // Default to weekly - John D Wood standard
+                        data.price_period = 'pw';
+                    }
                 }
 
                 // Bedrooms, bathrooms, receptions - from icons/stats
