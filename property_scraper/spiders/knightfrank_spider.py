@@ -293,18 +293,30 @@ class KnightFrankSpider(scrapy.Spider):
         else:
             item['size_sqft'] = None
 
-        # Bedrooms, bathrooms - single digits in sequence
-        nums = re.findall(r'\b(\d)\b', text)
-        # Skip first few which might be image count
-        if len(nums) >= 5:
-            item['bedrooms'] = int(nums[-3])
-            item['bathrooms'] = int(nums[-2])
-        elif len(nums) >= 3:
+        # Bedrooms, bathrooms - single digits in sequence AFTER the address line
+        # Must skip address to avoid picking up street numbers like "3 Riverlight Quay"
+        item['bedrooms'] = None
+        item['bathrooms'] = None
+
+        # Find the address line index
+        address_line_idx = 0
+        for i, line in enumerate(lines):
+            if re.search(r'[A-Z]{1,2}\d{1,2}', line):  # Line with postcode is address
+                address_line_idx = i
+                break
+
+        # Look for single digits in lines AFTER address
+        post_address_text = '\n'.join(lines[address_line_idx + 1:])
+        nums = re.findall(r'\b(\d)\b', post_address_text)
+
+        if len(nums) >= 3:
+            # Format after address: Type, sqft, beds, baths, recs, price
+            # Beds/baths/recs are usually the last 3 single digits before price
+            item['bedrooms'] = int(nums[-3]) if len(nums) >= 3 else None
+            item['bathrooms'] = int(nums[-2]) if len(nums) >= 2 else None
+        elif len(nums) >= 2:
             item['bedrooms'] = int(nums[0])
             item['bathrooms'] = int(nums[1])
-        else:
-            item['bedrooms'] = None
-            item['bathrooms'] = None
 
         # Property type
         prop_type = ''

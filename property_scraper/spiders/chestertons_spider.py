@@ -328,19 +328,30 @@ class ChestertonsSpider(scrapy.Spider):
         sqft_match = re.search(r'(\d{3,5})\s*ft', text)
         item['size_sqft'] = int(sqft_match.group(1)) if sqft_match else None
 
-        # Bedrooms, bathrooms, receptions - they appear as single digits after address
-        # Try to find the pattern: single digits in sequence after address
-        nums = re.findall(r'\b(\d)\b', text)
-        if len(nums) >= 3:
-            # First 3 single digits after address are typically beds, baths, receptions
+        # Bedrooms, bathrooms, receptions - they appear as single digits AFTER the address line
+        # The text format is: "Long Let\nAddress\nbeds\nbaths\nreceptions\nsqft\n..."
+        # We need to skip the address line to avoid picking up street numbers like "6 York Place"
+        item['bedrooms'] = None
+        item['bathrooms'] = None
+
+        # Split text into lines and find digits after address
+        lines = text.strip().split('\n')
+        # Find where address ends (look for the address line which contains a comma)
+        address_line_idx = 0
+        for i, line in enumerate(lines):
+            if ',' in line and any(c.isalpha() for c in line):  # Address has commas and letters
+                address_line_idx = i
+                break
+
+        # Look for single digits in lines AFTER the address
+        post_address_text = '\n'.join(lines[address_line_idx + 1:])
+        nums = re.findall(r'\b(\d)\b', post_address_text)
+        if len(nums) >= 2:
+            # First 2 single digits after address are beds, baths
             item['bedrooms'] = int(nums[0])
             item['bathrooms'] = int(nums[1])
         elif len(nums) >= 1:
             item['bedrooms'] = int(nums[0])
-            item['bathrooms'] = None
-        else:
-            item['bedrooms'] = None
-            item['bathrooms'] = None
 
         # Property type - infer from let type
         if 'short' in let_type.lower():
