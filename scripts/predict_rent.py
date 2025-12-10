@@ -106,6 +106,8 @@ def predict_rent(
     has_lift: bool = False,
     has_cinema: bool = False,
     has_ensuite: bool = False,
+    has_ac: bool = False,
+    has_wood_floors: bool = False,
     # Property type
     is_period: bool = False,
     is_penthouse: bool = False,
@@ -186,6 +188,8 @@ def predict_rent(
         'has_lift': int(has_lift),
         'has_cinema': int(has_cinema),
         'has_ensuite': int(has_ensuite),
+        'has_ac': int(has_ac),
+        'has_wood_floors': int(has_wood_floors),
 
         # Property type
         'is_period': int(is_period),
@@ -328,6 +332,8 @@ def main():
     parser.add_argument('--has-parking', action='store_true')
     parser.add_argument('--has-lift', action='store_true')
     parser.add_argument('--has-cinema', action='store_true')
+    parser.add_argument('--has-ac', action='store_true')
+    parser.add_argument('--has-wood-floors', action='store_true')
     parser.add_argument('--is-period', action='store_true')
     parser.add_argument('--is-penthouse', action='store_true')
     parser.add_argument('--is-lateral', action='store_true')
@@ -360,6 +366,8 @@ def main():
         has_parking=args.has_parking,
         has_lift=args.has_lift,
         has_cinema=args.has_cinema,
+        has_ac=args.has_ac,
+        has_wood_floors=args.has_wood_floors,
         is_period=args.is_period,
         is_penthouse=args.is_penthouse,
         is_lateral=args.is_lateral,

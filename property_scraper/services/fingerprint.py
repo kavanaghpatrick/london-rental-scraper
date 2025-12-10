@@ -194,7 +194,9 @@ def normalize_street_name(address: str) -> str:
 def generate_fingerprint(
     address: str,
     postcode: str,
-    include_unit: bool = True
+    include_unit: bool = True,
+    source: Optional[str] = None,
+    property_id: Optional[str] = None
 ) -> str:
     """
     Generate a deterministic fingerprint for a property address.
@@ -203,15 +205,30 @@ def generate_fingerprint(
         address: Full address string
         postcode: UK postcode
         include_unit: If True, include unit number in fingerprint
+        source: Listing source (e.g., 'rightmove') - used for vague address fallback
+        property_id: Source's unique ID - used for vague address fallback
 
     Returns:
         16-character hex string fingerprint
+
+    Note:
+        When address is vague (no street number AND no unit), uses source+property_id
+        to generate a unique fingerprint. This prevents false cross-source matches
+        for listings like "Cromwell Road, SW7" where multiple different properties
+        share the same vague address.
     """
     pc = normalize_postcode(postcode)
     street_num, unit = extract_street_number_and_unit(address)
     street_name = normalize_street_name(address)
 
-    # Build fingerprint key
+    # FALLBACK: If address is vague (no specific location identifier)
+    # use source + property_id to prevent false cross-source matching.
+    # Prefix with 'vague:' to ensure no collision with address-based hashes.
+    if not street_num and not unit and source and property_id:
+        key = f"vague:{source.lower()}_{property_id}"
+        return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+    # STANDARD: Good quality address allows cross-source matching
     components = [pc, street_num, street_name]
 
     if include_unit and unit:

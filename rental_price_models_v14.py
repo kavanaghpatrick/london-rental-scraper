@@ -45,7 +45,33 @@ except ImportError:
 OUTPUT_DIR = Path('output')
 
 # Prime London districts (high-value areas)
-PRIME_DISTRICTS = ['SW1', 'SW3', 'SW7', 'SW10', 'W1', 'W8', 'W11', 'NW1', 'NW3', 'NW8']
+# Note: SW1 and W1 have sub-districts (SW1W, SW1X, W1G, etc.) that need prefix matching
+# SW10, SW11 etc. are DIFFERENT areas (not part of SW1) - use exact match
+PRIME_AREA_PREFIXES = ['SW1', 'W1']  # Areas with letter suffixes (SW1W, SW1X, W1G, etc.)
+PRIME_DISTRICTS_EXACT = ['SW3', 'SW7', 'W8', 'W11', 'NW1', 'NW3', 'NW8']  # Exact district matches
+# Note: SW10 removed - it's West Brompton, nice but median £5.09/sqft vs £6+ for true prime
+
+
+def is_prime_district(district):
+    """Check if a district is in a prime area.
+
+    Handles both:
+    - Prefix matching: SW1W, SW1X match SW1 (but SW10 does NOT match SW1)
+    - Exact matching: SW3, SW7, W8, etc.
+    """
+    if not district:
+        return False
+
+    # Check prefix matches (SW1, W1) - must match SW1 + letter (not SW1 + digit)
+    for prefix in PRIME_AREA_PREFIXES:
+        if district.startswith(prefix):
+            # Ensure it's SW1A-SW1Z, not SW10/SW11/SW12
+            suffix = district[len(prefix):]
+            if suffix and suffix[0].isalpha():
+                return True
+
+    # Check exact matches
+    return district in PRIME_DISTRICTS_EXACT
 
 
 def load_data():
@@ -105,6 +131,8 @@ def parse_amenities(features_str, description_str=''):
         'has_lift': int('lift' in text or 'elevator' in text),
         'has_cinema': int('cinema' in text or 'home theatre' in text or 'screening' in text),
         'has_ensuite': int('ensuite' in text or 'en-suite' in text or 'en suite' in text),
+        'has_ac': int('air condition' in text or 'air-condition' in text or 'a/c' in text or 'aircon' in text or 'climate control' in text),
+        'has_wood_floors': int('wood floor' in text or 'wooden floor' in text or 'hardwood' in text or 'parquet' in text or 'oak floor' in text or 'timber floor' in text),
         'is_period': int('period' in text or 'victorian' in text or 'georgian' in text or 'edwardian' in text),
         'is_penthouse': int('penthouse' in text),
         'is_lateral': int('lateral' in text),
@@ -193,8 +221,8 @@ def engineer_features(df):
                           'is_kensington', 'is_notting_hill', 'near_hyde_park', 'is_square']
     df['location_score'] = df[location_indicators].sum(axis=1)
 
-    # Is prime district
-    df['is_prime'] = df['postcode_district'].apply(lambda x: 1 if x in PRIME_DISTRICTS else 0)
+    # Is prime district (using proper prefix matching for SW1/W1 areas)
+    df['is_prime'] = df['postcode_district'].apply(lambda x: 1 if is_prime_district(x) else 0)
 
     print(f"  Prime district listings: {df['is_prime'].sum()} ({df['is_prime'].mean()*100:.1f}%)")
 
@@ -286,6 +314,7 @@ def get_feature_columns():
         # Amenities
         'has_garden', 'has_terrace', 'has_balcony', 'has_parking',
         'has_porter', 'has_concierge', 'has_gym', 'has_pool', 'has_lift',
+        'has_ac', 'has_wood_floors',
         # Property type
         'is_period', 'is_penthouse', 'has_ensuite',
         # Address features
@@ -429,7 +458,8 @@ def save_model(model, ppsf_info, best_params, feature_names, train_size):
     # Save info
     info = {
         **ppsf_info,
-        'prime_districts': PRIME_DISTRICTS,
+        'prime_area_prefixes': PRIME_AREA_PREFIXES,
+        'prime_districts_exact': PRIME_DISTRICTS_EXACT,
         'feature_names': feature_names,
         'log_target': True,
         'best_params': best_params,

@@ -8,9 +8,9 @@ USER_AGENT = 'PropertyResearchBot/1.0 (Academic Research)'
 ROBOTSTXT_OBEY = False
 
 # Concurrency - Conservative defaults (safe for all sites)
-CONCURRENT_REQUESTS = 16
-CONCURRENT_REQUESTS_PER_DOMAIN = 4
-DOWNLOAD_DELAY = 1.0
+CONCURRENT_REQUESTS = 32
+CONCURRENT_REQUESTS_PER_DOMAIN = 12
+DOWNLOAD_DELAY = 0.25
 RANDOMIZE_DOWNLOAD_DELAY = True
 
 # Autothrottle - responsive to site limits

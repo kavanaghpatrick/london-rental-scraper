@@ -86,11 +86,18 @@ class CleanDataPipeline:
             fixes.append('added_timestamp')
 
         # Generate fingerprint if address or postcode available (PRD-003)
+        # Pass source and property_id to handle vague addresses correctly
         if not adapter.get('address_fingerprint'):
             address = adapter.get('address', '') or ''
             postcode = adapter.get('postcode', '') or ''
+            source = adapter.get('source', '') or ''
+            property_id = adapter.get('property_id', '') or ''
             if address or postcode:
-                adapter['address_fingerprint'] = self._generate_fingerprint(address, postcode)
+                adapter['address_fingerprint'] = self._generate_fingerprint(
+                    address, postcode,
+                    source=source,
+                    property_id=str(property_id) if property_id else None
+                )
                 self.fingerprints_generated += 1
                 fixes.append('generated_fingerprint')
 
@@ -219,9 +226,15 @@ class SQLitePipeline:
     - Price history: Logs initial price AND all price changes
     - SAVEPOINT-based atomicity: Per-item rollback on errors
     - Compound index: O(1) lookup on (source, property_id)
+
+    Price Change Validation:
+    - Minimum 1 hour between price changes to prevent same-session false positives
+    - Fingerprint fallback requires price within 20% to prevent cross-unit merging
     """
 
     BATCH_SIZE = 100  # Commit every N items
+    MIN_PRICE_CHANGE_HOURS = 1  # Minimum hours between price changes
+    FINGERPRINT_PRICE_TOLERANCE = 0.20  # 20% price tolerance for fingerprint matching
 
     def __init__(self):
         self.conn = None
@@ -318,27 +331,65 @@ class SQLitePipeline:
             # SAVEPOINT for per-item rollback on errors
             self.cursor.execute("SAVEPOINT item_process")
 
-            # Check if record exists (O(1) with compound index)
+            # Check if record exists - first by exact (source, property_id) match
             self.cursor.execute(
-                '''SELECT id, price_pcm, first_seen, price_change_count
+                '''SELECT id, price_pcm, first_seen, price_change_count, property_id
                    FROM listings WHERE source=? AND property_id=?''',
                 (source, property_id)
             )
             existing = self.cursor.fetchone()
+            matched_by_fingerprint = False
+
+            # If not found by property_id, try fingerprint match (same property, relisted with new ID)
+            # CRITICAL: Also require price within tolerance to prevent cross-unit merging
+            # (Different flats at same building have same fingerprint but different prices)
+            if not existing:
+                fingerprint = adapter.get('address_fingerprint')
+                bedrooms = adapter.get('bedrooms')
+                new_price = adapter.get('price_pcm')
+                if fingerprint and bedrooms and new_price:
+                    # Match by source + fingerprint + bedrooms + price within tolerance
+                    self.cursor.execute(
+                        '''SELECT id, price_pcm, first_seen, price_change_count, property_id
+                           FROM listings WHERE source=? AND address_fingerprint=? AND bedrooms=?
+                           ORDER BY last_seen DESC LIMIT 1''',
+                        (source, fingerprint, bedrooms)
+                    )
+                    candidate = self.cursor.fetchone()
+                    if candidate:
+                        old_price = candidate[1]
+                        # Only match if price is within tolerance (prevents cross-unit merging)
+                        if old_price and new_price:
+                            price_diff_pct = abs(new_price - old_price) / old_price
+                            if price_diff_pct <= self.FINGERPRINT_PRICE_TOLERANCE:
+                                existing = candidate
+                                matched_by_fingerprint = True
+                                old_pid = candidate[4]
+                                logger.info(f"[PIPELINE:SQLite] Fingerprint match: {source} pid {old_pid} -> {property_id} (price diff {price_diff_pct:.1%})")
+                            else:
+                                logger.debug(f"[PIPELINE:SQLite] Fingerprint match rejected: price diff {price_diff_pct:.1%} > {self.FINGERPRINT_PRICE_TOLERANCE:.0%}")
 
             if existing:
                 # UPDATE existing record
-                listing_id, old_price, first_seen, change_count = existing
+                listing_id, old_price, first_seen, change_count, _ = existing
                 new_price = adapter.get('price_pcm')
 
                 # Detect price change (only if both prices are non-null)
+                # CRITICAL: Require minimum time delta to prevent same-session false positives
                 if old_price and new_price and old_price != new_price:
-                    self._log_price_change(listing_id, new_price, now)
-                    change_count = (change_count or 0) + 1
-                    self.stats['price_changes'] += 1
+                    # Check if enough time has passed since last price record
+                    if self._can_record_price_change(listing_id, now):
+                        self._log_price_change(listing_id, new_price, now)
+                        change_count = (change_count or 0) + 1
+                        self.stats['price_changes'] += 1
+                    else:
+                        self.stats['price_changes_skipped'] = self.stats.get('price_changes_skipped', 0) + 1
+                        logger.debug(f"[PIPELINE:SQLite] Price change skipped (too recent): {property_id}")
 
                 # Update record, preserving first_seen
-                self._update_listing(adapter, listing_id, first_seen, now, change_count or 0)
+                # If matched by fingerprint, also update property_id to the new one
+                new_property_id = property_id if matched_by_fingerprint else None
+                self._update_listing(adapter, listing_id, first_seen, now, change_count or 0, new_property_id)
                 self.stats['updated'] += 1
             else:
                 # INSERT new record
@@ -381,6 +432,33 @@ class SQLitePipeline:
 
         return item
 
+    def _can_record_price_change(self, listing_id, now):
+        """Check if enough time has passed since last price record.
+
+        Prevents same-session false positives where different properties
+        with same fingerprint get merged and treated as price changes.
+
+        Returns True if at least MIN_PRICE_CHANGE_HOURS have passed since
+        the last price_history record for this listing.
+        """
+        self.cursor.execute('''
+            SELECT MAX(recorded_at) FROM price_history WHERE listing_id = ?
+        ''', (listing_id,))
+        result = self.cursor.fetchone()
+
+        if not result or not result[0]:
+            return True  # No previous price record
+
+        last_recorded = result[0]
+        try:
+            from datetime import datetime
+            last_dt = datetime.fromisoformat(last_recorded.replace('Z', '+00:00'))
+            now_dt = datetime.fromisoformat(now.replace('Z', '+00:00'))
+            hours_diff = (now_dt - last_dt).total_seconds() / 3600
+            return hours_diff >= self.MIN_PRICE_CHANGE_HOURS
+        except (ValueError, AttributeError):
+            return True  # On parse error, allow the change
+
     def _log_price_change(self, listing_id, price_pcm, recorded_at):
         """Log price to history table."""
         self.cursor.execute('''
@@ -388,13 +466,16 @@ class SQLitePipeline:
             VALUES (?, ?, ?)
         ''', (listing_id, price_pcm, recorded_at))
 
-    def _update_listing(self, adapter, listing_id, first_seen, now, change_count):
+    def _update_listing(self, adapter, listing_id, first_seen, now, change_count, new_property_id=None):
         """Update existing listing, preserving first_seen.
 
         Uses COALESCE for 'sticky' fields (address, sqft, bedrooms, etc.) to prevent
         NULL values from overwriting existing data. This protects against data loss
         when a spider temporarily fails to extract a field that was previously captured.
         (Fix for Codex review finding: unconditional updates could erase enriched data)
+
+        If new_property_id is provided, updates property_id (for fingerprint-matched records
+        where the source changed the property ID on relist).
         """
         features = adapter.get('features', [])
         if isinstance(features, list):
@@ -409,6 +490,7 @@ class SQLitePipeline:
         # Non-sticky fields: always update (url, price, let_agreed, timestamps, descriptions)
         self.cursor.execute('''
             UPDATE listings SET
+                property_id=COALESCE(?, property_id),
                 url=?,
                 area=COALESCE(?, area),
                 price=?, price_pw=?, price_pcm=?, price_period=?,
@@ -446,6 +528,7 @@ class SQLitePipeline:
                 scraped_at=?
             WHERE id=?
         ''', (
+            new_property_id,
             adapter.get('url'),
             adapter.get('area'),
             adapter.get('price'), adapter.get('price_pw'),

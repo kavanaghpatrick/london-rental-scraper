@@ -102,7 +102,7 @@ class TestCleanDataPipelineFingerprintGeneration:
 
     def test_generates_fingerprint_from_address_and_postcode(self):
         pipeline = CleanDataPipeline()
-        pipeline._generate_fingerprint = lambda a, p: "test_fingerprint_123"
+        pipeline._generate_fingerprint = lambda a, p, **kwargs: "test_fingerprint_123"
 
         item = PropertyItem()
         item['property_id'] = 'test123'
@@ -117,7 +117,7 @@ class TestCleanDataPipelineFingerprintGeneration:
 
     def test_does_not_overwrite_existing_fingerprint(self):
         pipeline = CleanDataPipeline()
-        pipeline._generate_fingerprint = lambda a, p: "should_not_use"
+        pipeline._generate_fingerprint = lambda a, p, **kwargs: "should_not_use"
 
         item = PropertyItem()
         item['property_id'] = 'test123'
@@ -133,7 +133,7 @@ class TestCleanDataPipelineFingerprintGeneration:
 
     def test_handles_missing_address(self):
         pipeline = CleanDataPipeline()
-        pipeline._generate_fingerprint = lambda a, p: "fp_from_postcode"
+        pipeline._generate_fingerprint = lambda a, p, **kwargs: "fp_from_postcode"
 
         item = PropertyItem()
         item['property_id'] = 'test123'
@@ -369,7 +369,8 @@ class TestSQLitePipelineSmartUpsert:
         assert pipeline.stats['updated'] == 1
         assert pipeline.stats['price_changes'] == 0
 
-        # Update with price change
+        # Update with price change (same session - should be SKIPPED due to minimum time delta)
+        # This is intentional: prevents false price changes from same-session data artifacts
         item3 = PropertyItem()
         item3['source'] = 'test'
         item3['property_id'] = 'stats_new'
@@ -379,7 +380,9 @@ class TestSQLitePipelineSmartUpsert:
 
         assert pipeline.stats['inserted'] == 1
         assert pipeline.stats['updated'] == 2
-        assert pipeline.stats['price_changes'] == 1
+        # Price change is SKIPPED because it's within MIN_PRICE_CHANGE_HOURS (1 hour) of last record
+        assert pipeline.stats['price_changes'] == 0
+        assert pipeline.stats.get('price_changes_skipped', 0) == 1
 
 
 class TestSQLitePipelineErrorHandling:

@@ -231,5 +231,93 @@ class TestParseAddress:
         assert 'fingerprint' in result
 
 
+class TestVagueAddressHandling:
+    """Tests for vague address fingerprinting (no street number/unit)."""
+
+    def test_vague_address_without_source_uses_street_only(self):
+        """Without source/property_id, vague address uses street name."""
+        fp1 = generate_fingerprint("Cromwell Road, London, SW7", "SW7")
+        fp2 = generate_fingerprint("Cromwell Road, London, SW7", "SW7")
+        # Same input = same output (deterministic)
+        assert fp1 == fp2
+
+    def test_vague_address_with_source_uses_source_specific(self):
+        """With source/property_id, vague address gets unique fingerprint."""
+        fp1 = generate_fingerprint(
+            "Cromwell Road, London, SW7", "SW7",
+            source="rightmove", property_id="12345"
+        )
+        fp2 = generate_fingerprint(
+            "Cromwell Road, London, SW7", "SW7",
+            source="rightmove", property_id="67890"
+        )
+        # Different property_id = different fingerprint
+        assert fp1 != fp2
+
+    def test_vague_same_property_same_fingerprint(self):
+        """Same source+property_id always produces same fingerprint."""
+        fp1 = generate_fingerprint(
+            "Cromwell Road, London, SW7", "SW7",
+            source="rightmove", property_id="12345"
+        )
+        fp2 = generate_fingerprint(
+            "Cromwell Road, London, SW7", "SW7",
+            source="rightmove", property_id="12345"
+        )
+        assert fp1 == fp2
+
+    def test_vague_cross_source_different_fingerprints(self):
+        """Same vague address from different sources = different fingerprints."""
+        fp_rm = generate_fingerprint(
+            "High Street, SW1", "SW1",
+            source="rightmove", property_id="123"
+        )
+        fp_sv = generate_fingerprint(
+            "High Street, SW1", "SW1",
+            source="savills", property_id="123"
+        )
+        # Different sources = different fingerprints (prevents false matches)
+        assert fp_rm != fp_sv
+
+    def test_specific_address_ignores_source_property_id(self):
+        """Specific address (with street number) allows cross-source matching."""
+        fp_rm = generate_fingerprint(
+            "123 High Street, SW1", "SW1",
+            source="rightmove", property_id="111"
+        )
+        fp_sv = generate_fingerprint(
+            "123 High Street, SW1", "SW1",
+            source="savills", property_id="222"
+        )
+        # Same address = same fingerprint (enables cross-source dedup)
+        assert fp_rm == fp_sv
+
+    def test_unit_makes_address_specific(self):
+        """Address with unit (even without street number) is specific."""
+        fp1 = generate_fingerprint(
+            "Flat 1, High Street, SW1", "SW1",
+            source="rightmove", property_id="111"
+        )
+        fp2 = generate_fingerprint(
+            "Flat 1, High Street, SW1", "SW1",
+            source="savills", property_id="222"
+        )
+        # Same address with unit = same fingerprint
+        assert fp1 == fp2
+
+    def test_different_units_different_fingerprints(self):
+        """Different units at same address get different fingerprints."""
+        fp1 = generate_fingerprint(
+            "Flat 1, High Street, SW1", "SW1",
+            source="rightmove", property_id="111"
+        )
+        fp2 = generate_fingerprint(
+            "Flat 2, High Street, SW1", "SW1",
+            source="rightmove", property_id="222"
+        )
+        # Different units = different fingerprints
+        assert fp1 != fp2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

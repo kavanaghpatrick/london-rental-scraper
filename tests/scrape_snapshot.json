@@ -1,49 +1,49 @@
 {
   "by_source": {
     "chestertons": {
-      "total": 417,
-      "with_sqft": 400,
-      "unique_fingerprints": 343,
-      "active": 417
+      "total": 654,
+      "with_sqft": 520,
+      "unique_fingerprints": 512,
+      "active": 654
     },
     "foxtons": {
-      "total": 212,
-      "with_sqft": 207,
+      "total": 211,
+      "with_sqft": 208,
       "unique_fingerprints": 133,
-      "active": 212
+      "active": 211
     },
     "johndwood": {
-      "total": 29,
-      "with_sqft": 23,
-      "unique_fingerprints": 25,
-      "active": 29
+      "total": 15,
+      "with_sqft": 11,
+      "unique_fingerprints": 15,
+      "active": 15
     },
     "knightfrank": {
-      "total": 536,
-      "with_sqft": 503,
-      "unique_fingerprints": 441,
-      "active": 536
+      "total": 709,
+      "with_sqft": 664,
+      "unique_fingerprints": 570,
+      "active": 709
     },
     "rightmove": {
-      "total": 2826,
-      "with_sqft": 1172,
-      "unique_fingerprints": 1313,
-      "active": 2826
+      "total": 2849,
+      "with_sqft": 2111,
+      "unique_fingerprints": 1356,
+      "active": 2849
     },
     "savills": {
-      "total": 398,
-      "with_sqft": 398,
-      "unique_fingerprints": 343,
-      "active": 398
+      "total": 396,
+      "with_sqft": 396,
+      "unique_fingerprints": 344,
+      "active": 396
     }
   },
-  "total_listings": 4418,
-  "price_history_count": 5343,
-  "unique_fingerprints": 2512,
-  "earliest_first_seen": "2025-12-06T07:38:11.128952",
-  "latest_last_seen": "2025-12-07T12:12:39.669328",
-  "new_today": 1777,
-  "updated_today": 3583,
-  "price_changes_today": 2693,
-  "snapshot_time": "2025-12-07T12:15:27.980058"
+  "total_listings": 4834,
+  "price_history_count": 7509,
+  "unique_fingerprints": 2802,
+  "earliest_first_seen": "2025-12-06T07:38:11.129075",
+  "latest_last_seen": "2025-12-10T09:03:39.898296",
+  "new_today": 2,
+  "updated_today": 539,
+  "price_changes_today": 29,
+  "snapshot_time": "2025-12-10T10:20:36.994471"
 }

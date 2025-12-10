@@ -55,11 +55,15 @@ RETRY_PRIORITY_ADJUST = -1
 # CACHING (speeds up development)
 # =============================================================================
 
-HTTPCACHE_ENABLED = True
-HTTPCACHE_EXPIRATION_SECS = 86400  # 24 hours
-HTTPCACHE_DIR = 'httpcache'
-HTTPCACHE_IGNORE_HTTP_CODES = [429, 500, 502, 503]
-HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
+# IMPORTANT: HTTP cache is DISABLED for Playwright spiders
+# When cache is enabled, cached responses bypass Playwright entirely,
+# causing "No Playwright page available" errors and 0 items scraped.
+# See: logs/savills_20251210_102105.log for example of this failure.
+HTTPCACHE_ENABLED = False
+# HTTPCACHE_EXPIRATION_SECS = 86400  # 24 hours
+# HTTPCACHE_DIR = 'httpcache'
+# HTTPCACHE_IGNORE_HTTP_CODES = [429, 500, 502, 503]
+# HTTPCACHE_STORAGE = 'scrapy.extensions.httpcache.FilesystemCacheStorage'
 
 # =============================================================================
 # MIDDLEWARES

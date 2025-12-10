@@ -558,6 +558,29 @@ def ocr_enrich(
 
 
 @app.command()
+def daily(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without making changes"),
+    stage: list[str] = typer.Option(None, "--stage", "-s", help="Run specific stage(s) only"),
+):
+    """Run the full daily pipeline: scrape → enrich → dedupe → train → report."""
+    from automation.daily_pipeline import DailyPipeline
+
+    console.print("\n[bold]Starting Daily Pipeline[/bold]")
+    if dry_run:
+        console.print("[yellow]DRY RUN MODE - no changes will be made[/yellow]")
+    console.print()
+
+    pipeline = DailyPipeline(dry_run=dry_run)
+    success = pipeline.run(stages=stage if stage else None)
+
+    if success:
+        console.print("\n[bold green]Pipeline completed successfully![/bold green]")
+    else:
+        console.print("\n[bold red]Pipeline completed with errors.[/bold red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def spiders():
     """List available spiders."""
     console.print("\n[bold]Available Spiders[/bold]\n")
