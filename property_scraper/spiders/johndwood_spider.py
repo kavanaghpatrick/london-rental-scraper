@@ -640,7 +640,11 @@ class JohnDWoodSpider(scrapy.Spider):
         """Log final statistics when spider closes."""
         # Issue #21 FIX: Wait for threads to complete to prevent orphan threads
         if hasattr(self, 'executor') and self.executor:
-            self.executor.shutdown(wait=True)
+            # CRITICAL FIX: Use cancel_futures to prevent indefinite hang
+            try:
+                self.executor.shutdown(wait=True, cancel_futures=True)
+            except TypeError:
+                self.executor.shutdown(wait=False)
 
         elapsed = time.time() - self.stats['start_time']
 

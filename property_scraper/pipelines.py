@@ -784,9 +784,16 @@ class SQLitePipeline:
         return self.cursor.lastrowid
 
     def close_spider(self, spider):
-        if self.conn:
-            # CRITICAL FIX (Grok review): Wrap final commit in try/except with retry
-            # Previously, if final commit failed, it could crash and skip logging.
+        """Close database connection with guaranteed cleanup.
+
+        CRITICAL FIX: Wrap all operations in try/finally to ensure connection
+        is ALWAYS closed, even if logging/stats queries fail.
+        """
+        if not self.conn:
+            return
+
+        try:
+            # Commit any pending items with retry logic
             if self.pending_count > 0:
                 for attempt in range(5):
                     try:
@@ -808,25 +815,31 @@ class SQLitePipeline:
                         self.stats['errors'] += self.pending_count
                         break
 
+            # Gather stats for logging (non-critical, wrapped in try/except)
             elapsed = time.time() - self.start_time if self.start_time else 0
+            total_records = 0
+            price_history_count = 0
+            area_counts = []
 
-            # Log final count
-            self.cursor.execute('SELECT COUNT(*) FROM listings')
-            total_records = self.cursor.fetchone()[0]
+            try:
+                if self.cursor:
+                    self.cursor.execute('SELECT COUNT(*) FROM listings')
+                    total_records = self.cursor.fetchone()[0]
 
-            # Count price history entries
-            self.cursor.execute('SELECT COUNT(*) FROM price_history')
-            price_history_count = self.cursor.fetchone()[0]
+                    self.cursor.execute('SELECT COUNT(*) FROM price_history')
+                    price_history_count = self.cursor.fetchone()[0]
 
-            # Get area breakdown
-            self.cursor.execute('''
-                SELECT area, COUNT(*) as cnt
-                FROM listings
-                GROUP BY area
-                ORDER BY cnt DESC
-            ''')
-            area_counts = self.cursor.fetchall()
+                    self.cursor.execute('''
+                        SELECT area, COUNT(*) as cnt
+                        FROM listings
+                        GROUP BY area
+                        ORDER BY cnt DESC
+                    ''')
+                    area_counts = self.cursor.fetchall()
+            except sqlite3.Error as e:
+                logger.warning(f"[PIPELINE:SQLite] Error gathering final stats: {e}")
 
+            # Log summary
             logger.info("[PIPELINE:SQLite] Complete:")
             logger.info(f"  Database: {self.db_path}")
             logger.info(f"  Total records: {total_records}")
@@ -837,8 +850,21 @@ class SQLitePipeline:
             logger.info(f"  Errors: {self.stats['errors']}")
             logger.info(f"  Batches: {self.batch_count + 1}")
             logger.info(f"  Duration: {elapsed:.1f}s")
-            logger.info("[PIPELINE:SQLite] By area:")
-            for area, cnt in area_counts:
-                logger.info(f"    {area}: {cnt}")
+            if area_counts:
+                logger.info("[PIPELINE:SQLite] By area:")
+                for area, cnt in area_counts:
+                    logger.info(f"    {area}: {cnt}")
 
-            self.conn.close()
+        finally:
+            # ALWAYS close cursor and connection, even if above code fails
+            try:
+                if self.cursor:
+                    self.cursor.close()
+            except Exception as e:
+                logger.debug(f"[PIPELINE:SQLite] Error closing cursor: {e}")
+
+            try:
+                self.conn.close()
+                logger.debug("[PIPELINE:SQLite] Database connection closed")
+            except Exception as e:
+                logger.error(f"[PIPELINE:SQLite] Error closing connection: {e}")

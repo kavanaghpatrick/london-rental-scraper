@@ -167,6 +167,8 @@ def load_and_clean_data():
             has_first_floor, has_second_floor, has_third_floor, has_fourth_plus
         FROM listings
         WHERE size_sqft > 0 AND bedrooms IS NOT NULL AND price_pcm > 0
+        AND is_active = 1
+        AND (is_short_let = 0 OR is_short_let IS NULL)
     """, conn)
     conn.close()
 

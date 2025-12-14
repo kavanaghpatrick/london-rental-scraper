@@ -1,0 +1,129 @@
+[
+  {
+    "id": "knightfrank_w1k_0",
+    "url": "https://www.knightfrank.co.uk/properties/residential/to-let/park-lane-mayfair-london-w1k/maq7700160619",
+    "reason": "\u00a30/m - broken data?",
+    "status": "verified",
+    "findings": {
+      "price": "Park Lane, Mayfair, London, W1K\nPrice on Application\nMake an enquiry",
+      "sqft": "NOT FOUND"
+    },
+    "screenshot": "output/outlier_screenshots/knightfrank_w1k_0.png"
+  },
+  {
+    "id": "rightmove_sw7_250",
+    "url": "https://www.rightmove.co.uk/properties/168224336#/?channel=RES_LET",
+    "reason": "\u00a3250/m SW7 - weekly price?",
+    "status": "verified",
+    "findings": {
+      "price": "House Prices",
+      "sqft": "NOT FOUND",
+      "beds": "NOT FOUND"
+    },
+    "screenshot": "output/outlier_screenshots/rightmove_sw7_250.png"
+  },
+  {
+    "id": "rightmove_sw10_498",
+    "url": "https://www.rightmove.co.uk/properties/169748237#/?channel=RES_LET",
+    "reason": "\u00a3498/m SW10 - weekly price?",
+    "status": "verified",
+    "findings": {
+      "price": "House Prices",
+      "sqft": "NOT FOUND",
+      "beds": "NOT FOUND"
+    },
+    "screenshot": "output/outlier_screenshots/rightmove_sw10_498.png"
+  },
+  {
+    "id": "savills_sw1v_850",
+    "url": "https://search.savills.com/property-detail/gbwprewsl160058l",
+    "reason": "\u00a3850/m 3BR SW1V - way too cheap",
+    "status": "verified",
+    "findings": {
+      "price": "Guide price\n\u00a3850\nWeekly\u00a0+\u00a0\nFees apply",
+      "sqft": "1,108 sq ft"
+    },
+    "screenshot": "output/outlier_screenshots/savills_sw1v_850.png"
+  },
+  {
+    "id": "chestertons_sw7_1400",
+    "url": "https://www.chestertons.co.uk/properties/21094456/lettings/TYS230006",
+    "reason": "\u00a31400/m 1BR SW7 - weekly price?",
+    "status": "verified",
+    "findings": {
+      "price": "NOT FOUND",
+      "sqft": "NOT FOUND"
+    },
+    "screenshot": "output/outlier_screenshots/chestertons_sw7_1400.png"
+  },
+  {
+    "id": "savills_47sqft",
+    "url": "https://search.savills.com/property-detail/uk006511537",
+    "reason": "47 sqft for 4BR - impossible",
+    "status": "verified",
+    "findings": {
+      "price": "Guide price\n\u00a31,900\nMonthly",
+      "sqft": "47 sq ft"
+    },
+    "screenshot": "output/outlier_screenshots/savills_47sqft.png"
+  },
+  {
+    "id": "rightmove_134sqft",
+    "url": "https://www.rightmove.co.uk/properties/161860916#/?channel=RES_LET",
+    "reason": "134 sqft for 4BR - impossible",
+    "status": "verified",
+    "findings": {
+      "price": "House Prices",
+      "sqft": "3,507 sq ft",
+      "beds": "4 bed"
+    },
+    "screenshot": "output/outlier_screenshots/rightmove_134sqft.png"
+  },
+  {
+    "id": "rightmove_200sqft_5br",
+    "url": "https://www.rightmove.co.uk/properties/169974521#/?channel=RES_LET",
+    "reason": "200 sqft for 5BR - impossible",
+    "status": "verified",
+    "findings": {
+      "price": "House Prices",
+      "sqft": "2,200 sqft",
+      "beds": "5 bed"
+    },
+    "screenshot": "output/outlier_screenshots/rightmove_200sqft_5br.png"
+  },
+  {
+    "id": "rightmove_231sqft_3br",
+    "url": "https://www.rightmove.co.uk/properties/167098589#/?channel=RES_LET",
+    "reason": "231 sqft for 3BR - impossible",
+    "status": "verified",
+    "findings": {
+      "price": "House Prices",
+      "sqft": "2,906 sq ft",
+      "beds": "3 bed"
+    },
+    "screenshot": "output/outlier_screenshots/rightmove_231sqft_3br.png"
+  },
+  {
+    "id": "savills_11105sqft",
+    "url": "https://search.savills.com/property-detail/gbnellwfl240044l",
+    "reason": "11,105 sqft - verify if correct",
+    "status": "verified",
+    "findings": {
+      "price": "Guide price\n\u00a35,595\nMonthly\u00a0+\u00a0\nFees apply",
+      "sqft": "1,025 sq ft"
+    },
+    "screenshot": "output/outlier_screenshots/savills_11105sqft.png"
+  },
+  {
+    "id": "rightmove_809sqft_32k",
+    "url": "https://www.rightmove.co.uk/properties/167461922#/?channel=RES_LET",
+    "reason": "\u00a332.5k/m for 809sqft - verify",
+    "status": "verified",
+    "findings": {
+      "price": "House Prices",
+      "sqft": "2,809 sq ft",
+      "beds": "4 bed"
+    },
+    "screenshot": "output/outlier_screenshots/rightmove_809sqft_32k.png"
+  }
+]

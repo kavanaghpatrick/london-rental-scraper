@@ -170,9 +170,32 @@ class FoxtonsSpider(scrapy.Spider):
             f"Running total: {self.stats['by_area'][area]['count']}"
         )
 
-        # Check for pagination - Foxtons uses page parameter
-        # Only follow if we got a full page (100) and haven't hit max
-        should_continue = total_count >= 100 and (self.max_pages is None or page < self.max_pages)
+        # Issue #15 FIX: More robust pagination detection
+        # Check for explicit pagination metadata in JSON, with fallback to page count heuristic
+        # Foxtons typically returns 100 per page, but we shouldn't assume this
+        try:
+            pagination_meta = page_data.get('pagination', {}) or page_data.get('meta', {})
+            has_next_explicit = pagination_meta.get('hasNext', None) or pagination_meta.get('has_next', None)
+            total_results = pagination_meta.get('total', None) or pagination_meta.get('totalCount', None)
+
+            if has_next_explicit is not None:
+                # Use explicit flag if available
+                should_continue = has_next_explicit
+            elif total_results is not None:
+                # Calculate from total if available (assume 100 per page)
+                total_pages = (int(total_results) + 99) // 100
+                should_continue = page < total_pages
+            else:
+                # Fallback: continue if we got any results (more conservative than >= 100)
+                # This handles cases where Foxtons changes their page size
+                should_continue = total_count > 0
+        except (KeyError, TypeError, ValueError):
+            # Safe fallback: continue if we got results
+            should_continue = total_count > 0
+
+        # Apply max_pages limit
+        if self.max_pages is not None and page >= self.max_pages:
+            should_continue = False
 
         if should_continue:
             next_page = page + 1

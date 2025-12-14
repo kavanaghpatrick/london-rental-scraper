@@ -17,11 +17,16 @@ python -m cli.main ocr-enrich                # OCR floorplans for sqft & floor d
 python -m cli.main status                    # Show database stats
 python -m cli.main mark-inactive --days 7    # Mark stale listings inactive
 
-# === RECOMMENDED: FULL DATA SCRAPE ===
-python -m cli.main scrape --all --full       # Slower but gets sqft + floorplans upfront
-python -m cli.main dedupe --merge --execute  # Cross-source dedupe
+# === RECOMMENDED: FULLY AUTOMATED (single command) ===
+python -m cli.main scrape --all --full       # Does everything: scrape → enrich → dedupe
 
-# === ALTERNATIVE: FAST SCRAPE + ENRICHMENT ===
+# === WHAT --all --full DOES ===
+# 1. Scrapes all 5 spiders (Chestertons uses fast mode automatically)
+# 2. Auto-enriches floorplans for spiders that used fast mode
+# 3. Auto-dedupes (merges sqft from agents → Rightmove)
+# No babysitting required!
+
+# === ALTERNATIVE: MANUAL STEPS ===
 python -m cli.main scrape --all              # 1. Fast scrape (search results only)
 python -m cli.main enrich-floorplans         # 2. Backfill floorplan URLs
 python -m cli.main ocr-enrich                # 3. OCR: extract sqft & floors
@@ -193,11 +198,14 @@ CREATE TABLE price_history (
 1. **CleanDataPipeline** - Normalizes prices, cleans whitespace
 2. **DuplicateFilterPipeline** - Filters by `source:property_id` within session
 3. **JsonWriterPipeline** - Writes `{area}_listings.jsonl` files
-4. **SQLitePipeline** - Smart upsert (PRD-003):
+4. **SQLitePipeline** - Smart upsert with fingerprint fallback:
    - Generates `address_fingerprint` via fingerprint service
-   - Checks if listing exists → UPDATE (preserve `first_seen`) or INSERT
+   - **Lookup order**: (1) `source + property_id`, (2) `source + fingerprint + bedrooms`
+   - Fingerprint fallback catches relisted properties with new IDs
    - Detects price changes → logs to `price_history`
    - Uses SAVEPOINT for per-item atomicity
+
+**Important**: Only `pipelines.py` INSERTs new records. All enrichers/scripts use UPDATE only.
 
 ---
 
@@ -238,6 +246,22 @@ python3 dedupe_cross_source.py --remove --execute
 5. rightmove (aggregator, often missing data)
 
 **Impact**: Cross-source merge added ~170 sqft values to Rightmove records by copying from matching agent listings.
+
+---
+
+## Same-Source Deduplication
+
+**Problem**: Rightmove/Foxtons change property IDs when relisting same property. Without fingerprint fallback, this created duplicate records.
+
+**Solution**: `pipelines.py` now uses fingerprint-based fallback matching (see Pipeline Order above).
+
+**Cleanup** (for existing duplicates):
+```bash
+python3 scripts/dedupe_same_source.py --analyze   # Show duplicates
+python3 scripts/dedupe_same_source.py --execute   # Remove duplicates
+```
+
+**Detection criteria**: Same `source + fingerprint + bedrooms + price` = TRUE duplicate (relist with new ID).
 
 ---
 
@@ -300,6 +324,49 @@ await page.wait_for_timeout(2000)  # Extra render time
 ### Enricher not finding sqft
 **Cause**: Using wrong settings file
 **Fix**: `SCRAPY_SETTINGS_MODULE=property_scraper.settings_standard scrapy crawl rightmove_enricher`
+
+---
+
+## Resilience & Robustness
+
+The scraping pipeline has been hardened to run reliably without babysitting.
+
+### Smart `--full` Mode (Fully Automated)
+When running `python -m cli.main scrape --all --full`:
+1. **Scrapes all spiders**:
+   - HTTP spiders (Rightmove, Foxtons): Full detail fetching
+   - Playwright spiders (Savills, Knight Frank): Full detail fetching
+   - Chestertons: Auto-uses fast mode (shows `(fast mode)`)
+2. **Auto-enriches** floorplans for any spiders that used fast mode
+3. **Auto-dedupes** to merge sqft from agent sources → Rightmove
+
+**Single command, no babysitting required.**
+
+### Safety Limits & Timeouts
+| Protection | Setting | Purpose |
+|------------|---------|---------|
+| Spider timeout | `CLOSESPIDER_TIMEOUT=3600` | Max 1 hour per spider |
+| Error limit | `CLOSESPIDER_ERRORCOUNT=50` | Stop after 50 consecutive errors |
+| DB timeout | `busy_timeout=60000` | Wait up to 60s for SQLite lock |
+| DB retry | 5 retries with backoff | Handles concurrent writes |
+| Playwright retry | 3 retries with backoff | Handles missing pages |
+| Detail page limit | 100 pages (Chestertons) | Prevents infinite stalls |
+
+### Database Concurrency
+SQLite uses WAL mode for concurrent spider writes:
+```python
+conn.execute("PRAGMA journal_mode = WAL")  # Write-Ahead Logging
+conn.execute("PRAGMA busy_timeout = 60000")  # 60s timeout
+```
+
+### Retry Logic
+All Playwright spiders retry on "No Playwright page available" errors:
+```python
+if not playwright_page:
+    if retry_count < 3:
+        await asyncio.sleep((retry_count + 1) * 2)  # Exponential backoff
+        yield response.request.replace(meta={...,'retry_count': retry_count + 1})
+```
 
 ---
 

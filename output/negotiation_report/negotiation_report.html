@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Property Valuation - 4 South Eaton Place</title>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        .header h1 { margin: 0 0 10px 0; font-size: 28px; }
+        .header p { margin: 5px 0; opacity: 0.9; }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .card h2 {
+            margin-top: 0;
+            color: #1a365d;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        .valuation-box {
+            background: linear-gradient(135deg, #ebf8ff 0%, #bee3f8 100%);
+            border: 2px solid #3182ce;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .valuation-box .amount {
+            font-size: 48px;
+            font-weight: bold;
+            color: #2b6cb0;
+        }
+        .valuation-box .range {
+            font-size: 16px;
+            color: #4a5568;
+            margin-top: 10px;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-box {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-box .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2d5a87;
+        }
+        .stat-box .label {
+            font-size: 11px;
+            color: #718096;
+            text-transform: uppercase;
+            margin-top: 5px;
+        }
+        .chart-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .chart-container img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 12px 10px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #4a5568;
+        }
+        tr:hover { background: #f7fafc; }
+        a { color: #3182ce; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+            font-size: 12px;
+        }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .methodology {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 15px;
+            font-size: 13px;
+            color: #4a5568;
+        }
+        @media (max-width: 900px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .stat-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Property Valuation Report</h1>
+        <p><strong>4 South Eaton Place, London SW1W</strong></p>
+        <p style="margin-top:15px; font-size:14px; opacity:0.85">
+            Generated: 08 December 2025 | Model: XGBoost V14 (46 features) | Market Data: 1808 listings
+        </p>
+    </div>
+
+    <div class="valuation-box">
+        <div style="font-size:14px;color:#4a5568;margin-bottom:5px;">ESTIMATED MONTHLY RENT</div>
+        <div class="amount">£8,925</div>
+        <div class="range">
+            Confidence Range: £7,318 - £10,531 pcm
+        </div>
+        <div style="margin-top:10px;font-size:13px;color:#718096;">
+            £6.80/sqft | 80th percentile of market
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Property Details</h2>
+        <div class="stat-grid">
+            <div class="stat-box">
+                <div class="value">1,312</div>
+                <div class="label">Square Feet</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">2</div>
+                <div class="label">Bedrooms</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">2</div>
+                <div class="label">Bathrooms</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">SW1W</div>
+                <div class="label">Postcode</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Market Position</h2>
+        <div class="stat-grid">
+            <div class="stat-box">
+                <div class="value">£6.80</div>
+                <div class="label">Subject £/sqft</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">£5.12</div>
+                <div class="label">Comp Median £/sqft</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">80th</div>
+                <div class="label">Market Percentile</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">196</div>
+                <div class="label">Comparables</div>
+            </div>
+        </div>
+        <p style="font-size:13px;color:#718096;text-align:center;margin-top:15px;">
+            The property's £/sqft places it in the <strong>80th percentile</strong> of the London rental market.
+            This is a premium valuation typical for Belgravia/SW1.
+        </p>
+    </div>
+
+    <div class="card">
+        <h2>Market Analysis</h2>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <img src="chart1_ppsf_distribution.png" alt="PPSF Distribution">
+            </div>
+            <div class="chart-container">
+                <img src="chart2_size_vs_price.png" alt="Size vs Price">
+            </div>
+        </div>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <img src="chart3_price_by_district.png" alt="Price by District">
+            </div>
+            <div class="chart-container">
+                <img src="chart4_closest_comps.png" alt="Closest Comparables">
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Comparable Properties by Location Tier</h2>
+        <p style="font-size:13px;color:#718096;margin-bottom:15px;">
+            Properties similar in size (±20%) with 2 bedrooms, ranked by location relevance.
+            <span style="background:#c6f6d5;padding:2px 8px;border-radius:4px;">Green</span> = lower £/sqft,
+            <span style="background:#fed7d7;padding:2px 8px;border-radius:4px;">Red</span> = higher £/sqft
+        </p>
+        
+            <div style="background:#e6fffa;padding:15px;border-radius:8px;margin-bottom:15px;">
+                <h4 style="margin:0 0 5px 0;color:#1a365d;">Tier 1: Same District (SW1W) (7 properties)</h4>
+                <p style="margin:0 0 10px 0;font-size:12px;color:#4a5568;">Direct comparables in the same postcode district</p>
+                <p style="margin:0 0 10px 0;font-size:13px;"><strong>Tier Median: £5.14/sqft | £6,998/month</strong></p>
+                <table style="margin:0;">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>District</th>
+                            <th>Rent</th>
+                            <th>Size</th>
+                            <th>£/sqft</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+            <tr style="background:#c6f6d5">
+                <td><a href="https://www.rightmove.co.uk/properties/169910762#/?channel=RES_LET" target="_blank">St Barnabas Street, Belgravia, SW1W</a></td>
+                <td>SW1W</td>
+                <td>£6,998</td>
+                <td>1,222</td>
+                <td>£5.73</td>
+                <td>rightmove</td>
+            </tr>
+            
+            <tr style="background:#c6f6d5">
+                <td><a href="https://www.knightfrank.co.uk/properties/residential/to-let/harrogate-house-sloane-square-chelsea-london-sw1w/knq012529897" target="_blank">Harrogate House, Sloane Square, Chelsea, Lond</a></td>
+                <td>SW1W</td>
+                <td>£6,933</td>
+                <td>1,460</td>
+                <td>£4.75</td>
+                <td>knightfrank</td>
+            </tr>
+            
+            <tr style="background:#c6f6d5">
+                <td><a href="https://www.knightfrank.co.uk/properties/residential/to-let/gerald-road-belgravia-london-sw1w/beq012523486" target="_blank">Gerald Road, Belgravia, London, SW1W</a></td>
+                <td>SW1W</td>
+                <td>£7,995</td>
+                <td>1,505</td>
+                <td>£5.31</td>
+                <td>knightfrank</td>
+            </tr>
+            
+            <tr style="background:#c6f6d5">
+                <td><a href="https://www.knightfrank.co.uk/properties/residential/to-let/ranelagh-grove-london-sw1w/beq012510800" target="_blank">Ranelagh Grove, London, SW1W</a></td>
+                <td>SW1W</td>
+                <td>£4,983</td>
+                <td>1,381</td>
+                <td>£3.61</td>
+                <td>knightfrank</td>
+            </tr>
+            
+            <tr style="background:#c6f6d5">
+                <td><a href="https://www.rightmove.co.uk/properties/167912681#/?channel=RES_LET" target="_blank">Lower Belgrave Street, Begravia, SW1W</a></td>
+                <td>SW1W</td>
+                <td>£8,016</td>
+                <td>1,567</td>
+                <td>£5.12</td>
+                <td>rightmove</td>
+            </tr>
+            
+                    </tbody>
+                </table>
+                <p style="font-size:11px;color:#718096;margin-top:5px;">Showing 5 of 7 | Full list in comparables.csv</p>
+            </div>
+            
+            <div style="background:#ebf8ff;padding:15px;border-radius:8px;margin-bottom:15px;">
+                <h4 style="margin:0 0 5px 0;color:#1a365d;">Tier 2: SW1 Area (18 properties)</h4>
+                <p style="margin:0 0 10px 0;font-size:12px;color:#4a5568;">Other SW1 districts (SW1X, SW1V, SW1A, etc.) - similar prime Belgravia/Westminster market</p>
+                <p style="margin:0 0 10px 0;font-size:13px;"><strong>Tier Median: £5.78/sqft | £7,000/month</strong></p>
+                <table style="margin:0;">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>District</th>
+                            <th>Rent</th>
+                            <th>Size</th>
+                            <th>£/sqft</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+            <tr style="background:#fed7d7">
+                <td><a href="https://www.rightmove.co.uk/properties/165690518#/?channel=RES_LET" target="_blank">Belgrave Mews North, Belgrave Square, SW1X</a></td>
+                <td>SW1X</td>
+                <td>£10,000</td>
+                <td>1,320</td>
+                <td>£7.58</td>
+                <td>rightmove</td>
+            </tr>
+            
+            <tr style="background:#fed7d7">
+                <td><a href="https://www.rightmove.co.uk/properties/168433802#/?channel=RES_LET" target="_blank">Park Mansions, SW1X</a></td>
+                <td>SW1X</td>
+                <td>£9,316</td>
+                <td>1,216</td>
+                <td>£7.66</td>
+                <td>rightmove</td>
+            </tr>
+            
+            <tr style="background:#c6f6d5">
+                <td><a href="https://search.savills.com/property-detail/gbkbreknl120021l" target="_blank">SW1X 0HB</a></td>
+                <td>SW1X</td>
+                <td>£6,717</td>
+                <td>1,342</td>
+                <td>£5.01</td>
+                <td>savills</td>
+            </tr>
+            
+            <tr style="background:#c6f6d5">
+                <td><a href="https://search.savills.com/property-detail/gbwprewsl160070l" target="_blank">Victoria Street, SW1H 0EU</a></td>
+                <td>SW1H</td>
+                <td>£6,998</td>
+                <td>1,356</td>
+                <td>£5.16</td>
+                <td>savills</td>
+            </tr>
+            
+            <tr style="background:white">
+                <td><a href="https://www.rightmove.co.uk/properties/169422272#/?channel=RES_LET" target="_blank">Fordie House, 82 Sloane Street, SW1X</a></td>
+                <td>SW1X</td>
+                <td>£7,475</td>
+                <td>1,161</td>
+                <td>£6.44</td>
+                <td>rightmove</td>
+            </tr>
+            
+                    </tbody>
+                </table>
+                <p style="font-size:11px;color:#718096;margin-top:5px;">Showing 5 of 18 | Full list in comparables.csv</p>
+            </div>
+            
+            <div style="background:#faf5ff;padding:15px;border-radius:8px;margin-bottom:15px;">
+                <h4 style="margin:0 0 5px 0;color:#1a365d;">Tier 3: Prime Central London (82 properties)</h4>
+                <p style="margin:0 0 10px 0;font-size:12px;color:#4a5568;">Adjacent prime areas (SW3 Chelsea, SW7 South Ken, W1 Mayfair, W8 Kensington)</p>
+                <p style="margin:0 0 10px 0;font-size:13px;"><strong>Tier Median: £5.39/sqft | £6,446/month</strong></p>
+                <table style="margin:0;">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>District</th>
+                            <th>Rent</th>
+                            <th>Size</th>
+                            <th>£/sqft</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+            <tr style="background:white">
+                <td><a href="https://www.knightfrank.co.uk/properties/residential/to-let/cadogan-pier-cheyne-walk-london-sw3/knq012557491" target="_blank">Cadogan Pier, Cheyne Walk, London, SW3</a></td>
+                <td>SW3</td>
+                <td>£8,666</td>
+                <td>1,305</td>
+                <td>£6.64</td>
+                <td>knightfrank</td>
+            </tr>
+            
+            <tr style="background:white">
+                <td><a href="https://www.knightfrank.co.uk/properties/residential/to-let/mansfield-street-marylebone-london-w1g/mrq012521554" target="_blank">Mansfield Street, Marylebone, London, W1G</a></td>
+                <td>W1G</td>
+                <td>£8,450</td>
+                <td>1,253</td>
+                <td>£6.74</td>
+                <td>knightfrank</td>
+            </tr>
+            
+            <tr style="background:white">
+                <td><a href="https://www.rightmove.co.uk/properties/166753157#/?channel=RES_LET" target="_blank">Kensington, London, W8, United Kingdom</a></td>
+                <td>W8</td>
+                <td>£7,999</td>
+                <td>1,292</td>
+                <td>£6.19</td>
+                <td>rightmove</td>
+            </tr>
+            
+            <tr style="background:white">
+                <td><a href="https://www.knightfrank.co.uk/properties/residential/to-let/kensington-court-kensington-london-w8/keq012534401" target="_blank">Kensington Court, Kensington, London, W8</a></td>
+                <td>W8</td>
+                <td>£7,999</td>
+                <td>1,256</td>
+                <td>£6.37</td>
+                <td>knightfrank</td>
+            </tr>
+            
+            <tr style="background:#fed7d7">
+                <td><a href="https://www.chestertons.co.uk/properties/21142481/lettings/CJL250269" target="_blank">Walton Street, London, SW3</a></td>
+                <td>SW3</td>
+                <td>£9,500</td>
+                <td>1,260</td>
+                <td>£7.54</td>
+                <td>chestertons</td>
+            </tr>
+            
+                    </tbody>
+                </table>
+                <p style="font-size:11px;color:#718096;margin-top:5px;">Showing 5 of 82 | Full list in comparables.csv</p>
+            </div>
+            
+            <div style="background:#f7fafc;padding:15px;border-radius:8px;margin-bottom:15px;">
+                <h4 style="margin:0 0 5px 0;color:#1a365d;">Tier 4: Broader Market (89 properties)</h4>
+                <p style="margin:0 0 10px 0;font-size:12px;color:#4a5568;">Properties of similar size across wider London market</p>
+                <p style="margin:0 0 10px 0;font-size:13px;"><strong>Tier Median: £4.5/sqft | £5,611/month</strong></p>
+                <table style="margin:0;">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>District</th>
+                            <th>Rent</th>
+                            <th>Size</th>
+                            <th>£/sqft</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+            <tr style="background:white">
+                <td><a href="https://search.savills.com/property-detail/gblsrecel240077l" target="_blank">Wetherby Gardens, SW5 0JN</a></td>
+                <td>SW5</td>
+                <td>£8,667</td>
+                <td>1,324</td>
+                <td>£6.55</td>
+                <td>savills</td>
+            </tr>
+            
+            <tr style="background:white">
+                <td><a href="https://www.rightmove.co.uk/properties/166229294#/?channel=RES_LET" target="_blank">Wetherby Gardens, London, SW5</a></td>
+                <td>SW5</td>
+                <td>£8,666</td>
+                <td>1,324</td>
+                <td>£6.55</td>
+                <td>rightmove</td>
+            </tr>
+            
+            <tr style="background:white">
+                <td><a href="https://www.foxtons.co.uk/properties-to-rent/belgravia/chpk4113965" target="_blank">Ebury Square</a></td>
+                <td></td>
+                <td>£8,667</td>
+                <td>1,361</td>
+                <td>£6.37</td>
+                <td>foxtons</td>
+            </tr>
+            
+            <tr style="background:white">
+                <td><a href="https://www.rightmove.co.uk/properties/169660751#/?channel=RES_LET" target="_blank">Onslow Square - London , ,</a></td>
+                <td></td>
+                <td>£9,000</td>
+                <td>1,249</td>
+                <td>£7.21</td>
+                <td>rightmove</td>
+            </tr>
+            
+            <tr style="background:white">
+                <td><a href="https://search.savills.com/property-detail/gbnnrenhl220047l" target="_blank">Leinster Gardens, W2 3AN</a></td>
+                <td>W2</td>
+                <td>£8,645</td>
+                <td>1,225</td>
+                <td>£7.06</td>
+                <td>savills</td>
+            </tr>
+            
+                    </tbody>
+                </table>
+                <p style="font-size:11px;color:#718096;margin-top:5px;">Showing 5 of 89 | Full list in comparables.csv</p>
+            </div>
+            
+        <p style="font-size:12px;color:#718096;margin-top:15px;">Total: 196 comparables across all tiers. Full list in comparables.csv</p>
+    </div>
+
+    <div class="card">
+        <h2>Market Statistics</h2>
+        <div class="stat-grid">
+            <div class="stat-box">
+                <div class="value">£4.03</div>
+                <div class="label">25th Percentile £/sqft</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">£5.12</div>
+                <div class="label">Median £/sqft</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">£6.21</div>
+                <div class="label">75th Percentile £/sqft</div>
+            </div>
+            <div class="stat-box">
+                <div class="value">25</div>
+                <div class="label">SW1 Comparables</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Methodology</h2>
+        <div class="methodology">
+            <p><strong>Model:</strong> XGBoost regression with 46 features including size, location encodings, amenities, and property type indicators.</p>
+            <p><strong>Training Data:</strong> 1808 active London rental listings from multiple agents (Savills, Knight Frank, Foxtons, Chestertons, Rightmove).</p>
+            <p><strong>Features:</strong> Size, bedrooms, bathrooms, postcode encoding, prime district indicator, amenities (AC, wood floors, balcony, etc.), property type (period, penthouse), and location scores.</p>
+            <p><strong>Confidence Range:</strong> Based on model's ~18% median absolute percentage error.</p>
+            <p><strong>Comparables:</strong> Properties within ±20% of subject size, matching bedroom count, from active listings.</p>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Property Valuation Model V14 | Generated 08 December 2025</p>
+        <p>4 South Eaton Place, SW1W</p>
+        <p style="margin-top:10px;font-size:11px;color:#a0aec0;">
+            Disclaimer: This is an automated valuation estimate (AVM). Actual rental values depend on property condition,
+            exact fixtures/fittings, lease terms, and current market conditions. This should be used as guidance only.
+        </p>
+    </div>
+</body>
+</html>

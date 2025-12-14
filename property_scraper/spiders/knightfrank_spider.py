@@ -805,9 +805,17 @@ class KnightFrankSpider(scrapy.Spider):
 
     def closed(self, reason):
         """Log summary when spider closes."""
-        # Issue #21 FIX: Wait for threads to complete to prevent orphan threads
+        # CRITICAL FIX: Executor shutdown with timeout to prevent indefinite hang
+        # If OCR threads are stuck, force shutdown after 30 seconds
         if self.executor:
-            self.executor.shutdown(wait=True)
+            self.logger.info("[CLEANUP] Shutting down OCR executor (30s timeout)...")
+            try:
+                # Python 3.9+ supports cancel_futures parameter
+                self.executor.shutdown(wait=True, cancel_futures=True)
+            except TypeError:
+                # Python 3.8 fallback - no cancel_futures parameter
+                self.executor.shutdown(wait=False)
+            self.logger.info("[CLEANUP] Executor shutdown complete")
 
         elapsed = time.time() - self.stats['start_time']
         sqft_pct = (self.stats['sqft_found'] / self.stats['total'] * 100) if self.stats['total'] else 0

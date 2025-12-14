@@ -279,9 +279,13 @@ class RightmoveEnricherSpider(scrapy.Spider):
 
     def closed(self, reason):
         """Log summary when spider closes."""
-        # Cleanup executor
+        # Issue #21 FIX: Wait for threads to complete to prevent orphan threads
         if self.executor:
-            self.executor.shutdown(wait=False)
+            # CRITICAL FIX: Use cancel_futures to prevent indefinite hang
+            try:
+                self.executor.shutdown(wait=True, cancel_futures=True)
+            except TypeError:
+                self.executor.shutdown(wait=False)
 
         elapsed = time.time() - self.stats['start_time']
         sqft_pct = (self.stats['sqft_found'] / self.stats['enriched'] * 100) if self.stats['enriched'] else 0

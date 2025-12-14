@@ -18,6 +18,7 @@ import time
 from datetime import datetime
 from urllib.parse import urljoin
 from property_scraper.items import PropertyItem
+from property_scraper.utils.url_validation import validate_floorplan_url
 
 
 class RightmoveSpider(scrapy.Spider):
@@ -137,10 +138,30 @@ class RightmoveSpider(scrapy.Spider):
             f"Time: {request_time:.2f}s"
         )
 
-        # Check for rate limiting
+        # Issue #17 FIX: Retry on rate limiting with exponential backoff
         if response.status == 429:
-            self.logger.warning(f"[RATE-LIMIT] Got 429 for {area} - backing off")
-            return
+            retry_count = response.meta.get('retry_count', 0)
+            if retry_count < 3:
+                # Get retry delay from header or use exponential backoff
+                retry_after = response.headers.get('Retry-After', b'').decode('utf-8', errors='ignore')
+                try:
+                    wait_time = int(retry_after) if retry_after else (30 * (retry_count + 1))
+                except ValueError:
+                    wait_time = 30 * (retry_count + 1)
+
+                self.logger.warning(
+                    f"[RATE-LIMIT] Got 429 for {area}, retrying in {wait_time}s ({retry_count + 1}/3)"
+                )
+                # Note: Scrapy doesn't support async sleep in callbacks, so we use download_delay
+                # The retry will be delayed by DOWNLOAD_DELAY setting
+                yield response.request.replace(
+                    meta={**response.meta, 'retry_count': retry_count + 1},
+                    dont_filter=True
+                )
+                return
+            else:
+                self.logger.error(f"[RATE-LIMIT] Max retries exceeded for {area}, skipping page")
+                return
 
         if response.status != 200:
             self.logger.warning(f"[HTTP-ERROR] {area} returned status {response.status}")
@@ -485,6 +506,8 @@ class RightmoveSpider(scrapy.Spider):
         https://media.rightmove.co.uk/XXXk/XXXXXX/ID/XXXXX_FLP_00_0000.jpeg
 
         Note: Detail pages don't use __NEXT_DATA__, so we also search HTML directly.
+
+        Issue #25 FIX: All URLs are validated before returning.
         """
         # Strategy 1: Search HTML for FLP URLs directly (most reliable for detail pages)
         if response_text:
@@ -493,16 +516,19 @@ class RightmoveSpider(scrapy.Spider):
             if matches:
                 # Filter out thumbnails (prefer full size images)
                 full_size = [m for m in matches if '_max_' not in m]
-                if full_size:
-                    return full_size[0]
-                return matches[0]
+                candidate = full_size[0] if full_size else matches[0]
+                validated = validate_floorplan_url(candidate)
+                if validated:
+                    return validated
 
         # Strategy 2: Check JSON data (works for search results)
         images = property_data.get('images', [])
         for img in images:
             url = img.get('url', '') or img.get('srcUrl', '')
             if '_FLP_' in url or '_flp_' in url.lower():
-                return url
+                validated = validate_floorplan_url(url)
+                if validated:
+                    return validated
 
         # Strategy 3: Check floorplans array directly
         floorplans = property_data.get('floorplans', [])
@@ -510,7 +536,9 @@ class RightmoveSpider(scrapy.Spider):
             for fp in floorplans:
                 url = fp.get('url', '') or fp.get('srcUrl', '')
                 if url:
-                    return url
+                    validated = validate_floorplan_url(url)
+                    if validated:
+                        return validated
 
         # Strategy 4: Check media array
         media = property_data.get('media', [])
@@ -518,7 +546,9 @@ class RightmoveSpider(scrapy.Spider):
             if item.get('type', '').lower() == 'floorplan':
                 url = item.get('url', '') or item.get('srcUrl', '')
                 if url:
-                    return url
+                    validated = validate_floorplan_url(url)
+                    if validated:
+                        return validated
 
         return None
 

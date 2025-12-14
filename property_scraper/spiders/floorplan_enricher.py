@@ -138,31 +138,47 @@ class FloorplanEnricherSpider(scrapy.Spider):
         return {}
 
     def start_requests(self):
-        """Read properties from database that need enrichment (floorplan or description)."""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        """Read properties from database that need enrichment (floorplan or description).
 
-        # Find listings missing floorplan URL OR description
-        query = '''
-            SELECT property_id, url, address, price_pcm, bedrooms, size_sqft,
-                   floorplan_url, description
-            FROM listings
-            WHERE source = ?
-            AND (
-                (floorplan_url IS NULL OR floorplan_url = '')
-                OR (description IS NULL OR description = '')
-            )
-            AND url IS NOT NULL AND LENGTH(url) > 10
-        '''
-        params = [self.source]
+        CRITICAL FIX: Use try/finally to ensure database connection is always closed,
+        even if query execution fails.
+        """
+        conn = None
+        rows = []
 
-        if self.limit:
-            query += f' LIMIT {self.limit}'
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+            # Find listings missing floorplan URL OR description
+            query = '''
+                SELECT property_id, url, address, price_pcm, bedrooms, size_sqft,
+                       floorplan_url, description
+                FROM listings
+                WHERE source = ?
+                AND (
+                    (floorplan_url IS NULL OR floorplan_url = '')
+                    OR (description IS NULL OR description = '')
+                )
+                AND url IS NOT NULL AND LENGTH(url) > 10
+            '''
+            params = [self.source]
+
+            if self.limit:
+                query += f' LIMIT {self.limit}'
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+        except sqlite3.Error as e:
+            self.logger.error(f"[START] Database error: {e}")
+            rows = []
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         self.stats['total_to_enrich'] = len(rows)
         self.logger.info(f"[START] Found {len(rows)} {self.source} listings needing enrichment")
@@ -758,7 +774,11 @@ class FloorplanEnricherSpider(scrapy.Spider):
         """Log summary when spider closes."""
         # Issue #21 FIX: Wait for threads to complete to prevent orphan threads
         if self.executor:
-            self.executor.shutdown(wait=True)
+            # CRITICAL FIX: Use cancel_futures to prevent indefinite hang
+            try:
+                self.executor.shutdown(wait=True, cancel_futures=True)
+            except TypeError:
+                self.executor.shutdown(wait=False)
 
         elapsed = time.time() - self.stats['start_time']
         pct = (self.stats['floorplans_found'] / self.stats['enriched'] * 100) if self.stats['enriched'] else 0

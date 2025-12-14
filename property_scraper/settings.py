@@ -158,3 +158,13 @@ TARGET_AREAS = [
 
 # Output directory
 OUTPUT_DIR = 'output'
+
+# =============================================================================
+# RESILIENCE SETTINGS
+# =============================================================================
+
+# Safety timeout: Stop spider after 1 hour to prevent infinite hangs
+CLOSESPIDER_TIMEOUT = 3600  # 1 hour max per spider
+
+# Close spider after N consecutive errors (prevents stuck spiders)
+CLOSESPIDER_ERRORCOUNT = 50

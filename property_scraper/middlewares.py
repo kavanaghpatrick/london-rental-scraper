@@ -35,59 +35,61 @@ class RotateUserAgentMiddleware:
 
 
 class RateLimitMiddleware:
-    """Handle 429 rate limit responses with GLOBAL exponential backoff.
+    """Handle 429 rate limit responses with NON-BLOCKING exponential backoff.
 
-    When ANY request gets 429, ALL requests pause to let the rate limit reset.
-    This prevents hammering the server while individual requests back off.
+    Uses Scrapy's request scheduling instead of blocking sleep() which would
+    freeze the entire Twisted event loop and all concurrent requests.
+
+    Strategy:
+    - On 429: Schedule retry with lower priority and increased download_delay
+    - Track consecutive 429s to escalate backoff
+    - Clean up retry tracking on successful responses to prevent memory leak
     """
 
     def __init__(self):
         self.retry_times = {}
-        # Global backoff state - shared across all requests
-        self.global_backoff_until = 0
         self.consecutive_429s = 0
-        self.base_backoff = 60  # Start with 60 second global backoff
-
-    def process_request(self, request, spider):
-        """Check global backoff before processing any request."""
-        now = time.time()
-        if now < self.global_backoff_until:
-            wait_time = self.global_backoff_until - now
-            logger.info(f"[GLOBAL-BACKOFF] Waiting {wait_time:.0f}s before {request.url[:60]}...")
-            time.sleep(wait_time)
+        self.base_backoff = 30  # Base delay in seconds
 
     def process_response(self, request, response, spider):
         if response.status == 429:
             self.consecutive_429s += 1
 
-            # Calculate global backoff: exponential based on consecutive 429s
-            # 60s, 120s, 240s, 480s (max 8 min)
-            global_wait = min(self.base_backoff * (2 ** min(self.consecutive_429s - 1, 3)), 480)
-            self.global_backoff_until = time.time() + global_wait
-
-            logger.warning(
-                f"[RATE-LIMIT] 429 on {request.url[:60]}... | "
-                f"Consecutive 429s: {self.consecutive_429s} | "
-                f"GLOBAL PAUSE: {global_wait}s for ALL requests"
-            )
+            # Calculate backoff delay: 30s, 60s, 120s, 240s (max 4 min)
+            backoff_delay = min(self.base_backoff * (2 ** min(self.consecutive_429s - 1, 3)), 240)
 
             # Get per-URL retry count
             retries = self.retry_times.get(request.url, 0)
 
             if retries < 3:
-                # Wait the global backoff period
-                time.sleep(global_wait)
-
                 self.retry_times[request.url] = retries + 1
 
-                # Retry the request
+                logger.warning(
+                    f"[RATE-LIMIT] 429 on {request.url[:60]}... | "
+                    f"Retry {retries + 1}/3 | "
+                    f"Backoff: {backoff_delay}s | "
+                    f"Consecutive 429s: {self.consecutive_429s}"
+                )
+
+                # NON-BLOCKING: Use Scrapy's download_delay mechanism
+                # Schedule retry with lower priority so other requests proceed
                 new_request = request.copy()
                 new_request.dont_filter = True
+                new_request.priority = request.priority - 10  # Lower priority
+                new_request.meta['download_delay'] = backoff_delay
+
+                # Also update spider's download delay if possible
+                if hasattr(spider, 'download_delay'):
+                    spider.download_delay = max(spider.download_delay, backoff_delay / 2)
+
                 return new_request
             else:
-                logger.error(f"[RATE-LIMIT] Max retries exceeded for {request.url}")
+                logger.error(f"[RATE-LIMIT] Max retries (3) exceeded for {request.url}")
+                # Clean up retry tracking
+                self.retry_times.pop(request.url, None)
         else:
-            # Successful response - decay the consecutive 429 counter
+            # Successful response - clean up and decay counters
+            self.retry_times.pop(request.url, None)  # Prevent memory leak
             if self.consecutive_429s > 0:
                 self.consecutive_429s = max(0, self.consecutive_429s - 1)
 

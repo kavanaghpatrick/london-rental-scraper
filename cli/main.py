@@ -528,48 +528,47 @@ def status():
         console.print(f"[red]Error:[/red] Database not found at {db_path}")
         raise typer.Exit(1)
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    # CRITICAL FIX: Use context manager to ensure connection is always closed
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
 
-    # Total listings
-    cursor.execute("SELECT COUNT(*) FROM listings")
-    total = cursor.fetchone()[0]
+        # Total listings
+        cursor.execute("SELECT COUNT(*) FROM listings")
+        total = cursor.fetchone()[0]
 
-    # Active listings
-    cursor.execute("SELECT COUNT(*) FROM listings WHERE is_active = 1")
-    active = cursor.fetchone()[0]
+        # Active listings
+        cursor.execute("SELECT COUNT(*) FROM listings WHERE is_active = 1")
+        active = cursor.fetchone()[0]
 
-    # With sqft
-    cursor.execute("SELECT COUNT(*) FROM listings WHERE size_sqft > 0")
-    with_sqft = cursor.fetchone()[0]
+        # With sqft
+        cursor.execute("SELECT COUNT(*) FROM listings WHERE size_sqft > 0")
+        with_sqft = cursor.fetchone()[0]
 
-    # With fingerprints
-    cursor.execute("SELECT COUNT(*) FROM listings WHERE address_fingerprint IS NOT NULL")
-    with_fp = cursor.fetchone()[0]
+        # With fingerprints
+        cursor.execute("SELECT COUNT(*) FROM listings WHERE address_fingerprint IS NOT NULL")
+        with_fp = cursor.fetchone()[0]
 
-    # Price history entries
-    try:
-        cursor.execute("SELECT COUNT(*) FROM price_history")
-        price_history = cursor.fetchone()[0]
-    except sqlite3.OperationalError:
-        price_history = 0
+        # Price history entries
+        try:
+            cursor.execute("SELECT COUNT(*) FROM price_history")
+            price_history = cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            price_history = 0
 
-    # Recent scrapes (last 24h)
-    yesterday = (datetime.utcnow() - timedelta(days=1)).isoformat()
-    cursor.execute("SELECT COUNT(*) FROM listings WHERE last_seen > ?", (yesterday,))
-    recent = cursor.fetchone()[0]
+        # Recent scrapes (last 24h)
+        yesterday = (datetime.utcnow() - timedelta(days=1)).isoformat()
+        cursor.execute("SELECT COUNT(*) FROM listings WHERE last_seen > ?", (yesterday,))
+        recent = cursor.fetchone()[0]
 
-    # By source
-    cursor.execute("""
-        SELECT source, COUNT(*),
-               SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN size_sqft > 0 THEN 1 ELSE 0 END),
-               MAX(last_seen)
-        FROM listings GROUP BY source ORDER BY COUNT(*) DESC
-    """)
-    by_source = cursor.fetchall()
-
-    conn.close()
+        # By source
+        cursor.execute("""
+            SELECT source, COUNT(*),
+                   SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN size_sqft > 0 THEN 1 ELSE 0 END),
+                   MAX(last_seen)
+            FROM listings GROUP BY source ORDER BY COUNT(*) DESC
+        """)
+        by_source = cursor.fetchall()
 
     # Display summary
     console.print("\n[bold]Database Status[/bold]")
@@ -669,87 +668,86 @@ def dedupe(
         console.print("[red]Error:[/red] Must specify --analyze or --merge")
         raise typer.Exit(1)
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    # CRITICAL FIX: Use context manager to ensure connection is always closed
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
 
-    if analyze:
-        # Find duplicates by fingerprint
-        cursor.execute("""
-            SELECT address_fingerprint, COUNT(*) as cnt,
-                   GROUP_CONCAT(source || ':' || property_id, ', ') as sources
-            FROM listings
-            WHERE address_fingerprint IS NOT NULL
-            GROUP BY address_fingerprint
-            HAVING cnt > 1
-            ORDER BY cnt DESC
-            LIMIT 20
-        """)
-        dupes = cursor.fetchall()
-
-        if not dupes:
-            console.print("\n[green]No cross-source duplicates found![/green]")
-        else:
-            console.print(f"\n[bold]Found {len(dupes)} fingerprints with multiple listings:[/bold]\n")
-
-            table = Table()
-            table.add_column("Fingerprint", max_width=20)
-            table.add_column("Count", justify="right")
-            table.add_column("Sources")
-
-            for fp, cnt, sources in dupes:
-                table.add_row(fp[:20] + "...", str(cnt), sources)
-
-            console.print(table)
-
-    if merge:
-        # Count mergeable (same fingerprint, different sources)
-        cursor.execute("""
-            SELECT COUNT(DISTINCT address_fingerprint)
-            FROM listings
-            WHERE address_fingerprint IN (
-                SELECT address_fingerprint
+        if analyze:
+            # Find duplicates by fingerprint
+            cursor.execute("""
+                SELECT address_fingerprint, COUNT(*) as cnt,
+                       GROUP_CONCAT(source || ':' || property_id, ', ') as sources
                 FROM listings
                 WHERE address_fingerprint IS NOT NULL
                 GROUP BY address_fingerprint
-                HAVING COUNT(DISTINCT source) > 1
-            )
-        """)
-        mergeable = cursor.fetchone()[0]
-
-        console.print(f"\nFound [cyan]{mergeable}[/cyan] fingerprints with cross-source duplicates")
-
-        if not execute:
-            console.print("[yellow]Dry run.[/yellow] Use --execute to apply merge.")
-            console.print("Merge will copy sqft from agent sources to Rightmove records.")
-        else:
-            # Priority: savills > knightfrank > chestertons > foxtons > rightmove
-            # Copy sqft from best source to others
-            cursor.execute("""
-                UPDATE listings
-                SET size_sqft = (
-                    SELECT l2.size_sqft
-                    FROM listings l2
-                    WHERE l2.address_fingerprint = listings.address_fingerprint
-                    AND l2.size_sqft > 0
-                    AND l2.source IN ('savills', 'knightfrank', 'chestertons', 'foxtons')
-                    ORDER BY
-                        CASE l2.source
-                            WHEN 'savills' THEN 1
-                            WHEN 'knightfrank' THEN 2
-                            WHEN 'chestertons' THEN 3
-                            WHEN 'foxtons' THEN 4
-                        END
-                    LIMIT 1
-                )
-                WHERE source = 'rightmove'
-                AND (size_sqft IS NULL OR size_sqft = 0)
-                AND address_fingerprint IS NOT NULL
+                HAVING cnt > 1
+                ORDER BY cnt DESC
+                LIMIT 20
             """)
-            updated = cursor.rowcount
-            conn.commit()
-            console.print(f"[green]Merged sqft data into {updated} Rightmove records.[/green]")
+            dupes = cursor.fetchall()
 
-    conn.close()
+            if not dupes:
+                console.print("\n[green]No cross-source duplicates found![/green]")
+            else:
+                console.print(f"\n[bold]Found {len(dupes)} fingerprints with multiple listings:[/bold]\n")
+
+                table = Table()
+                table.add_column("Fingerprint", max_width=20)
+                table.add_column("Count", justify="right")
+                table.add_column("Sources")
+
+                for fp, cnt, sources in dupes:
+                    table.add_row(fp[:20] + "...", str(cnt), sources)
+
+                console.print(table)
+
+        if merge:
+            # Count mergeable (same fingerprint, different sources)
+            cursor.execute("""
+                SELECT COUNT(DISTINCT address_fingerprint)
+                FROM listings
+                WHERE address_fingerprint IN (
+                    SELECT address_fingerprint
+                    FROM listings
+                    WHERE address_fingerprint IS NOT NULL
+                    GROUP BY address_fingerprint
+                    HAVING COUNT(DISTINCT source) > 1
+                )
+            """)
+            mergeable = cursor.fetchone()[0]
+
+            console.print(f"\nFound [cyan]{mergeable}[/cyan] fingerprints with cross-source duplicates")
+
+            if not execute:
+                console.print("[yellow]Dry run.[/yellow] Use --execute to apply merge.")
+                console.print("Merge will copy sqft from agent sources to Rightmove records.")
+            else:
+                # Priority: savills > knightfrank > chestertons > foxtons > rightmove
+                # Copy sqft from best source to others
+                cursor.execute("""
+                    UPDATE listings
+                    SET size_sqft = (
+                        SELECT l2.size_sqft
+                        FROM listings l2
+                        WHERE l2.address_fingerprint = listings.address_fingerprint
+                        AND l2.size_sqft > 0
+                        AND l2.source IN ('savills', 'knightfrank', 'chestertons', 'foxtons')
+                        ORDER BY
+                            CASE l2.source
+                                WHEN 'savills' THEN 1
+                                WHEN 'knightfrank' THEN 2
+                                WHEN 'chestertons' THEN 3
+                                WHEN 'foxtons' THEN 4
+                            END
+                        LIMIT 1
+                    )
+                    WHERE source = 'rightmove'
+                    AND (size_sqft IS NULL OR size_sqft = 0)
+                    AND address_fingerprint IS NOT NULL
+                """)
+                updated = cursor.rowcount
+                conn.commit()
+                console.print(f"[green]Merged sqft data into {updated} Rightmove records.[/green]")
 
 
 @app.command("enrich-floorplans")
