@@ -8,6 +8,7 @@ This module provides comprehensive extraction of property data from floorplan im
 - Floor levels
 - Ceiling heights
 - Outdoor spaces
+
 - Special features
 
 Usage:
@@ -50,6 +51,7 @@ Requirements:
     pip install pytesseract Pillow
     brew install tesseract  # macOS
 """
+from __future__ import annotations  # Defers annotation evaluation (fixes PIL type hints)
 
 import re
 from typing import Dict, List, Optional, Tuple, Any
@@ -62,6 +64,7 @@ try:
     OCR_AVAILABLE = True
 except ImportError:
     OCR_AVAILABLE = False
+    Image = None  # Type stub for when PIL not available
 
 
 @dataclass

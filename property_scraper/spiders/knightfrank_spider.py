@@ -232,8 +232,17 @@ class KnightFrankSpider(scrapy.Spider):
             self.logger.error(f"[ERROR] No Playwright page for page {page_num} ({response.url}) after 3 retries")
             return
 
-        # === Issue #11: Quick empty-page detection BEFORE waiting for selectors ===
-        # Check for "no results" indicators quickly (5s timeout) before waiting 30s
+        # === ROBUSTNESS FIX: Wait for page to load BEFORE checking if empty ===
+        # Knight Frank uses React - content loads dynamically after initial HTML shell
+        # We must wait for networkidle or a reasonable timeout before checking for empty
+        try:
+            # Wait for network to settle (dynamic content to load)
+            await playwright_page.wait_for_load_state('networkidle', timeout=15000)
+            await playwright_page.wait_for_timeout(2000)  # Extra buffer for React rendering
+        except Exception as e:
+            self.logger.debug(f"[LOAD-WAIT] Network idle wait: {e}")
+
+        # Now check for "no results" indicators AFTER content has loaded
         try:
             is_empty = await asyncio.wait_for(
                 playwright_page.evaluate('''() => {
@@ -251,13 +260,6 @@ class KnightFrankSpider(scrapy.Spider):
                             return true;
                         }
                     }
-                    // Also check if page seems empty (very little content)
-                    const mainContent = document.querySelector('main') || document.body;
-                    const propertyCards = mainContent.querySelectorAll('.property-features, .kf-search-result, [class*="property"]');
-                    // If page loaded but has no property elements, it's likely empty
-                    if (mainContent.innerText.length > 100 && propertyCards.length === 0) {
-                        return true;
-                    }
                     return false;
                 }'''),
                 timeout=5.0
@@ -265,7 +267,7 @@ class KnightFrankSpider(scrapy.Spider):
 
             if is_empty:
                 self.consecutive_empty_pages += 1
-                self.logger.warning(f"[EMPTY-PAGE] Page {page_num} detected as empty (quick check). Consecutive empty: {self.consecutive_empty_pages}/{self.max_consecutive_empty}")
+                self.logger.warning(f"[EMPTY-PAGE] Page {page_num} detected as empty (no results text). Consecutive empty: {self.consecutive_empty_pages}/{self.max_consecutive_empty}")
 
                 if self.consecutive_empty_pages >= self.max_consecutive_empty:
                     self.stop_pagination = True
@@ -278,7 +280,7 @@ class KnightFrankSpider(scrapy.Spider):
             # Quick check timed out, continue with normal flow
             pass
         except Exception as e:
-            self.logger.debug(f"[EMPTY-CHECK] Quick empty check failed: {e}")
+            self.logger.debug(f"[EMPTY-CHECK] Empty check failed: {e}")
 
         # Wait for page to fully load with RETRY logic
         selector_loaded = False
