@@ -17,9 +17,57 @@ import json
 import re
 import time
 import asyncio
+import hashlib
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from property_scraper.items import PropertyItem
+from scrapy_playwright.page import PageMethod
+
+# Default timeouts for Playwright operations (in seconds)
+EVALUATE_TIMEOUT = 30.0  # For page.evaluate() calls
+CLICK_TIMEOUT = 10.0     # For page.click() calls
+DETAIL_PAGE_TIMEOUT = 60.0  # Max time for entire detail page processing
+
+
+async def safe_evaluate(page, script, timeout=EVALUATE_TIMEOUT, default=None):
+    """Execute page.evaluate() with a timeout to prevent hanging.
+
+    Args:
+        page: Playwright page object
+        script: JavaScript code to execute
+        timeout: Maximum seconds to wait (default 30s)
+        default: Value to return if timeout or error occurs
+
+    Returns:
+        Result of evaluate() or default on timeout/error
+    """
+    try:
+        return await asyncio.wait_for(
+            page.evaluate(script),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        return default
+    except Exception:
+        return default
+
+
+async def safe_click(page, selector, timeout=CLICK_TIMEOUT):
+    """Execute page.click() with a timeout.
+
+    Args:
+        page: Playwright page object
+        selector: CSS selector or text selector to click
+        timeout: Maximum seconds to wait (default 10s)
+
+    Returns:
+        True if clicked successfully, False otherwise
+    """
+    try:
+        await page.click(selector, timeout=timeout * 1000)
+        return True
+    except Exception:
+        return False
 
 # OCR support for floorplan extraction
 try:
@@ -42,6 +90,9 @@ class ChestertonsSpider(scrapy.Spider):
         'NW1', 'NW3', 'NW8',  # St John's Wood, Hampstead
     ]
 
+    # Safety limit for detail page fetching (Playwright is slow, 1400+ pages would take hours)
+    MAX_DETAIL_PAGES = 100
+
     def __init__(self, max_properties=None, fetch_details=False, fetch_floorplans=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -62,6 +113,9 @@ class ChestertonsSpider(scrapy.Spider):
         if self.fetch_floorplans:
             self.fetch_details = True  # Need detail page for floorplans
 
+        # Track detail pages to enforce safety limit
+        self.detail_pages_queued = 0
+
         self.stats = {
             'total': 0,
             'prices': [],
@@ -70,6 +124,11 @@ class ChestertonsSpider(scrapy.Spider):
             'floorplans_found': 0,
             'descriptions_found': 0,
             'start_time': time.time(),
+            # Issue #26 FIX: OCR metrics tracking
+            'ocr_attempts': 0,
+            'ocr_successes': 0,
+            'ocr_failures': 0,
+            'ocr_timeouts': 0,
         }
 
         # Thread pool for OCR (reused across requests)
@@ -85,6 +144,8 @@ class ChestertonsSpider(scrapy.Spider):
         self.logger.info(f"[CONFIG] Target postcodes: {', '.join(self.TARGET_POSTCODES)}")
         self.logger.info(f"[CONFIG] Fetch details: {self.fetch_details}")
         self.logger.info(f"[CONFIG] Fetch floorplans: {self.fetch_floorplans}")
+        if self.fetch_details:
+            self.logger.info(f"[CONFIG] Max detail pages: {self.MAX_DETAIL_PAGES} (safety limit)")
         self.logger.info(f"[CONFIG] OCR available: {OCR_AVAILABLE}")
         self.logger.info("[CONFIG] Using Playwright for Cloudflare bypass")
         self.logger.info("=" * 70)
@@ -102,11 +163,10 @@ class ChestertonsSpider(scrapy.Spider):
                 'playwright': True,
                 'playwright_include_page': True,
                 'playwright_page_methods': [
-                    # Wait for property cards to load
-                    {'method': 'wait_for_selector', 'args': ['.pegasus-property-card'],
-                     'kwargs': {'timeout': 30000}},
+                    # Wait for property cards to load (FIXED: use PageMethod objects)
+                    PageMethod('wait_for_selector', '.pegasus-property-card', timeout=30000),
                     # Extra wait for dynamic content
-                    {'method': 'wait_for_timeout', 'args': [3000]},
+                    PageMethod('wait_for_timeout', 3000),
                 ],
                 'request_start': time.time()
             },
@@ -119,7 +179,13 @@ class ChestertonsSpider(scrapy.Spider):
         self.logger.error(f"[ERROR] Request failed: {failure.value}")
 
     async def parse_search(self, response):
-        """Parse search results page with Load More pagination."""
+        """Parse search results page with Load More pagination.
+
+        Issue #24 FIX: Checkpoints items every CHECKPOINT_INTERVAL clicks to prevent
+        data loss on browser crash. Items are yielded incrementally rather than all at once.
+        """
+        CHECKPOINT_INTERVAL = 10  # Yield items every 10 clicks
+
         request_time = time.time() - response.meta.get('request_start', time.time())
 
         playwright_page = response.meta.get('playwright_page')
@@ -132,7 +198,18 @@ class ChestertonsSpider(scrapy.Spider):
         )
 
         if not playwright_page:
-            self.logger.error("[ERROR] No Playwright page available")
+            # RESILIENCE: Retry up to 3 times if Playwright page is missing
+            retry_count = response.meta.get('retry_count', 0)
+            if retry_count < 3:
+                backoff_delay = (retry_count + 1) * 2  # Exponential backoff: 2s, 4s, 6s
+                self.logger.warning(f"[RETRY] No Playwright page for {response.url}, retrying ({retry_count + 1}/3) after {backoff_delay}s")
+                await asyncio.sleep(backoff_delay)  # Use asyncio.sleep in async context
+                yield response.request.replace(
+                    meta={**response.meta, 'retry_count': retry_count + 1},
+                    dont_filter=True
+                )
+                return
+            self.logger.error(f"[ERROR] No Playwright page for {response.url} after 3 retries, skipping")
             return
 
         # Calculate how many Load More clicks we need
@@ -145,6 +222,9 @@ class ChestertonsSpider(scrapy.Spider):
             clicks_needed = max(0, min(clicks_needed, 150))  # Cap at 150 clicks
 
         self.logger.info(f"[PAGINATION] Will click Load More up to {clicks_needed} times")
+
+        # Issue #24 FIX: Track yielded property IDs to avoid duplicates during checkpoints
+        yielded_ids = set()
 
         # Click Load More button repeatedly using JavaScript
         click_count = 0
@@ -168,17 +248,50 @@ class ChestertonsSpider(scrapy.Spider):
                     click_count += 1
                     await playwright_page.wait_for_timeout(2000)
 
-                    if click_count % 10 == 0:
+                    # Issue #24 FIX: Checkpoint every CHECKPOINT_INTERVAL clicks
+                    if click_count % CHECKPOINT_INTERVAL == 0:
                         cards = await playwright_page.query_selector_all('.pegasus-property-card')
-                        self.logger.info(f"[LOADING] Click {click_count}: {len(cards)} cards loaded")
+                        self.logger.info(f"[CHECKPOINT] Click {click_count}: {len(cards)} cards loaded, yielding checkpoint...")
+
+                        # Extract and yield items at checkpoint
+                        checkpoint_count = 0
+                        async for item in self._extract_and_yield_cards(playwright_page, yielded_ids):
+                            checkpoint_count += 1
+                            yield item
+
+                        self.logger.info(f"[CHECKPOINT] Yielded {checkpoint_count} new items (total: {len(yielded_ids)})")
                 else:
                     self.logger.info(f"[PAGINATION] No more Load More button after {click_count} clicks")
                     break
             except Exception as e:
-                self.logger.info(f"[PAGINATION] Stopped at click {click_count}: {e}")
+                self.logger.warning(f"[PAGINATION] Error at click {click_count}: {e}")
+                # Issue #24 FIX: On error, yield what we have before potentially losing the session
+                self.logger.info(f"[CHECKPOINT] Emergency checkpoint due to error...")
+                try:
+                    async for item in self._extract_and_yield_cards(playwright_page, yielded_ids):
+                        yield item
+                except Exception as extract_error:
+                    self.logger.error(f"[CHECKPOINT] Failed to extract cards on error: {extract_error}")
                 break
 
-        # Extract all cards
+        # Final extraction of all remaining cards
+        self.logger.info(f"[FINAL] Extracting remaining cards after {click_count} clicks...")
+        final_count = 0
+        async for item in self._extract_and_yield_cards(playwright_page, yielded_ids):
+            final_count += 1
+            yield item
+
+        self.logger.info(f"[COMPLETE] Yielded {final_count} final items (total: {len(yielded_ids)} unique items)")
+
+        await playwright_page.close()
+
+    async def _extract_and_yield_cards(self, playwright_page, yielded_ids: set):
+        """Extract cards from page and yield new ones (not already yielded).
+
+        Issue #24 FIX: Helper method for checkpoint-based yielding.
+        Tracks which items have been yielded to avoid duplicates.
+        """
+        # Extract all cards currently on page
         cards_data = await playwright_page.evaluate('''() => {
             const cards = document.querySelectorAll('.pegasus-property-card');
             return Array.from(cards).map(card => {
@@ -206,49 +319,64 @@ class ChestertonsSpider(scrapy.Spider):
             });
         }''')
 
-        self.logger.info(f"[DISCOVERY] Total property cards found: {len(cards_data)}")
-
-        await playwright_page.close()
-
         if not cards_data:
-            self.logger.warning("[WARNING] No property cards found")
             return
 
-        # Parse each card
-        parsed_count = 0
-        target_count = 0
+        # Parse and yield new cards
         for card_data in cards_data:
             item = self.parse_card_data(card_data)
-            if item:
-                if self.is_target_area(item):
-                    target_count += 1
-                    self.stats['total'] += 1
+            if not item:
+                continue
 
-                    if item.get('price_pcm'):
-                        self.stats['prices'].append(item['price_pcm'])
-                    if item.get('size_sqft'):
-                        self.stats['sqft_found'] += 1
+            # Skip if already yielded
+            prop_id = item.get('property_id')
+            if prop_id in yielded_ids:
+                continue
 
-                    # Optionally fetch detail page for description
-                    if self.fetch_details and item.get('url'):
-                        yield scrapy.Request(
-                            item['url'],
-                            callback=self.parse_detail,
-                            meta={
-                                'item': dict(item),
-                                'playwright': True,
-                                'playwright_include_page': True,
+            if not self.is_target_area(item):
+                continue
+
+            # Mark as yielded
+            yielded_ids.add(prop_id)
+            self.stats['total'] += 1
+
+            if item.get('price_pcm'):
+                self.stats['prices'].append(item['price_pcm'])
+            if item.get('size_sqft'):
+                self.stats['sqft_found'] += 1
+
+            # Optionally fetch detail page for description (with safety limit)
+            if self.fetch_details and item.get('url'):
+                if self.detail_pages_queued < self.MAX_DETAIL_PAGES:
+                    self.detail_pages_queued += 1
+                    yield scrapy.Request(
+                        item['url'],
+                        callback=self.parse_detail,
+                        meta={
+                            'item': dict(item),
+                            'playwright': True,
+                            'playwright_include_page': True,
+                            # Add timeout for page navigation to prevent indefinite hangs
+                            'playwright_page_goto_kwargs': {
+                                'timeout': 30000,  # 30 seconds max for page load
+                                'wait_until': 'domcontentloaded',  # Don't wait for all resources
                             },
-                            dont_filter=True,
-                            errback=self.handle_error
+                        },
+                        dont_filter=True,
+                        errback=self.handle_error
+                    )
+                else:
+                    # Safety limit reached - yield without detail fetch
+                    if self.detail_pages_queued == self.MAX_DETAIL_PAGES:
+                        self.logger.warning(
+                            f"[SAFETY] Reached {self.MAX_DETAIL_PAGES} detail page limit. "
+                            f"Remaining items will be yielded without detail fetch. "
+                            f"Use 'enrich-floorplans' afterwards for complete data."
                         )
-                    else:
-                        yield item
-                parsed_count += 1
-
-        self.logger.info(
-            f"[COMPLETE] Parsed {parsed_count} cards, {target_count} in target areas"
-        )
+                        self.detail_pages_queued += 1  # Increment to avoid repeated warnings
+                    yield item
+            else:
+                yield item
 
     def is_target_area(self, item) -> bool:
         """Check if property is in a target London area."""
@@ -277,7 +405,8 @@ class ChestertonsSpider(scrapy.Spider):
         if id_match:
             prop_id = f"{id_match.group(1)}_{id_match.group(2)}"
         else:
-            prop_id = f"chestertons_{hash(href)}"
+            # Issue #28 FIX: Use deterministic hash instead of Python's randomized hash()
+            prop_id = f"chestertons_{hashlib.sha256(href.encode()).hexdigest()[:16]}"
 
         item['source'] = 'chestertons'
         item['property_id'] = prop_id
@@ -381,27 +510,19 @@ class ChestertonsSpider(scrapy.Spider):
         return item
 
     def postcode_to_area(self, postcode: str) -> str:
-        """Convert postcode to area name."""
-        mapping = {
-            'SW1': 'Belgravia',
-            'SW3': 'Chelsea',
-            'SW5': 'Earls Court',
-            'SW7': 'South Kensington',
-            'SW10': 'Chelsea',
-            'W8': 'Kensington',
-            'W11': 'Notting Hill',
-            'W2': 'Bayswater',
-            'NW1': "St John's Wood",
-            'NW3': 'Hampstead',
-            'NW8': "St John's Wood",
-        }
-        for prefix, area in mapping.items():
-            if postcode.upper().startswith(prefix):
-                return area
-        return postcode
+        """Convert postcode to area name.
+
+        Issue #34 FIX: Uses centralized mapping from cli.registry.
+        """
+        from cli.registry import postcode_to_area as _postcode_to_area
+        result = _postcode_to_area(postcode)
+        return result if result else postcode
 
     async def parse_detail(self, response):
-        """Parse property detail page to extract description, features, and floorplan."""
+        """Parse property detail page to extract description, features, and floorplan.
+
+        Uses asyncio.wait_for() to prevent hanging on slow/stuck pages.
+        """
         item = response.meta.get('item', {})
         playwright_page = response.meta.get('playwright_page')
 
@@ -411,117 +532,136 @@ class ChestertonsSpider(scrapy.Spider):
             return
 
         try:
-            # Wait for content to load
-            await playwright_page.wait_for_timeout(2000)
+            # Wrap entire detail page processing with a timeout
+            result = await asyncio.wait_for(
+                self._process_detail_page(playwright_page, item),
+                timeout=DETAIL_PAGE_TIMEOUT
+            )
+            if result:
+                item.update(result)
 
-            # Extract description from Chestertons detail page
-            description = await playwright_page.evaluate('''() => {
-                const selectors = [
-                    '.property-description',
-                    '.description',
-                    '[class*="description"]',
-                    '.overview',
-                    '.property-details-text',
-                    'article p',
-                ];
-                for (const sel of selectors) {
-                    const el = document.querySelector(sel);
-                    if (el && el.innerText.length > 50) {
-                        return el.innerText.trim();
-                    }
-                }
-                // Fallback: look for main content paragraphs
-                const paras = document.querySelectorAll('main p, .content p, section p');
-                let text = '';
-                for (const p of paras) {
-                    if (p.innerText.length > 30) {
-                        text += p.innerText + ' ';
-                    }
-                }
-                return text.trim() || null;
-            }''')
-
-            # Extract key features/highlights
-            features = await playwright_page.evaluate('''() => {
-                const selectors = [
-                    'ul.features li',
-                    'ul.key-features li',
-                    '.property-features li',
-                    '.highlights li',
-                ];
-                for (const sel of selectors) {
-                    const els = document.querySelectorAll(sel);
-                    if (els.length > 0) {
-                        return Array.from(els).map(el => el.innerText.trim()).filter(t => t);
-                    }
-                }
-                return [];
-            }''')
-
-            # Extract floorplan if enabled
-            if self.fetch_floorplans:
-                floorplan_data = await self._extract_floorplan_data(playwright_page, item)
-                if floorplan_data:
-                    item.update(floorplan_data)
-
-            await playwright_page.close()
-
-            # Update item with extracted data
-            if description and len(description) > 50:
-                # Clean description
-                description = re.sub(r'\s+', ' ', description).strip()
-                if len(description) > 5000:
-                    description = description[:5000]
-                item['summary'] = description
-                self.stats['descriptions_found'] += 1
-                self.logger.info(f"[DETAIL] {item.get('property_id')}: {len(description)} chars")
-
-            if features:
-                # Extract amenities from features list
-                features_text = ' '.join(features).lower()
-                amenities = {}
-                amenities['has_balcony'] = 'balcon' in features_text
-                amenities['has_terrace'] = 'terrace' in features_text
-                amenities['has_garden'] = 'garden' in features_text
-                amenities['has_porter'] = 'porter' in features_text or 'concierge' in features_text
-                amenities['has_gym'] = 'gym' in features_text or 'fitness' in features_text
-                amenities['has_pool'] = 'pool' in features_text or 'swimming' in features_text
-                amenities['has_parking'] = 'parking' in features_text or 'garage' in features_text
-                amenities['has_lift'] = 'lift' in features_text or 'elevator' in features_text
-                amenities['has_ac'] = 'air con' in features_text or 'conditioning' in features_text
-                item['features'] = json.dumps({k: v for k, v in amenities.items() if v})
-
+        except asyncio.TimeoutError:
+            self.logger.warning(f"[DETAIL-TIMEOUT] {item.get('property_id')}: Detail page processing timed out after {DETAIL_PAGE_TIMEOUT}s")
         except Exception as e:
             self.logger.error(f"[DETAIL-ERROR] {item.get('property_id')}: {e}")
+        finally:
+            # Always close the page to prevent resource leaks
             if playwright_page:
-                await playwright_page.close()
+                try:
+                    await playwright_page.close()
+                except Exception:
+                    pass
 
         yield PropertyItem(**item)
 
+    async def _process_detail_page(self, playwright_page, item):
+        """Process detail page with proper timeouts. Called by parse_detail()."""
+        result = {}
+
+        # Wait for content to load
+        await playwright_page.wait_for_timeout(2000)
+
+        # Extract description from Chestertons detail page using safe_evaluate
+        description = await safe_evaluate(playwright_page, '''() => {
+            const selectors = [
+                '.property-description',
+                '.description',
+                '[class*="description"]',
+                '.overview',
+                '.property-details-text',
+                'article p',
+            ];
+            for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el && el.innerText.length > 50) {
+                    return el.innerText.trim();
+                }
+            }
+            // Fallback: look for main content paragraphs
+            const paras = document.querySelectorAll('main p, .content p, section p');
+            let text = '';
+            for (const p of paras) {
+                if (p.innerText.length > 30) {
+                    text += p.innerText + ' ';
+                }
+            }
+            return text.trim() || null;
+        }''', timeout=15.0)
+
+        # Extract key features/highlights using safe_evaluate
+        features = await safe_evaluate(playwright_page, '''() => {
+            const selectors = [
+                'ul.features li',
+                'ul.key-features li',
+                '.property-features li',
+                '.highlights li',
+            ];
+            for (const sel of selectors) {
+                const els = document.querySelectorAll(sel);
+                if (els.length > 0) {
+                    return Array.from(els).map(el => el.innerText.trim()).filter(t => t);
+                }
+            }
+            return [];
+        }''', timeout=15.0, default=[])
+
+        # Extract floorplan if enabled
+        if self.fetch_floorplans:
+            floorplan_data = await self._extract_floorplan_data(playwright_page, item)
+            if floorplan_data:
+                result.update(floorplan_data)
+
+        # Update result with extracted data
+        if description and len(description) > 50:
+            # Clean description
+            description = re.sub(r'\s+', ' ', description).strip()
+            if len(description) > 5000:
+                description = description[:5000]
+            result['summary'] = description
+            self.stats['descriptions_found'] += 1
+            self.logger.info(f"[DETAIL] {item.get('property_id')}: {len(description)} chars")
+
+        if features:
+            # Extract amenities from features list
+            features_text = ' '.join(features).lower()
+            amenities = {}
+            amenities['has_balcony'] = 'balcon' in features_text
+            amenities['has_terrace'] = 'terrace' in features_text
+            amenities['has_garden'] = 'garden' in features_text
+            amenities['has_porter'] = 'porter' in features_text or 'concierge' in features_text
+            amenities['has_gym'] = 'gym' in features_text or 'fitness' in features_text
+            amenities['has_pool'] = 'pool' in features_text or 'swimming' in features_text
+            amenities['has_parking'] = 'parking' in features_text or 'garage' in features_text
+            amenities['has_lift'] = 'lift' in features_text or 'elevator' in features_text
+            amenities['has_ac'] = 'air con' in features_text or 'conditioning' in features_text
+            result['features'] = json.dumps({k: v for k, v in amenities.items() if v})
+
+        return result
+
     async def _extract_floorplan_data(self, page, item):
-        """Click Floorplans tab, extract URL, and run OCR if sqft missing."""
+        """Click Floorplans tab, extract URL, and run OCR if sqft missing.
+
+        Uses safe_click() and safe_evaluate() with timeouts to prevent hanging.
+        """
         data = {}
 
         try:
-            # Click Floorplans tab
+            # Click Floorplans tab using safe_click with timeout
             clicked = False
             for label in ['Floorplans', 'Floor Plans', 'Floorplan', 'Floor Plan']:
-                try:
-                    await page.click(f'text="{label}"', timeout=3000)
+                if await safe_click(page, f'text="{label}"', timeout=5.0):
                     clicked = True
                     self.logger.debug(f"[FLOORPLAN] Clicked '{label}' tab")
                     await page.wait_for_timeout(2000)
                     break
-                except:
-                    pass
 
             if not clicked:
                 self.logger.debug(f"[FLOORPLAN] No floorplan tab found for {item.get('property_id')}")
                 return data
 
-            # Extract floorplan image URL
+            # Extract floorplan image URL using safe_evaluate
             # Pattern: https://mr0.homeflow-assets.co.uk/files/floorplan/image/{id}/{id2}/_x_/{ref}.jpg
-            floorplan_url = await page.evaluate('''() => {
+            floorplan_url = await safe_evaluate(page, '''() => {
                 // Look for floorplan images (distinct from property photos)
                 const imgs = document.querySelectorAll('img');
                 for (const img of imgs) {
@@ -534,7 +674,7 @@ class ChestertonsSpider(scrapy.Spider):
                 const html = document.documentElement.innerHTML;
                 const match = html.match(/https:\\/\\/[^"\\s]+\\/files\\/floorplan\\/[^"\\s]+/);
                 return match ? match[0] : null;
-            }''')
+            }''', timeout=15.0)
 
             if floorplan_url:
                 # Clean up URL (remove trailing backslash/escape chars)
@@ -558,7 +698,13 @@ class ChestertonsSpider(scrapy.Spider):
         return data
 
     async def _extract_sqft_via_ocr(self, floorplan_url):
-        """Download floorplan image and extract sqft using OCR."""
+        """Download floorplan image and extract sqft using OCR.
+
+        Issue #26 FIX: Tracks OCR attempts, successes, and failures for metrics.
+        """
+        # Issue #26 FIX: Track OCR attempt
+        self.stats['ocr_attempts'] += 1
+
         try:
             import requests
 
@@ -578,6 +724,8 @@ class ChestertonsSpider(scrapy.Spider):
             )
 
             if not floorplan_data:
+                # Issue #26 FIX: Track OCR failure (no data extracted)
+                self.stats['ocr_failures'] += 1
                 return None
 
             result = {}
@@ -615,9 +763,23 @@ class ChestertonsSpider(scrapy.Spider):
                 if room_details:
                     result['room_details'] = room_details
 
-            return result if result else None
+            if result:
+                # Issue #26 FIX: Track OCR success
+                self.stats['ocr_successes'] += 1
+                return result
+            else:
+                # Issue #26 FIX: Track OCR failure (empty result)
+                self.stats['ocr_failures'] += 1
+                return None
 
+        except asyncio.TimeoutError:
+            # Issue #26 FIX: Track OCR timeout separately
+            self.stats['ocr_timeouts'] += 1
+            self.logger.debug(f"[OCR] Timeout processing floorplan")
+            return None
         except Exception as e:
+            # Issue #26 FIX: Track OCR failure
+            self.stats['ocr_failures'] += 1
             self.logger.debug(f"[OCR] Error: {e}")
             return None
 
@@ -625,7 +787,8 @@ class ChestertonsSpider(scrapy.Spider):
         """Log summary when spider closes."""
         # Clean up the thread pool executor
         if hasattr(self, 'executor') and self.executor:
-            self.executor.shutdown(wait=False)
+            # Issue #21 FIX: Wait for threads to complete to prevent orphan threads
+            self.executor.shutdown(wait=True)
 
         elapsed = time.time() - self.stats['start_time']
         total = self.stats['total'] or 1  # Avoid division by zero
@@ -644,6 +807,13 @@ class ChestertonsSpider(scrapy.Spider):
         if self.fetch_floorplans:
             self.logger.info(f"[SUMMARY] Floorplans found: {self.stats['floorplans_found']} ({floorplan_pct:.0f}%)")
             self.logger.info(f"[SUMMARY] Sqft from OCR: {self.stats['sqft_from_ocr']}")
+            # Issue #26 FIX: Report OCR metrics
+            if self.stats['ocr_attempts'] > 0:
+                ocr_success_rate = (self.stats['ocr_successes'] / self.stats['ocr_attempts'] * 100)
+                self.logger.info(f"[OCR-METRICS] Attempts: {self.stats['ocr_attempts']}")
+                self.logger.info(f"[OCR-METRICS] Successes: {self.stats['ocr_successes']} ({ocr_success_rate:.0f}%)")
+                self.logger.info(f"[OCR-METRICS] Failures: {self.stats['ocr_failures']}")
+                self.logger.info(f"[OCR-METRICS] Timeouts: {self.stats['ocr_timeouts']}")
 
         if self.fetch_details:
             self.logger.info(f"[SUMMARY] With descriptions: {self.stats['descriptions_found']} ({desc_pct:.0f}%)")

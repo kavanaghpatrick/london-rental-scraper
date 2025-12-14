@@ -19,10 +19,60 @@ import json
 import re
 import time
 import asyncio
+import hashlib
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from property_scraper.items import PropertyItem
 from scrapy_playwright.page import PageMethod
+
+# Default timeouts for Playwright operations (in seconds)
+EVALUATE_TIMEOUT = 30.0  # For page.evaluate() calls
+CLICK_TIMEOUT = 10.0     # For page.click() calls
+DETAIL_PAGE_TIMEOUT = 60.0  # Max time for entire detail page processing
+
+
+async def safe_evaluate(page, script, timeout=EVALUATE_TIMEOUT, default=None):
+    """Execute page.evaluate() with a timeout to prevent hanging.
+
+    Args:
+        page: Playwright page object
+        script: JavaScript code to execute
+        timeout: Maximum seconds to wait (default 30s)
+        default: Value to return if timeout or error occurs
+
+    Returns:
+        Result of evaluate() or default on timeout/error
+    """
+    try:
+        return await asyncio.wait_for(
+            page.evaluate(script),
+            timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        return default
+    except Exception:
+        return default
+
+
+async def safe_click(page, selector, timeout=CLICK_TIMEOUT):
+    """Execute page.click() with a timeout.
+
+    Args:
+        page: Playwright page object
+        selector: CSS selector or text selector to click
+        timeout: Maximum seconds to wait (default 10s)
+
+    Returns:
+        True if clicked successfully, False otherwise
+    """
+    try:
+        await asyncio.wait_for(
+            page.click(selector, timeout=timeout * 1000),
+            timeout=timeout + 5  # Extra buffer for the operation
+        )
+        return True
+    except Exception:
+        return False
 
 # OCR support for floorplan extraction
 try:
@@ -133,7 +183,18 @@ class SavillsSpider(scrapy.Spider):
         )
 
         if not playwright_page:
-            self.logger.error("[ERROR] No Playwright page available")
+            # RESILIENCE: Retry up to 3 times if Playwright page is missing
+            retry_count = response.meta.get('retry_count', 0)
+            if retry_count < 3:
+                backoff_delay = (retry_count + 1) * 2  # Exponential backoff: 2s, 4s, 6s
+                self.logger.warning(f"[RETRY] No Playwright page for {response.url}, retrying ({retry_count + 1}/3) after {backoff_delay}s")
+                await asyncio.sleep(backoff_delay)  # Use asyncio.sleep in async context
+                yield response.request.replace(
+                    meta={**response.meta, 'retry_count': retry_count + 1},
+                    dont_filter=True
+                )
+                return
+            self.logger.error(f"[ERROR] No Playwright page for {response.url} after 3 retries")
             return
 
         current_page = 1
@@ -280,6 +341,11 @@ class SavillsSpider(scrapy.Spider):
                                     'item': dict(item),
                                     'playwright': True,
                                     'playwright_include_page': True,
+                                    # Add timeout for page navigation to prevent indefinite hangs
+                                    'playwright_page_goto_kwargs': {
+                                        'timeout': 30000,  # 30 seconds max for page load
+                                        'wait_until': 'domcontentloaded',  # Don't wait for all resources
+                                    },
                                 },
                                 dont_filter=True,
                                 errback=self.handle_error
@@ -392,9 +458,9 @@ class SavillsSpider(scrapy.Spider):
         if id_match:
             prop_id = id_match.group(1)
         else:
-            # Fallback - use URL as ID to ensure consistency across runs
-            # (hash() varies between Python sessions due to seed randomization)
-            prop_id = href.split('/')[-1] if href else f"savills_{abs(hash(text)) % 1000000}"
+            # Issue #28 FIX: Use deterministic hash instead of Python's randomized hash()
+            # Fallback - use URL path or deterministic hash for consistency across runs
+            prop_id = href.split('/')[-1] if href else f"savills_{hashlib.sha256(text.encode()).hexdigest()[:16]}"
 
         item['source'] = 'savills'
         item['property_id'] = prop_id
@@ -526,28 +592,19 @@ class SavillsSpider(scrapy.Spider):
         return item
 
     def postcode_to_area(self, postcode: str) -> str:
-        """Convert postcode to area name."""
-        mapping = {
-            'SW1': 'Belgravia',
-            'SW3': 'Chelsea',
-            'SW5': 'Earls Court',
-            'SW7': 'South Kensington',
-            'SW10': 'Chelsea',
-            'W8': 'Kensington',
-            'W11': 'Notting Hill',
-            'W2': 'Bayswater',
-            'W1': 'Mayfair',
-            'NW1': "St John's Wood",
-            'NW3': 'Hampstead',
-            'NW8': "St John's Wood",
-        }
-        for prefix, area in mapping.items():
-            if postcode.upper().startswith(prefix):
-                return area
-        return postcode
+        """Convert postcode to area name.
+
+        Issue #34 FIX: Uses centralized mapping from cli.registry.
+        """
+        from cli.registry import postcode_to_area as _postcode_to_area
+        result = _postcode_to_area(postcode)
+        return result if result else postcode
 
     async def parse_detail(self, response):
-        """Parse property detail page to extract floorplan."""
+        """Parse property detail page to extract floorplan.
+
+        Uses asyncio.wait_for() to prevent hanging on slow/stuck pages.
+        """
         item = response.meta.get('item', {})
         playwright_page = response.meta.get('playwright_page')
 
@@ -557,30 +614,46 @@ class SavillsSpider(scrapy.Spider):
             return
 
         try:
-            # Wait for page to load
-            await playwright_page.wait_for_timeout(2000)
-
-            # Extract floorplan data
-            floorplan_data = await self._extract_floorplan_data(playwright_page, item)
+            # Wrap entire detail page processing with a timeout
+            floorplan_data = await asyncio.wait_for(
+                self._process_detail_page(playwright_page, item),
+                timeout=DETAIL_PAGE_TIMEOUT
+            )
             if floorplan_data:
                 item.update(floorplan_data)
 
-            await playwright_page.close()
-
+        except asyncio.TimeoutError:
+            self.logger.warning(f"[DETAIL-TIMEOUT] {item.get('property_id')}: Detail page processing timed out after {DETAIL_PAGE_TIMEOUT}s")
         except Exception as e:
             self.logger.error(f"[DETAIL-ERROR] {item.get('property_id')}: {e}")
+        finally:
+            # Always close the page to prevent resource leaks
             if playwright_page:
-                await playwright_page.close()
+                try:
+                    await playwright_page.close()
+                except Exception:
+                    pass
 
         yield PropertyItem(**item)
 
+    async def _process_detail_page(self, playwright_page, item):
+        """Process detail page with proper timeouts. Called by parse_detail()."""
+        # Wait for page to load
+        await playwright_page.wait_for_timeout(2000)
+
+        # Extract floorplan data
+        return await self._extract_floorplan_data(playwright_page, item)
+
     async def _extract_floorplan_data(self, page, item):
-        """Click Plans tab and extract floorplan URL and description."""
+        """Click Plans tab and extract floorplan URL and description.
+
+        All page.evaluate() calls use safe_evaluate() with timeouts to prevent hanging.
+        """
         data = {}
 
         try:
             # First, extract description before clicking away from main content
-            description = await page.evaluate('''() => {
+            description = await safe_evaluate(page, '''() => {
                 // Savills description is typically in the property description section
                 const descSelectors = [
                     '.property-description',
@@ -617,7 +690,7 @@ class SavillsSpider(scrapy.Spider):
                     }
                 }
                 return null;
-            }''')
+            }''', timeout=15.0)
 
             if description:
                 # Clean up the description
@@ -627,8 +700,8 @@ class SavillsSpider(scrapy.Spider):
                 data['description'] = description
                 self.logger.debug(f"[DESCRIPTION] Found: {len(description)} chars")
 
-            # Savills has a "Plans" tab - click it
-            clicked = await page.evaluate('''() => {
+            # Savills has a "Plans" tab - click it using safe_evaluate with timeout
+            clicked = await safe_evaluate(page, '''() => {
                 const tabs = document.querySelectorAll('[role="tab"], button, a');
                 for (const tab of tabs) {
                     const text = tab.innerText || tab.textContent || '';
@@ -638,13 +711,13 @@ class SavillsSpider(scrapy.Spider):
                     }
                 }
                 return false;
-            }''')
+            }''', timeout=10.0, default=False)
 
             if clicked:
                 await page.wait_for_timeout(2000)
 
             # Find floorplan URL (assets.savills.com/properties/)
-            floorplan_url = await page.evaluate('''() => {
+            floorplan_url = await safe_evaluate(page, '''() => {
                 // Look for images with savills assets URL
                 const imgs = document.querySelectorAll('img');
                 for (const img of imgs) {
@@ -661,7 +734,7 @@ class SavillsSpider(scrapy.Spider):
                 const html = document.documentElement.innerHTML;
                 const match = html.match(/https:\\/\\/assets\\.savills\\.com\\/properties\\/[^"'\\s]+(?:floorplan|_fp|plan)[^"'\\s]*/i);
                 return match ? match[0] : null;
-            }''')
+            }''', timeout=15.0)
 
             if floorplan_url:
                 floorplan_url = floorplan_url.rstrip('\\').strip()
@@ -734,9 +807,9 @@ class SavillsSpider(scrapy.Spider):
 
     def closed(self, reason):
         """Log summary when spider closes."""
-        # Cleanup executor
+        # Issue #21 FIX: Wait for threads to complete to prevent orphan threads
         if self.executor:
-            self.executor.shutdown(wait=False)
+            self.executor.shutdown(wait=True)
 
         elapsed = time.time() - self.stats['start_time']
         sqft_pct = (self.stats['sqft_found'] / self.stats['total'] * 100) if self.stats['total'] else 0

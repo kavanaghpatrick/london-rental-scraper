@@ -44,7 +44,8 @@ class FloorplanEnricherSpider(scrapy.Spider):
             'url_template': None,  # Use URL from DB
         },
         'chestertons': {
-            'domain': 'chestertons.com',
+            # Issue #30 FIX: Correct domain (was chestertons.com, URLs are chestertons.co.uk)
+            'domain': 'chestertons.co.uk',
             'needs_playwright': True,
             'url_template': None,
         },
@@ -216,8 +217,14 @@ class FloorplanEnricherSpider(scrapy.Spider):
             self.logger.debug(f"[FOUND] {prop_id}: floorplan={bool(floorplan_url)}, desc={len(description) if description else 0} chars")
 
             # OCR if no existing sqft
+            # Issue #31 FIX: Run OCR in executor to avoid blocking the async event loop
             if self.use_ocr and floorplan_url and not response.meta.get('existing_sqft'):
-                ocr_sqft = self._extract_sqft_via_ocr(floorplan_url)
+                loop = asyncio.get_event_loop()
+                ocr_sqft = await loop.run_in_executor(
+                    self.executor,
+                    self._extract_sqft_via_ocr,
+                    floorplan_url
+                )
                 if ocr_sqft:
                     self.stats['sqft_from_ocr'] += 1
                     self.update_database_sqft(prop_id, ocr_sqft)
@@ -635,58 +642,89 @@ class FloorplanEnricherSpider(scrapy.Spider):
             return None
 
     def update_database(self, property_id: str, floorplan_url: str, description: str = None):
-        """Update the database with floorplan URL and/or description."""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+        """Update the database with floorplan URL and/or description.
 
-            # Build dynamic update based on what we have
-            updates = []
-            params = []
+        Issue #33 FIX: Added retry logic with exponential backoff for database locks.
+        """
+        # Build dynamic update based on what we have
+        updates = []
+        params = []
 
-            if floorplan_url:
-                updates.append('floorplan_url = ?')
-                params.append(floorplan_url)
+        if floorplan_url:
+            updates.append('floorplan_url = ?')
+            params.append(floorplan_url)
 
-            if description:
-                updates.append('description = ?')
-                params.append(description)
+        if description:
+            updates.append('description = ?')
+            params.append(description)
 
-            if not updates:
-                return
+        if not updates:
+            return
 
-            params.extend([self.source, property_id])
+        params.extend([self.source, property_id])
 
-            cursor.execute(f'''
-                UPDATE listings
-                SET {', '.join(updates)}
-                WHERE source = ? AND property_id = ?
-            ''', params)
-            conn.commit()
-            conn.close()
-        except sqlite3.Error as e:
-            self.logger.error(f"[DB-ERROR] Failed to update {property_id}: {e}")
+        # Issue #33 FIX: Retry with exponential backoff
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                conn = sqlite3.connect(self.db_path)
+                conn.execute("PRAGMA busy_timeout = 60000")  # 60s timeout
+                cursor = conn.cursor()
+                cursor.execute(f'''
+                    UPDATE listings
+                    SET {', '.join(updates)}
+                    WHERE source = ? AND property_id = ?
+                ''', params)
+                conn.commit()
+                conn.close()
+                return  # Success
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2  # 2s, 4s, 6s, 8s
+                    self.logger.warning(f"[DB-RETRY] {property_id}: database locked, retrying in {wait_time}s ({attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                else:
+                    self.logger.error(f"[DB-ERROR] Failed to update {property_id} after {max_retries} attempts: {e}")
+            except sqlite3.Error as e:
+                self.logger.error(f"[DB-ERROR] Failed to update {property_id}: {e}")
+                break
 
     def update_database_sqft(self, property_id: str, sqft: int):
-        """Update the database with sqft from OCR."""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE listings
-                SET size_sqft = ?
-                WHERE source = ? AND property_id = ?
-                AND (size_sqft IS NULL OR size_sqft = 0)
-            ''', (sqft, self.source, property_id))
-            conn.commit()
-            conn.close()
-        except sqlite3.Error as e:
-            self.logger.error(f"[DB-ERROR] Failed to update sqft for {property_id}: {e}")
+        """Update the database with sqft from OCR.
+
+        Issue #33 FIX: Added retry logic with exponential backoff for database locks.
+        """
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                conn = sqlite3.connect(self.db_path)
+                conn.execute("PRAGMA busy_timeout = 60000")  # 60s timeout
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE listings
+                    SET size_sqft = ?
+                    WHERE source = ? AND property_id = ?
+                    AND (size_sqft IS NULL OR size_sqft = 0)
+                ''', (sqft, self.source, property_id))
+                conn.commit()
+                conn.close()
+                return  # Success
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2
+                    self.logger.warning(f"[DB-RETRY] {property_id} sqft: database locked, retrying in {wait_time}s ({attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                else:
+                    self.logger.error(f"[DB-ERROR] Failed to update sqft for {property_id} after {max_retries} attempts: {e}")
+            except sqlite3.Error as e:
+                self.logger.error(f"[DB-ERROR] Failed to update sqft for {property_id}: {e}")
+                break
 
     def closed(self, reason):
         """Log summary when spider closes."""
+        # Issue #21 FIX: Wait for threads to complete to prevent orphan threads
         if self.executor:
-            self.executor.shutdown(wait=False)
+            self.executor.shutdown(wait=True)
 
         elapsed = time.time() - self.stats['start_time']
         pct = (self.stats['floorplans_found'] / self.stats['enriched'] * 100) if self.stats['enriched'] else 0

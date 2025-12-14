@@ -19,6 +19,7 @@ import json
 import sqlite3
 import logging
 import time
+import fcntl
 from datetime import datetime
 from itemadapter import ItemAdapter
 
@@ -85,19 +86,20 @@ class CleanDataPipeline:
             adapter['scraped_at'] = datetime.utcnow().isoformat()
             fixes.append('added_timestamp')
 
-        # Generate fingerprint if address or postcode available (PRD-003)
-        # Pass source and property_id to handle vague addresses correctly
+        # Issue #29 FIX: Always generate fingerprint (PRD-003)
+        # generate_fingerprint() handles vague addresses using source+property_id fallback
         if not adapter.get('address_fingerprint'):
             address = adapter.get('address', '') or ''
             postcode = adapter.get('postcode', '') or ''
             source = adapter.get('source', '') or ''
             property_id = adapter.get('property_id', '') or ''
-            if address or postcode:
-                adapter['address_fingerprint'] = self._generate_fingerprint(
-                    address, postcode,
-                    source=source,
-                    property_id=str(property_id) if property_id else None
-                )
+            # Always attempt fingerprint generation - function handles missing data
+            adapter['address_fingerprint'] = self._generate_fingerprint(
+                address, postcode,
+                source=source,
+                property_id=str(property_id) if property_id else None
+            )
+            if adapter['address_fingerprint']:
                 self.fingerprints_generated += 1
                 fixes.append('generated_fingerprint')
 
@@ -123,13 +125,37 @@ class DuplicateFilterPipeline:
 
     The second check catches same property listed by multiple agents on aggregators
     like Rightmove, where each agent creates a new listing ID for the same flat.
+
+    Issue #14 FIX: Uses bounded OrderedDict to prevent unbounded memory growth.
+    When capacity is reached, oldest entries are evicted (LRU-style).
     """
 
+    # Maximum number of entries to keep in dedup caches
+    MAX_CACHE_SIZE = 50000
+
     def __init__(self):
-        self.seen_ids = set()  # source:property_id
-        self.seen_properties = set()  # fingerprint:price:beds (content-based dedupe)
+        # Issue #14 FIX: Use OrderedDict for bounded LRU-style cache
+        from collections import OrderedDict
+        self._seen_ids = OrderedDict()  # source:property_id -> True
+        self._seen_properties = OrderedDict()  # fingerprint:price:beds -> True
         self.id_duplicates = 0
         self.content_duplicates = 0
+
+    def _add_to_cache(self, cache, key):
+        """Add key to bounded cache, evicting oldest if at capacity."""
+        if key in cache:
+            # Move to end (most recently used)
+            cache.move_to_end(key)
+            return False  # Already existed
+        if len(cache) >= self.MAX_CACHE_SIZE:
+            # Evict oldest entry
+            cache.popitem(last=False)
+        cache[key] = True
+        return True  # New entry
+
+    def _in_cache(self, cache, key):
+        """Check if key exists in cache."""
+        return key in cache
 
     def open_spider(self, spider):
         logger.info("[PIPELINE:Dedupe] Initialized - tracking IDs and content signatures")
@@ -142,10 +168,10 @@ class DuplicateFilterPipeline:
 
         # Check 1: Exact ID match (same listing scraped twice)
         id_key = f"{source}:{prop_id}"
-        if id_key in self.seen_ids:
+        if self._in_cache(self._seen_ids, id_key):
             self.id_duplicates += 1
             raise DropItem(f"Duplicate item: {id_key}")
-        self.seen_ids.add(id_key)
+        self._add_to_cache(self._seen_ids, id_key)
 
         # Check 2: Content-based match (same property, different listing ID)
         # Only apply to aggregators where multi-agent listings are common
@@ -155,20 +181,20 @@ class DuplicateFilterPipeline:
 
         if fingerprint and price:
             content_key = f"{source}:{fingerprint}:{price}:{beds}"
-            if content_key in self.seen_properties:
+            if self._in_cache(self._seen_properties, content_key):
                 self.content_duplicates += 1
                 logger.warning(
                     f"[PIPELINE:Dedupe] Content duplicate filtered: {prop_id} "
                     f"(same as existing {fingerprint[:8]}... @ £{price})"
                 )
                 raise DropItem(f"Content duplicate: {fingerprint[:8]}:{price}:{beds}")
-            self.seen_properties.add(content_key)
+            self._add_to_cache(self._seen_properties, content_key)
 
         return item
 
     def close_spider(self, spider):
         logger.info(
-            f"[PIPELINE:Dedupe] Complete - {len(self.seen_ids)} unique IDs, "
+            f"[PIPELINE:Dedupe] Complete - {len(self._seen_ids)} unique IDs, "
             f"{self.id_duplicates} ID dupes, {self.content_duplicates} content dupes filtered"
         )
 
@@ -193,11 +219,19 @@ class JsonWriterPipeline:
         area = adapter.get('area', 'unknown')
 
         # Write immediately to JSONL (one JSON object per line)
-        filepath = os.path.join(self.output_dir, f"{area.lower()}_listings.jsonl")
+        # Issue #13 FIX: Include source in filename to prevent race conditions
+        # when multiple spiders write to same area file concurrently
+        source = adapter.get('source', 'unknown')
+        filepath = os.path.join(self.output_dir, f"{area.lower()}_{source}_listings.jsonl")
         try:
             line = json.dumps(dict(adapter)) + '\n'
             with open(filepath, 'a') as f:
-                f.write(line)
+                # Issue #13 FIX: Use file locking to prevent interleaved writes
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    f.write(line)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             self.counts[area] = self.counts.get(area, 0) + 1
             self.bytes_written += len(line)
         except IOError as e:
@@ -255,8 +289,10 @@ class SQLitePipeline:
         os.makedirs(output_dir, exist_ok=True)
 
         self.db_path = os.path.join(output_dir, 'rentals.db')
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, timeout=60)  # Wait up to 60s for lock
         self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA journal_mode = WAL")  # Enable WAL for better concurrency
+        self.conn.execute("PRAGMA busy_timeout = 60000")  # 60s busy timeout
         self.cursor = self.conn.cursor()
         self._ensure_schema()
         self.start_time = time.time()
@@ -269,28 +305,56 @@ class SQLitePipeline:
         logger.info(f"[PIPELINE:SQLite] Batch size: {self.BATCH_SIZE}")
 
     def _ensure_schema(self):
-        """Ensure schema from PRD-001 migration is in place.
+        """Ensure database schema is in place, with auto-migration for new installs.
 
-        Verifies required columns exist (from migrate_schema_v2.py).
-        Creates compound index for O(1) lookups if missing.
+        Issue #16 FIX: Instead of crashing on missing schema, attempts to create
+        tables and columns automatically. Only fails if auto-migration fails.
+
+        Handles:
+        1. New database (no tables) - creates full schema
+        2. Existing database missing columns - adds columns
+        3. Missing price_history table - creates it
         """
-        # Check that migration has been run
+        # Check if listings table exists at all
+        self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='listings'"
+        )
+        if not self.cursor.fetchone():
+            # New database - create full schema
+            logger.info("[PIPELINE:SQLite] New database detected, creating schema...")
+            self._create_full_schema()
+            return
+
+        # Check for required columns
         self.cursor.execute("PRAGMA table_info(listings)")
         columns = {row[1] for row in self.cursor.fetchall()}
 
         required = {'address_fingerprint', 'first_seen', 'last_seen', 'is_active', 'price_change_count'}
         missing = required - columns
+
         if missing:
-            raise RuntimeError(
-                f"Missing required columns: {missing}. Run migrate_schema_v2.py first."
-            )
+            logger.info(f"[PIPELINE:SQLite] Missing columns detected: {missing}. Auto-migrating...")
+            try:
+                self._add_missing_columns(missing)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Auto-migration failed for columns {missing}: {e}\n"
+                    f"Please run 'python migrate_schema_v2.py' manually."
+                )
 
         # Check price_history table exists
         self.cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='price_history'"
         )
         if not self.cursor.fetchone():
-            raise RuntimeError("price_history table missing. Run migrate_schema_v2.py first.")
+            logger.info("[PIPELINE:SQLite] Creating price_history table...")
+            try:
+                self._create_price_history_table()
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to create price_history table: {e}\n"
+                    f"Please run 'python migrate_schema_v2.py' manually."
+                )
 
         # Create compound index for O(1) lookup (Gemini recommendation)
         self.cursor.execute('''
@@ -306,6 +370,95 @@ class SQLitePipeline:
 
         self.conn.commit()
         logger.debug("[PIPELINE:SQLite] Schema verified, indexes ensured")
+
+    def _create_full_schema(self):
+        """Create full database schema for new installs."""
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS listings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                property_id TEXT NOT NULL,
+                url TEXT,
+                area TEXT,
+                price INTEGER,
+                price_pw INTEGER,
+                price_pcm INTEGER,
+                price_period TEXT,
+                address TEXT,
+                postcode TEXT,
+                latitude REAL,
+                longitude REAL,
+                bedrooms INTEGER,
+                bathrooms INTEGER,
+                reception_rooms INTEGER,
+                property_type TEXT,
+                size_sqft INTEGER,
+                size_sqm REAL,
+                furnished TEXT,
+                epc_rating TEXT,
+                floorplan_url TEXT,
+                room_details TEXT,
+                has_basement INTEGER DEFAULT 0,
+                has_lower_ground INTEGER DEFAULT 0,
+                has_ground INTEGER DEFAULT 0,
+                has_mezzanine INTEGER DEFAULT 0,
+                has_first_floor INTEGER DEFAULT 0,
+                has_second_floor INTEGER DEFAULT 0,
+                has_third_floor INTEGER DEFAULT 0,
+                has_fourth_plus INTEGER DEFAULT 0,
+                has_roof_terrace INTEGER DEFAULT 0,
+                floor_count INTEGER,
+                property_levels TEXT,
+                let_agreed INTEGER DEFAULT 0,
+                agent_name TEXT,
+                agent_phone TEXT,
+                summary TEXT,
+                description TEXT,
+                features TEXT,
+                added_date TEXT,
+                address_fingerprint TEXT,
+                first_seen TEXT,
+                last_seen TEXT,
+                is_active INTEGER DEFAULT 1,
+                price_change_count INTEGER DEFAULT 0,
+                scraped_at TEXT,
+                UNIQUE(source, property_id)
+            )
+        ''')
+        self._create_price_history_table()
+        self.conn.commit()
+        logger.info("[PIPELINE:SQLite] Full schema created successfully")
+
+    def _add_missing_columns(self, missing_columns):
+        """Add missing columns to existing listings table."""
+        column_defaults = {
+            'address_fingerprint': 'TEXT',
+            'first_seen': 'TEXT',
+            'last_seen': 'TEXT',
+            'is_active': 'INTEGER DEFAULT 1',
+            'price_change_count': 'INTEGER DEFAULT 0',
+        }
+        for col in missing_columns:
+            col_type = column_defaults.get(col, 'TEXT')
+            self.cursor.execute(f'ALTER TABLE listings ADD COLUMN {col} {col_type}')
+            logger.info(f"[PIPELINE:SQLite] Added column: {col} ({col_type})")
+        self.conn.commit()
+
+    def _create_price_history_table(self):
+        """Create price_history table for tracking price changes."""
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS price_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                listing_id INTEGER NOT NULL,
+                price_pcm INTEGER,
+                recorded_at TEXT,
+                FOREIGN KEY (listing_id) REFERENCES listings(id)
+            )
+        ''')
+        self.cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_price_history_listing
+            ON price_history(listing_id)
+        ''')
 
     def process_item(self, item, spider):
         """Smart upsert with historical tracking (PRD-003).
@@ -418,17 +571,28 @@ class SQLitePipeline:
         if item_success:
             self.pending_count += 1
             if self.pending_count >= self.BATCH_SIZE:
-                try:
-                    self.conn.commit()
-                    self.batch_count += 1
-                    total = self.stats['inserted'] + self.stats['updated']
-                    logger.info(
-                        f"[PIPELINE:SQLite] Batch {self.batch_count} committed "
-                        f"({total} total, {self.stats['price_changes']} price changes)"
-                    )
-                    self.pending_count = 0
-                except sqlite3.Error as e:
-                    logger.error(f"[PIPELINE:SQLite] Batch commit failed: {e}")
+                # Retry commit with exponential backoff for database locks
+                for attempt in range(5):
+                    try:
+                        self.conn.commit()
+                        self.batch_count += 1
+                        total = self.stats['inserted'] + self.stats['updated']
+                        logger.info(
+                            f"[PIPELINE:SQLite] Batch {self.batch_count} committed "
+                            f"({total} total, {self.stats['price_changes']} price changes)"
+                        )
+                        self.pending_count = 0
+                        break
+                    except sqlite3.OperationalError as e:
+                        if "database is locked" in str(e) and attempt < 4:
+                            wait_time = (attempt + 1) * 2  # 2s, 4s, 6s, 8s
+                            logger.warning(f"[PIPELINE:SQLite] Database locked, retrying in {wait_time}s ({attempt + 1}/5)")
+                            time.sleep(wait_time)
+                        else:
+                            logger.error(f"[PIPELINE:SQLite] Batch commit failed after 5 attempts: {e}")
+                    except sqlite3.Error as e:
+                        logger.error(f"[PIPELINE:SQLite] Batch commit failed: {e}")
+                        break
 
         return item
 
@@ -621,17 +785,28 @@ class SQLitePipeline:
 
     def close_spider(self, spider):
         if self.conn:
-            # CRITICAL FIX (Grok review): Wrap final commit in try/except
+            # CRITICAL FIX (Grok review): Wrap final commit in try/except with retry
             # Previously, if final commit failed, it could crash and skip logging.
             if self.pending_count > 0:
-                try:
-                    self.conn.commit()
-                    logger.info(
-                        f"[PIPELINE:SQLite] Final batch committed ({self.pending_count} items)"
-                    )
-                except sqlite3.Error as e:
-                    logger.error(f"[PIPELINE:SQLite] Final commit failed: {e}")
-                    self.stats['errors'] += self.pending_count
+                for attempt in range(5):
+                    try:
+                        self.conn.commit()
+                        logger.info(
+                            f"[PIPELINE:SQLite] Final batch committed ({self.pending_count} items)"
+                        )
+                        break
+                    except sqlite3.OperationalError as e:
+                        if "database is locked" in str(e) and attempt < 4:
+                            wait_time = (attempt + 1) * 2
+                            logger.warning(f"[PIPELINE:SQLite] Final commit: database locked, retrying in {wait_time}s ({attempt + 1}/5)")
+                            time.sleep(wait_time)
+                        else:
+                            logger.error(f"[PIPELINE:SQLite] Final commit failed after 5 attempts: {e}")
+                            self.stats['errors'] += self.pending_count
+                    except sqlite3.Error as e:
+                        logger.error(f"[PIPELINE:SQLite] Final commit failed: {e}")
+                        self.stats['errors'] += self.pending_count
+                        break
 
             elapsed = time.time() - self.start_time if self.start_time else 0
 

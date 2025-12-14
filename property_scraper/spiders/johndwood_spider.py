@@ -85,8 +85,23 @@ class JohnDWoodSpider(scrapy.Spider):
         self.logger.info(f"[CONFIG] Areas: {', '.join(self.areas)}")
         self.logger.info("=" * 70)
 
+    def _is_target_area(self, area: str) -> bool:
+        """Issue #32 FIX: Check if property is in target area(s).
+
+        John D Wood has a single listings URL, so we filter results post-extraction.
+        """
+        if not area:
+            return True  # Include if no area specified
+        normalized = area.lower().replace(' ', '-').replace("'", '')
+        # Check for partial match (e.g., 'chelsea' matches 'chelsea-harbour')
+        return any(target in normalized or normalized in target for target in self.areas)
+
     def start_requests(self):
-        """Generate initial request for all lettings."""
+        """Generate initial request for all lettings.
+
+        Note: John D Wood uses a single listings URL - area filtering is applied
+        post-extraction based on the 'areas' argument.
+        """
         # John D Wood uses a single listings page - no area-based URLs
         url = 'https://www.johndwood.co.uk/properties/lettings'
         self.logger.info(f"[REQUEST] Starting: {url}")
@@ -408,6 +423,11 @@ class JohnDWoodSpider(scrapy.Spider):
             # Timestamps
             item['scraped_at'] = datetime.utcnow().isoformat()
 
+            # Issue #32 FIX: Filter by target areas
+            if not self._is_target_area(item.get('area')):
+                self.logger.debug(f"[SKIP] {property_id}: area '{item.get('area')}' not in target areas")
+                return
+
             # Update stats
             self.stats['total'] += 1
             if item.get('size_sqft'):
@@ -618,9 +638,9 @@ class JohnDWoodSpider(scrapy.Spider):
 
     def closed(self, reason):
         """Log final statistics when spider closes."""
-        # Clean up the thread pool executor
+        # Issue #21 FIX: Wait for threads to complete to prevent orphan threads
         if hasattr(self, 'executor') and self.executor:
-            self.executor.shutdown(wait=False)
+            self.executor.shutdown(wait=True)
 
         elapsed = time.time() - self.stats['start_time']
 

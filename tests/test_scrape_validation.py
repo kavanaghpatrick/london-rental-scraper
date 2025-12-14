@@ -30,13 +30,21 @@ from typing import Dict, Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Database path
-DB_PATH = Path(__file__).parent.parent / "output" / "rentals.db"
+# Issue #35 FIX: Make DB path configurable via environment variable
+# Allows tests to run on CI or with alternative test databases
+DB_PATH = Path(os.environ.get('SCRAPER_DB_PATH',
+    Path(__file__).parent.parent / "output" / "rentals.db"))
 SNAPSHOT_PATH = Path(__file__).parent / "scrape_snapshot.json"
 
 
 def get_db_stats() -> Dict[str, Any]:
-    """Get current database statistics."""
+    """Get current database statistics.
+
+    Issue #35 FIX: Returns empty dict if database doesn't exist.
+    """
+    if not DB_PATH.exists():
+        return {}
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
