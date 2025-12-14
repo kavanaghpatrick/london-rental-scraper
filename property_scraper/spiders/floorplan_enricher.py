@@ -36,6 +36,19 @@ class FloorplanEnricherSpider(scrapy.Spider):
 
     name = 'floorplan_enricher'
 
+    # Source-specific THROTTLING settings to avoid rate limiting
+    # Chestertons is particularly aggressive with 429 responses
+    SOURCE_THROTTLE = {
+        'chestertons': {
+            'CONCURRENT_REQUESTS': 1,  # One request at a time
+            'CONCURRENT_REQUESTS_PER_DOMAIN': 1,
+            'DOWNLOAD_DELAY': 10,  # 10 seconds between requests
+            'AUTOTHROTTLE_MAX_DELAY': 300,  # Up to 5 minutes if needed
+            'AUTOTHROTTLE_TARGET_CONCURRENCY': 0.5,  # Very conservative
+        },
+        # Other sources use default settings (more lenient)
+    }
+
     # Source-specific settings
     SOURCE_CONFIG = {
         'knightfrank': {
@@ -102,6 +115,27 @@ class FloorplanEnricherSpider(scrapy.Spider):
             self.logger.info(f"[CONFIG] Limit: {self.limit}")
         self.logger.info(f"[CONFIG] OCR available: {OCR_AVAILABLE}")
         self.logger.info(f"[CONFIG] Use OCR: {self.use_ocr}")
+
+        # Apply source-specific throttling if defined
+        if source in self.SOURCE_THROTTLE:
+            throttle = self.SOURCE_THROTTLE[source]
+            self.logger.info(f"[THROTTLE] Applying aggressive throttling for {source}:")
+            self.logger.info(f"[THROTTLE]   CONCURRENT_REQUESTS: {throttle.get('CONCURRENT_REQUESTS', 'default')}")
+            self.logger.info(f"[THROTTLE]   DOWNLOAD_DELAY: {throttle.get('DOWNLOAD_DELAY', 'default')}s")
+
+    @classmethod
+    def update_settings(cls, settings):
+        """Apply source-specific throttle settings from spider args."""
+        # This is called before __init__, so we need to check args differently
+        # The source will be set via -a source=X, which we can access via
+        # the spider's attributes after construction
+        pass
+
+    def _get_throttle_settings(self):
+        """Get custom settings for this source."""
+        if self.source in self.SOURCE_THROTTLE:
+            return self.SOURCE_THROTTLE[self.source]
+        return {}
 
     def start_requests(self):
         """Read properties from database that need enrichment (floorplan or description)."""

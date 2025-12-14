@@ -35,24 +35,48 @@ class RotateUserAgentMiddleware:
 
 
 class RateLimitMiddleware:
-    """Handle 429 rate limit responses with exponential backoff."""
+    """Handle 429 rate limit responses with GLOBAL exponential backoff.
+
+    When ANY request gets 429, ALL requests pause to let the rate limit reset.
+    This prevents hammering the server while individual requests back off.
+    """
 
     def __init__(self):
         self.retry_times = {}
+        # Global backoff state - shared across all requests
+        self.global_backoff_until = 0
+        self.consecutive_429s = 0
+        self.base_backoff = 60  # Start with 60 second global backoff
+
+    def process_request(self, request, spider):
+        """Check global backoff before processing any request."""
+        now = time.time()
+        if now < self.global_backoff_until:
+            wait_time = self.global_backoff_until - now
+            logger.info(f"[GLOBAL-BACKOFF] Waiting {wait_time:.0f}s before {request.url[:60]}...")
+            time.sleep(wait_time)
 
     def process_response(self, request, response, spider):
         if response.status == 429:
-            # Get retry count
+            self.consecutive_429s += 1
+
+            # Calculate global backoff: exponential based on consecutive 429s
+            # 60s, 120s, 240s, 480s (max 8 min)
+            global_wait = min(self.base_backoff * (2 ** min(self.consecutive_429s - 1, 3)), 480)
+            self.global_backoff_until = time.time() + global_wait
+
+            logger.warning(
+                f"[RATE-LIMIT] 429 on {request.url[:60]}... | "
+                f"Consecutive 429s: {self.consecutive_429s} | "
+                f"GLOBAL PAUSE: {global_wait}s for ALL requests"
+            )
+
+            # Get per-URL retry count
             retries = self.retry_times.get(request.url, 0)
 
             if retries < 3:
-                # Exponential backoff
-                wait_time = 30 * (2 ** retries)
-                logger.warning(
-                    f"Rate limited (429) on {request.url}, "
-                    f"waiting {wait_time}s (retry {retries + 1}/3)"
-                )
-                time.sleep(wait_time)
+                # Wait the global backoff period
+                time.sleep(global_wait)
 
                 self.retry_times[request.url] = retries + 1
 
@@ -61,7 +85,11 @@ class RateLimitMiddleware:
                 new_request.dont_filter = True
                 return new_request
             else:
-                logger.error(f"Max retries exceeded for {request.url}")
+                logger.error(f"[RATE-LIMIT] Max retries exceeded for {request.url}")
+        else:
+            # Successful response - decay the consecutive 429 counter
+            if self.consecutive_429s > 0:
+                self.consecutive_429s = max(0, self.consecutive_429s - 1)
 
         return response
 
