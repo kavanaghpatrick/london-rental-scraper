@@ -61,9 +61,12 @@ export default async function ValuationReport() {
   let ppsfByDistrict: { district: string; median_ppsf: number; count: number }[] = [];
   let error = null;
 
+  // Extract postcode area for filtering (e.g., 'SW1W' -> 'SW1')
+  const postcodeArea = SUBJECT.postcode.match(/^([A-Z]+\d+)/)?.[1] || SUBJECT.postcode.slice(0, 3);
+
   try {
     [comparables, marketStats, ppsfDistribution, ppsfByDistrict] = await Promise.all([
-      getComparables(SUBJECT.size_sqft, SUBJECT.bedrooms, 0.20, subjectPpsf),
+      getComparables(SUBJECT.size_sqft, SUBJECT.bedrooms, 0.30, subjectPpsf, postcodeArea),
       getMarketStats(),
       getPpsfDistribution(),
       getPpsfByDistrict(),
@@ -216,7 +219,7 @@ export default async function ValuationReport() {
         <div className="bg-white rounded-xl shadow p-6 mb-6">
           <h2 className="text-lg font-semibold border-b pb-2 mb-4 text-blue-900">Comparable Properties by Location Tier</h2>
           <p className="text-sm text-gray-600 mb-4">
-            Properties similar in size (±20%) with {SUBJECT.bedrooms} bedrooms, ranked by location relevance.
+            {SUBJECT.bedrooms}-bed properties in {postcodeArea} area, ±30% size, ranked by £/sqft proximity to subject.
             <span className="ml-2 px-2 py-0.5 bg-green-100 rounded text-green-800 text-xs">Green</span> = lower £/sqft,
             <span className="ml-1 px-2 py-0.5 bg-red-100 rounded text-red-800 text-xs">Red</span> = higher £/sqft
           </p>
@@ -305,10 +308,10 @@ export default async function ValuationReport() {
         <div className="bg-white rounded-xl shadow p-6 mb-6">
           <h2 className="text-lg font-semibold border-b pb-2 mb-4 text-blue-900">Methodology</h2>
           <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 space-y-2">
-            <p><strong>Model:</strong> XGBoost regression with 46+ features including size, location encodings, amenities, and property type indicators.</p>
+            <p><strong>Model:</strong> XGBoost V15 regression with 79 features including size, location encodings, amenities, floor data, and property type indicators.</p>
             <p><strong>Training Data:</strong> {marketStats.total_listings?.toLocaleString() || 0} active London rental listings from multiple agents (Savills, Knight Frank, Foxtons, Chestertons, Rightmove).</p>
             <p><strong>Confidence Range:</strong> Based on model&apos;s ~18% median absolute percentage error.</p>
-            <p><strong>Comparables:</strong> Properties within ±20% of subject size, matching bedroom count, from active listings.</p>
+            <p><strong>Comparables:</strong> {SUBJECT.bedrooms}-bed properties in {postcodeArea} area, ±30% size, ranked by £/sqft proximity to subject property.</p>
           </div>
         </div>
 
@@ -363,24 +366,32 @@ function TierSection({
               <th className="pb-2 text-right">Rent</th>
               <th className="pb-2 text-right">Size</th>
               <th className="pb-2 text-right">£/sqft</th>
+              <th className="pb-2 text-right">vs Subject</th>
               <th className="pb-2">Source</th>
             </tr>
           </thead>
           <tbody>
-            {items.slice(0, 5).map((comp, idx) => {
+            {items.slice(0, 8).map((comp, idx) => {
               const pctDiff = ((comp.ppsf / subjectPpsf) - 1) * 100;
               const rowBg = pctDiff > 10 ? 'bg-red-100' : pctDiff < -10 ? 'bg-green-100' : '';
+              const ppsfDiffDisplay = comp.ppsf_diff !== undefined
+                ? (comp.ppsf > subjectPpsf ? `+£${comp.ppsf_diff.toFixed(2)}` : `-£${comp.ppsf_diff.toFixed(2)}`)
+                : '';
+              const sizeDiffDisplay = comp.size_diff_pct !== undefined
+                ? `${comp.size_sqft > subjectSize ? '+' : '-'}${comp.size_diff_pct}%`
+                : '';
               return (
                 <tr key={idx} className={rowBg}>
                   <td className="py-1">
                     <a href={comp.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                      {comp.address?.slice(0, 40)}{comp.address?.length > 40 ? '...' : ''}
+                      {comp.address?.slice(0, 35)}{comp.address?.length > 35 ? '...' : ''}
                     </a>
                   </td>
                   <td className="py-1">{comp.district}</td>
                   <td className="py-1 text-right">£{comp.price_pcm.toLocaleString()}</td>
-                  <td className="py-1 text-right">{comp.size_sqft.toLocaleString()}</td>
+                  <td className="py-1 text-right">{comp.size_sqft.toLocaleString()} <span className="text-xs text-gray-400">({sizeDiffDisplay})</span></td>
                   <td className="py-1 text-right">£{comp.ppsf.toFixed(2)}</td>
+                  <td className="py-1 text-right text-xs">{ppsfDiffDisplay}</td>
                   <td className="py-1">{comp.source}</td>
                 </tr>
               );
@@ -388,8 +399,8 @@ function TierSection({
           </tbody>
         </table>
       </div>
-      {items.length > 5 && (
-        <p className="text-xs text-gray-500 mt-2">Showing 5 of {items.length}</p>
+      {items.length > 8 && (
+        <p className="text-xs text-gray-500 mt-2">Showing 8 of {items.length}</p>
       )}
     </div>
   );

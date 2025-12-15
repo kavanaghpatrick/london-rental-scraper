@@ -154,8 +154,11 @@ export interface Comparable {
   price_pcm: number;
   size_sqft: number;
   bedrooms: number;
+  bathrooms: number;
   url: string;
   ppsf: number;
+  ppsf_diff: number;  // Difference from subject £/sqft
+  size_diff_pct: number;  // Size difference as percentage
 }
 
 export interface MarketStats {
@@ -174,16 +177,16 @@ export interface PpsfDistribution {
 export async function getComparables(
   sizeSqft: number,
   bedrooms: number,
-  sizeRange: number = 0.20,
-  subjectPpsf?: number
+  sizeRange: number = 0.30,
+  subjectPpsf: number,
+  postcodeArea?: string  // e.g., 'SW1' to filter to SW1X, SW1W, SW1A, etc.
 ): Promise<Comparable[]> {
   const minSize = Math.floor(sizeSqft * (1 - sizeRange));
   const maxSize = Math.ceil(sizeSqft * (1 + sizeRange));
 
-  // Order by proximity to subject £/sqft if provided, otherwise by price
-  const orderClause = subjectPpsf
-    ? `ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf})`
-    : `price_pcm`;
+  // Build postcode filter - if postcodeArea provided, filter to that area
+  // e.g., 'SW1' matches SW1W, SW1X, SW1A, etc.
+  const postcodePattern = postcodeArea ? `${postcodeArea}%` : '%';
 
   const { rows } = await sql<Comparable>`
     SELECT
@@ -197,8 +200,11 @@ export async function getComparables(
       price_pcm::int as price_pcm,
       size_sqft::int as size_sqft,
       bedrooms::int as bedrooms,
+      COALESCE(bathrooms, 1)::int as bathrooms,
       url,
-      ROUND((price_pcm::numeric / size_sqft::numeric), 2)::float as ppsf
+      ROUND((price_pcm::numeric / size_sqft::numeric), 2)::float as ppsf,
+      ROUND(ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf}), 2)::float as ppsf_diff,
+      ROUND(ABS(size_sqft::numeric - ${sizeSqft}) / ${sizeSqft} * 100, 0)::int as size_diff_pct
     FROM listings
     WHERE is_active = 1
       AND size_sqft IS NOT NULL
@@ -207,8 +213,9 @@ export async function getComparables(
       AND price_pcm > 0
       AND size_sqft BETWEEN ${minSize} AND ${maxSize}
       AND bedrooms = ${bedrooms}
-    ORDER BY ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf || 6.80})
-    LIMIT 200
+      AND postcode LIKE ${postcodePattern}
+    ORDER BY ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf})
+    LIMIT 100
   `;
   return rows;
 }

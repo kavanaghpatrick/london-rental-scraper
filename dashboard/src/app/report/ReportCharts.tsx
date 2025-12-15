@@ -33,8 +33,11 @@ interface Comparable {
   price_pcm: number;
   size_sqft: number;
   bedrooms: number;
+  bathrooms: number;
   url: string;
   ppsf: number;
+  ppsf_diff: number;
+  size_diff_pct: number;
   tier: { num: number; label: string };
 }
 
