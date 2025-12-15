@@ -100,10 +100,20 @@ export default function ReportCharts({
     .slice(0, 15)
     .map(c => ({
       address: c.address?.slice(0, 30) + (c.address?.length > 30 ? '...' : ''),
+      fullAddress: c.address,
       price: c.price_pcm,
       ppsf: c.ppsf,
       tier: c.tier.num,
+      url: c.url,
     }));
+
+  // Handle bar click to open property URL
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleBarClick = (data: any) => {
+    if (data?.url) {
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -231,7 +241,7 @@ export default function ReportCharts({
 
       {/* Top Comparables */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Top Comparables by Price</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Top Comparables by Price <span className="font-normal text-gray-500">(click bar to view listing)</span></h3>
         <ResponsiveContainer width="100%" height={400}>
           <BarChart data={topComparables} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" />
@@ -244,9 +254,10 @@ export default function ReportCharts({
                   const data = payload[0].payload;
                   return (
                     <div className="bg-white border shadow-lg p-2 text-xs">
-                      <p className="font-semibold">{data.address}</p>
+                      <p className="font-semibold">{data.fullAddress || data.address}</p>
                       <p>Rent: £{data.price.toLocaleString()}</p>
                       <p>£/sqft: £{data.ppsf.toFixed(2)}</p>
+                      <p className="text-blue-600 mt-1">Click to view listing →</p>
                     </div>
                   );
                 }
@@ -260,7 +271,7 @@ export default function ReportCharts({
               strokeDasharray="5 5"
               label={{ value: `Valuation: £${subjectPrice.toLocaleString()}`, fill: '#dc2626', fontSize: 10 }}
             />
-            <Bar dataKey="price">
+            <Bar dataKey="price" onClick={handleBarClick} style={{ cursor: 'pointer' }}>
               {topComparables.map((entry, index) => (
                 <Cell key={index} fill={TIER_COLORS[entry.tier] || '#757575'} />
               ))}
