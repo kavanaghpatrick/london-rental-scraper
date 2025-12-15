@@ -89,7 +89,7 @@ export default async function ValuationReport() {
 
   try {
     [comparables, marketStats, ppsfDistribution, ppsfByDistrict] = await Promise.all([
-      getComparables(SUBJECT.size_sqft, SUBJECT.bedrooms, 0.30, subjectPpsf, postcodeArea),
+      getComparables(SUBJECT.size_sqft, SUBJECT.bedrooms, 0.40, subjectPpsf, postcodeArea),
       getMarketStats(),
       getPpsfDistribution(),
       getPpsfByDistrict(),
@@ -288,7 +288,7 @@ export default async function ValuationReport() {
         <div className="bg-white rounded-xl shadow p-6 mb-6">
           <h2 className="text-lg font-semibold border-b pb-2 mb-4 text-blue-900">Comparable Properties by Location Tier</h2>
           <p className="text-sm text-gray-600 mb-4">
-            {SUBJECT.bedrooms}-bed properties in {postcodeArea} area, ±30% size, ranked by £/sqft proximity to subject.
+            Properties in {postcodeArea} area (±40% size) ranked by negotiation utility: cheaper comps, similar/larger size, and matching bedrooms score highest.
             <span className="ml-2 px-2 py-0.5 bg-green-100 rounded text-green-800 text-xs">Green</span> = lower £/sqft,
             <span className="ml-1 px-2 py-0.5 bg-red-100 rounded text-red-800 text-xs">Red</span> = higher £/sqft
           </p>
@@ -380,7 +380,7 @@ export default async function ValuationReport() {
             <p><strong>Model:</strong> XGBoost V15 regression with 79 features including size, location encodings, amenities, floor data, and property type indicators.</p>
             <p><strong>Training Data:</strong> {marketStats.total_listings?.toLocaleString() || 0} active London rental listings from multiple agents (Savills, Knight Frank, Foxtons, Chestertons, Rightmove).</p>
             <p><strong>Confidence Range:</strong> Based on model&apos;s ~18% median absolute percentage error.</p>
-            <p><strong>Comparables:</strong> {SUBJECT.bedrooms}-bed properties in {postcodeArea} area, ±30% size, ranked by £/sqft proximity to subject property.</p>
+            <p><strong>Comparables:</strong> Properties in {postcodeArea} area (±40% size) ranked by negotiation utility score. Score prioritizes cheaper comps, similar/larger size, and matching bedroom counts - optimized for rent negotiation leverage.</p>
           </div>
         </div>
 

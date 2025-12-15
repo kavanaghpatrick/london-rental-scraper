@@ -210,7 +210,7 @@ export interface PpsfDistribution {
 export async function getComparables(
   sizeSqft: number,
   bedrooms: number,
-  sizeRange: number = 0.30,
+  sizeRange: number = 0.40,  // Wider range for better comps
   subjectPpsf: number,
   postcodeArea?: string  // e.g., 'SW1' to filter to SW1X, SW1W, SW1A, etc.
 ): Promise<Comparable[]> {
@@ -218,11 +218,14 @@ export async function getComparables(
   const maxSize = Math.ceil(sizeSqft * (1 + sizeRange));
 
   // Build postcode filter - if postcodeArea provided, filter to that area
-  // e.g., 'SW1' matches SW1W, SW1X, SW1A, etc.
   const postcodePattern = postcodeArea ? `${postcodeArea}%` : '%';
 
-  // Use CTE with ROW_NUMBER to dedupe cross-source duplicates
-  // Same property appears on Rightmove AND agent sites - keep agent version (better data)
+  // NEGOTIATION-OPTIMIZED COMP SELECTION
+  // Instead of hard bedroom filter, use a utility score:
+  // - £/sqft proximity (primary factor)
+  // - Bonus for cheaper than subject (useful for negotiating down)
+  // - Bonus for same/larger size (harder to dismiss)
+  // - Bonus for same/more bedrooms (harder to dismiss)
   const { rows } = await sql<Comparable>`
     WITH ranked AS (
       SELECT
@@ -240,7 +243,20 @@ export async function getComparables(
         url,
         ROUND((price_pcm::numeric / size_sqft::numeric), 2)::float as ppsf,
         ROUND(ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf}), 2)::float as ppsf_diff,
-        ROUND(ABS(size_sqft::numeric - ${sizeSqft}) / ${sizeSqft} * 100, 0)::int as size_diff_pct,
+        ROUND((size_sqft::numeric - ${sizeSqft}) / ${sizeSqft} * 100, 0)::int as size_diff_pct,
+        -- Negotiation utility score (higher = more useful for negotiating down)
+        (
+          -- Base: inverse of £/sqft difference (closer = better)
+          100 - LEAST(ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf}) * 15, 100)
+          -- Bonus: cheaper than subject (great for negotiation)
+          + CASE WHEN (price_pcm::numeric / size_sqft::numeric) < ${subjectPpsf} THEN 25 ELSE 0 END
+          -- Bonus: same or larger size (can't dismiss as "too small")
+          + CASE WHEN size_sqft >= ${sizeSqft} THEN 15 ELSE 0 END
+          -- Bonus: same or more bedrooms (can't dismiss as "fewer rooms")
+          + CASE WHEN bedrooms >= ${bedrooms} THEN 15 ELSE 0 END
+          -- Bonus: exact bedroom match
+          + CASE WHEN bedrooms = ${bedrooms} THEN 10 ELSE 0 END
+        )::int as utility_score,
         ROW_NUMBER() OVER (
           PARTITION BY price_pcm, size_sqft,
             CASE WHEN POSITION(' ' IN postcode) > 0 THEN SUBSTRING(postcode, 1, POSITION(' ' IN postcode) - 1) ELSE postcode END
@@ -253,13 +269,12 @@ export async function getComparables(
         AND price_pcm IS NOT NULL
         AND price_pcm > 0
         AND size_sqft BETWEEN ${minSize} AND ${maxSize}
-        AND bedrooms = ${bedrooms}
         AND postcode LIKE ${postcodePattern}
     )
     SELECT address, postcode, district, source, price_pcm, size_sqft, bedrooms, bathrooms, url, ppsf, ppsf_diff, size_diff_pct
     FROM ranked
     WHERE rn = 1
-    ORDER BY ppsf_diff
+    ORDER BY utility_score DESC, ppsf_diff ASC
     LIMIT 100
   `;
   return rows;
