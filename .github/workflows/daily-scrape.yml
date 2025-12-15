@@ -206,11 +206,99 @@ jobs:
               print(f"Error: {e}")
           EOF
 
+      - name: Clean duplicate listings
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              print("POSTGRES_URL not set")
+              exit(0)
+
+          conn = psycopg2.connect(url)
+          cursor = conn.cursor()
+
+          # Find duplicates to delete (keep best source per price/size/beds/district cluster)
+          cursor.execute("""
+              WITH ranked AS (
+                  SELECT
+                      id,
+                      ROW_NUMBER() OVER (
+                          PARTITION BY price_pcm, size_sqft, bedrooms, SPLIT_PART(postcode, ' ', 1)
+                          ORDER BY
+                              CASE source
+                                  WHEN 'savills' THEN 1 WHEN 'knightfrank' THEN 2
+                                  WHEN 'chestertons' THEN 3 WHEN 'foxtons' THEN 4
+                                  ELSE 5
+                              END, id
+                      ) as rn,
+                      COUNT(*) OVER (PARTITION BY price_pcm, size_sqft, bedrooms, SPLIT_PART(postcode, ' ', 1)) as cnt
+                  FROM listings
+                  WHERE is_active = 1 AND size_sqft > 0 AND price_pcm > 0
+              )
+              SELECT id FROM ranked WHERE cnt > 1 AND rn > 1
+          """)
+          to_delete = [row[0] for row in cursor.fetchall()]
+
+          if to_delete:
+              # Delete price_history first (FK constraint)
+              placeholders = ','.join(['%s'] * len(to_delete))
+              cursor.execute(f"DELETE FROM price_history WHERE listing_id IN ({placeholders})", to_delete)
+              cursor.execute(f"DELETE FROM listings WHERE id IN ({placeholders})", to_delete)
+              conn.commit()
+              print(f"✅ Removed {len(to_delete)} duplicate listings")
+          else:
+              print("✅ No duplicates found")
+
+          conn.close()
+          EOF
+
       - name: Train price prediction model (V15)
         run: |
           pip install xgboost scikit-learn optuna pandas numpy
-          python rental_price_models_v15.py --quick 2>&1 | tee model_output.txt
-        continue-on-error: true
+          # Full training for scheduled runs, quick mode for manual tests
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "Running FULL model training (Optuna optimization)..."
+            python rental_price_models_v15.py 2>&1 | tee model_output.txt
+          else
+            echo "Running QUICK model training (skip Optuna)..."
+            python rental_price_models_v15.py --quick 2>&1 | tee model_output.txt
+          fi
+        timeout-minutes: 30
+
+      - name: Show model results
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              exit(0)
+
+          try:
+              conn = psycopg2.connect(url)
+              cursor = conn.cursor()
+
+              cursor.execute("""
+                  SELECT run_id, version, samples_total, r2_score, mae, mape, median_ape
+                  FROM model_runs ORDER BY created_at DESC LIMIT 1
+              """)
+              row = cursor.fetchone()
+              if row:
+                  print(f"=== Latest Model: {row[0]} ({row[1]}) ===")
+                  print(f"  Samples: {row[2]}")
+                  print(f"  R²: {row[3]:.4f}")
+                  print(f"  MAE: £{row[4]:,.0f}")
+                  print(f"  MAPE: {row[5]:.1f}%")
+                  print(f"  Median APE: {row[6]:.1f}%")
+
+              conn.close()
+          except Exception as e:
+              print(f"Error: {e}")
+          EOF
 
       # Note: Negotiation report is now generated dynamically at /report
       # No static files needed - data is fetched fresh from Postgres on each load
