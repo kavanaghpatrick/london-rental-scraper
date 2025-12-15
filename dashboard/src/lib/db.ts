@@ -144,6 +144,129 @@ export async function getModelRuns(limit: number = 20): Promise<ModelRun[]> {
   return rows;
 }
 
+// ============ Valuation Report Functions ============
+
+export interface Comparable {
+  address: string;
+  postcode: string;
+  district: string;
+  source: string;
+  price_pcm: number;
+  size_sqft: number;
+  bedrooms: number;
+  url: string;
+  ppsf: number;
+}
+
+export interface MarketStats {
+  total_listings: number;
+  median_ppsf: number;
+  p25_ppsf: number;
+  p75_ppsf: number;
+  avg_ppsf: number;
+}
+
+export interface PpsfDistribution {
+  bucket: number;
+  count: number;
+}
+
+export async function getComparables(
+  sizeSqft: number,
+  bedrooms: number,
+  sizeRange: number = 0.20
+): Promise<Comparable[]> {
+  const minSize = Math.floor(sizeSqft * (1 - sizeRange));
+  const maxSize = Math.ceil(sizeSqft * (1 + sizeRange));
+
+  const { rows } = await sql<Comparable>`
+    SELECT
+      address,
+      postcode,
+      CASE
+        WHEN POSITION(' ' IN postcode) > 0 THEN SUBSTRING(postcode, 1, POSITION(' ' IN postcode) - 1)
+        ELSE postcode
+      END as district,
+      source,
+      price_pcm::int as price_pcm,
+      size_sqft::int as size_sqft,
+      bedrooms::int as bedrooms,
+      url,
+      ROUND((price_pcm::numeric / size_sqft::numeric), 2)::float as ppsf
+    FROM listings
+    WHERE is_active = 1
+      AND size_sqft IS NOT NULL
+      AND size_sqft > 0
+      AND price_pcm IS NOT NULL
+      AND price_pcm > 0
+      AND size_sqft BETWEEN ${minSize} AND ${maxSize}
+      AND bedrooms = ${bedrooms}
+    ORDER BY price_pcm DESC
+    LIMIT 200
+  `;
+  return rows;
+}
+
+export async function getMarketStats(): Promise<MarketStats> {
+  const { rows } = await sql<MarketStats>`
+    SELECT
+      COUNT(*)::int as total_listings,
+      ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price_pcm::numeric / size_sqft::numeric))::numeric, 2)::float as median_ppsf,
+      ROUND((PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY price_pcm::numeric / size_sqft::numeric))::numeric, 2)::float as p25_ppsf,
+      ROUND((PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY price_pcm::numeric / size_sqft::numeric))::numeric, 2)::float as p75_ppsf,
+      ROUND((AVG(price_pcm::numeric / size_sqft::numeric))::numeric, 2)::float as avg_ppsf
+    FROM listings
+    WHERE is_active = 1
+      AND size_sqft IS NOT NULL AND size_sqft > 100
+      AND price_pcm IS NOT NULL AND price_pcm > 500
+  `;
+  return rows[0];
+}
+
+export async function getPpsfDistribution(): Promise<PpsfDistribution[]> {
+  const { rows } = await sql<PpsfDistribution>`
+    SELECT
+      FLOOR(price_pcm::numeric / size_sqft::numeric)::int as bucket,
+      COUNT(*)::int as count
+    FROM listings
+    WHERE is_active = 1
+      AND size_sqft IS NOT NULL AND size_sqft > 100
+      AND price_pcm IS NOT NULL AND price_pcm > 500
+      AND (price_pcm::numeric / size_sqft::numeric) BETWEEN 1 AND 20
+    GROUP BY bucket
+    ORDER BY bucket
+  `;
+  return rows;
+}
+
+export async function getPpsfByDistrict(): Promise<{ district: string; median_ppsf: number; count: number }[]> {
+  const { rows } = await sql<{ district: string; median_ppsf: number; count: number }>`
+    WITH district_data AS (
+      SELECT
+        CASE
+          WHEN POSITION(' ' IN postcode) > 0 THEN SUBSTRING(postcode, 1, POSITION(' ' IN postcode) - 1)
+          ELSE postcode
+        END as district,
+        price_pcm::numeric / size_sqft::numeric as ppsf
+      FROM listings
+      WHERE is_active = 1
+        AND size_sqft IS NOT NULL AND size_sqft > 100
+        AND price_pcm IS NOT NULL AND price_pcm > 500
+    )
+    SELECT
+      district,
+      ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ppsf))::numeric, 2)::float as median_ppsf,
+      COUNT(*)::int as count
+    FROM district_data
+    WHERE district IS NOT NULL AND district != ''
+    GROUP BY district
+    HAVING COUNT(*) >= 5
+    ORDER BY median_ppsf DESC
+    LIMIT 15
+  `;
+  return rows;
+}
+
 export async function getHealthStatus(): Promise<{
   lastRun: string | null;
   lastStatus: string;

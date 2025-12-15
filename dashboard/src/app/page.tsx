@@ -108,7 +108,7 @@ export default async function Dashboard() {
           <h1 className="text-3xl font-bold">Rental Scraper Dashboard</h1>
           <div className="flex items-center gap-4">
             <a
-              href="/report/negotiation_report.html"
+              href="/report"
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
             >
               Property Valuation Report

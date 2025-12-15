@@ -212,23 +212,8 @@ jobs:
           python rental_price_models_v15.py --quick 2>&1 | tee model_output.txt
         continue-on-error: true
 
-      - name: Generate negotiation report
-        run: |
-          pip install matplotlib
-          python scripts/generate_negotiation_report.py 2>&1 | tee report_output.txt
-          # Copy report to dashboard public folder
-          mkdir -p dashboard/public/report
-          cp -r output/negotiation_report/* dashboard/public/report/
-        continue-on-error: true
-
-      - name: Commit and push report updates
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add dashboard/public/report/
-          git diff --staged --quiet || git commit -m "Update negotiation report $(date +%Y-%m-%d)"
-          git push || echo "No changes to push"
-        continue-on-error: true
+      # Note: Negotiation report is now generated dynamically at /report
+      # No static files needed - data is fetched fresh from Postgres on each load
 
       - name: Upload logs artifact
         uses: actions/upload-artifact@v4
