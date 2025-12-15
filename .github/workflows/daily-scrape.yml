@@ -101,6 +101,40 @@ jobs:
           ITEMS=$(grep -oP 'Total: \K[\d,]+' scrape_output.txt | tail -1 || echo "0")
           echo "items_scraped=$ITEMS" >> $GITHUB_OUTPUT
 
+      - name: Mark stale listings inactive
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              exit(0)
+
+          try:
+              conn = psycopg2.connect(url)
+              cursor = conn.cursor()
+
+              # Mark listings not seen in 2+ days as inactive
+              cursor.execute("""
+                  UPDATE listings
+                  SET is_active = 0
+                  WHERE last_seen::timestamp < NOW() - INTERVAL '2 days'
+                  AND is_active = 1
+              """)
+              marked = cursor.rowcount
+              conn.commit()
+
+              if marked > 0:
+                  print(f"Marked {marked} stale listings as inactive")
+              else:
+                  print("No stale listings to mark inactive")
+
+              conn.close()
+          except Exception as e:
+              print(f"Error marking inactive: {e}")
+          EOF
+
       - name: Show database stats
         run: |
           python3 << 'EOF'
