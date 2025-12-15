@@ -196,6 +196,29 @@ def load_and_clean_data():
 
     df_clean = df[~(mask1 | mask2 | mask3 | mask4)].copy()
     print(f"Clean data: {len(df_clean)} records")
+
+    # === DEDUPE: Remove cross-source duplicates before training ===
+    # Same property appears on Rightmove AND agent sites - keep agent version (better data)
+    # Match by: price + size + bedrooms + postcode district
+    df_clean['postcode_district'] = df_clean['postcode'].str.extract(r'^([A-Z]+\d+[A-Z]?)', expand=False)
+
+    # Source priority: agents first (better data), rightmove last
+    source_priority = {'savills': 0, 'knightfrank': 1, 'chestertons': 2, 'foxtons': 3, 'rightmove': 4}
+    df_clean['source_rank'] = df_clean['source'].map(source_priority).fillna(5)
+
+    # Sort by source rank (agents first), then drop duplicates keeping first (best source)
+    df_clean = df_clean.sort_values('source_rank')
+    before_dedupe = len(df_clean)
+    df_clean = df_clean.drop_duplicates(
+        subset=['price_pcm', 'size_sqft', 'bedrooms', 'postcode_district'],
+        keep='first'
+    )
+    dupes_removed = before_dedupe - len(df_clean)
+    print(f"Deduped data: {len(df_clean)} records ({dupes_removed} cross-source duplicates removed)")
+
+    # Clean up temp columns
+    df_clean = df_clean.drop(columns=['source_rank'])
+
     return df_clean
 
 
