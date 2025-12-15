@@ -361,7 +361,10 @@ def _run_enrichment(source: str, console: Console) -> bool:
 
 
 def _run_dedupe(console: Console) -> bool:
-    """Run cross-source dedupe merge. Returns success."""
+    """Run cross-source dedupe merge with primary (fingerprint) and secondary (street+price) matching.
+
+    Returns success.
+    """
     db_path = get_db_path()
     if not db_path.exists():
         console.print("  [red]FAIL[/red] dedupe: Database not found")
@@ -371,7 +374,8 @@ def _run_dedupe(console: Console) -> bool:
     cursor = conn.cursor()
 
     try:
-        # Copy sqft from agent sources to Rightmove records
+        # === PHASE 1: Primary matching (fingerprint-based) ===
+        # Copy sqft from agent sources to Rightmove records via fingerprint match
         cursor.execute("""
             UPDATE listings
             SET size_sqft = (
@@ -393,9 +397,53 @@ def _run_dedupe(console: Console) -> bool:
             AND (size_sqft IS NULL OR size_sqft = 0)
             AND address_fingerprint IS NOT NULL
         """)
-        updated = cursor.rowcount
+        fingerprint_updated = cursor.rowcount
+
+        # === PHASE 2: Secondary matching (street name + postcode + beds + price) ===
+        # This catches cross-source matches that fingerprint misses due to address variations
+        # Criteria: same postcode, same beds, price within 2%, street name appears in both addresses
+        cursor.execute("""
+            UPDATE listings
+            SET size_sqft = (
+                SELECT a.size_sqft
+                FROM listings a
+                WHERE a.postcode = listings.postcode
+                AND a.bedrooms = listings.bedrooms
+                AND a.source IN ('savills', 'knightfrank', 'chestertons', 'foxtons')
+                AND a.size_sqft > 0
+                AND ABS(a.price_pcm - listings.price_pcm) <= listings.price_pcm * 0.02
+                -- Street name containment check (first part of address before comma)
+                AND (
+                    LOWER(listings.address) LIKE '%' || SUBSTR(LOWER(a.address), 1,
+                        CASE WHEN INSTR(LOWER(a.address), ',') > 0
+                             THEN INSTR(LOWER(a.address), ',') - 1
+                             ELSE LENGTH(a.address) END) || '%'
+                    OR LOWER(a.address) LIKE '%' || SUBSTR(LOWER(listings.address), 1,
+                        CASE WHEN INSTR(LOWER(listings.address), ',') > 0
+                             THEN INSTR(LOWER(listings.address), ',') - 1
+                             ELSE LENGTH(listings.address) END) || '%'
+                )
+                ORDER BY
+                    CASE a.source
+                        WHEN 'savills' THEN 1
+                        WHEN 'knightfrank' THEN 2
+                        WHEN 'chestertons' THEN 3
+                        WHEN 'foxtons' THEN 4
+                    END
+                LIMIT 1
+            )
+            WHERE source = 'rightmove'
+            AND (size_sqft IS NULL OR size_sqft = 0)
+            AND postcode IS NOT NULL
+            AND bedrooms IS NOT NULL
+            AND price_pcm > 0
+        """)
+        secondary_updated = cursor.rowcount
+
+        total_updated = fingerprint_updated + secondary_updated
         conn.commit()
-        console.print(f"  [green]OK[/green] dedupe: Merged sqft into {updated} Rightmove records")
+        console.print(f"  [green]OK[/green] dedupe: Merged sqft into {total_updated} Rightmove records "
+                      f"(fingerprint: {fingerprint_updated}, street-match: {secondary_updated})")
         return True
     except Exception as e:
         conn.rollback()
@@ -716,14 +764,41 @@ def dedupe(
             """)
             mergeable = cursor.fetchone()[0]
 
-            console.print(f"\nFound [cyan]{mergeable}[/cyan] fingerprints with cross-source duplicates")
+            # Count secondary matches (street name + postcode + beds + price)
+            cursor.execute("""
+                SELECT COUNT(DISTINCT r.id)
+                FROM listings r
+                JOIN listings a ON r.postcode = a.postcode
+                    AND r.bedrooms = a.bedrooms
+                    AND a.source IN ('savills', 'knightfrank', 'chestertons', 'foxtons')
+                    AND a.size_sqft > 0
+                    AND ABS(a.price_pcm - r.price_pcm) <= r.price_pcm * 0.02
+                    AND (
+                        LOWER(r.address) LIKE '%' || SUBSTR(LOWER(a.address), 1,
+                            CASE WHEN INSTR(LOWER(a.address), ',') > 0
+                                 THEN INSTR(LOWER(a.address), ',') - 1
+                                 ELSE LENGTH(a.address) END) || '%'
+                        OR LOWER(a.address) LIKE '%' || SUBSTR(LOWER(r.address), 1,
+                            CASE WHEN INSTR(LOWER(r.address), ',') > 0
+                                 THEN INSTR(LOWER(r.address), ',') - 1
+                                 ELSE LENGTH(r.address) END) || '%'
+                    )
+                WHERE r.source = 'rightmove'
+                AND (r.size_sqft IS NULL OR r.size_sqft = 0)
+                AND r.postcode IS NOT NULL
+            """)
+            secondary_mergeable = cursor.fetchone()[0]
+
+            console.print(f"\nFound [cyan]{mergeable}[/cyan] fingerprint matches")
+            console.print(f"Found [cyan]{secondary_mergeable}[/cyan] additional street-name matches")
 
             if not execute:
                 console.print("[yellow]Dry run.[/yellow] Use --execute to apply merge.")
-                console.print("Merge will copy sqft from agent sources to Rightmove records.")
+                console.print("Merge will copy sqft from agent sources to Rightmove records using:")
+                console.print("  1. Fingerprint matching (primary)")
+                console.print("  2. Street name + postcode + beds + price matching (secondary)")
             else:
-                # Priority: savills > knightfrank > chestertons > foxtons > rightmove
-                # Copy sqft from best source to others
+                # === PHASE 1: Fingerprint matching ===
                 cursor.execute("""
                     UPDATE listings
                     SET size_sqft = (
@@ -745,9 +820,50 @@ def dedupe(
                     AND (size_sqft IS NULL OR size_sqft = 0)
                     AND address_fingerprint IS NOT NULL
                 """)
-                updated = cursor.rowcount
+                fingerprint_updated = cursor.rowcount
+
+                # === PHASE 2: Street name matching ===
+                cursor.execute("""
+                    UPDATE listings
+                    SET size_sqft = (
+                        SELECT a.size_sqft
+                        FROM listings a
+                        WHERE a.postcode = listings.postcode
+                        AND a.bedrooms = listings.bedrooms
+                        AND a.source IN ('savills', 'knightfrank', 'chestertons', 'foxtons')
+                        AND a.size_sqft > 0
+                        AND ABS(a.price_pcm - listings.price_pcm) <= listings.price_pcm * 0.02
+                        AND (
+                            LOWER(listings.address) LIKE '%' || SUBSTR(LOWER(a.address), 1,
+                                CASE WHEN INSTR(LOWER(a.address), ',') > 0
+                                     THEN INSTR(LOWER(a.address), ',') - 1
+                                     ELSE LENGTH(a.address) END) || '%'
+                            OR LOWER(a.address) LIKE '%' || SUBSTR(LOWER(listings.address), 1,
+                                CASE WHEN INSTR(LOWER(listings.address), ',') > 0
+                                     THEN INSTR(LOWER(listings.address), ',') - 1
+                                     ELSE LENGTH(listings.address) END) || '%'
+                        )
+                        ORDER BY
+                            CASE a.source
+                                WHEN 'savills' THEN 1
+                                WHEN 'knightfrank' THEN 2
+                                WHEN 'chestertons' THEN 3
+                                WHEN 'foxtons' THEN 4
+                            END
+                        LIMIT 1
+                    )
+                    WHERE source = 'rightmove'
+                    AND (size_sqft IS NULL OR size_sqft = 0)
+                    AND postcode IS NOT NULL
+                    AND bedrooms IS NOT NULL
+                    AND price_pcm > 0
+                """)
+                secondary_updated = cursor.rowcount
+
+                total_updated = fingerprint_updated + secondary_updated
                 conn.commit()
-                console.print(f"[green]Merged sqft data into {updated} Rightmove records.[/green]")
+                console.print(f"[green]Merged sqft into {total_updated} Rightmove records "
+                              f"(fingerprint: {fingerprint_updated}, street-match: {secondary_updated})[/green]")
 
 
 @app.command("enrich-floorplans")
