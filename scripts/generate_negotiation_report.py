@@ -24,6 +24,7 @@ import argparse
 import sqlite3
 import json
 import re
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -35,6 +36,16 @@ from datetime import datetime
 PROJECT_DIR = Path(__file__).parent.parent
 DB_PATH = PROJECT_DIR / 'output' / 'rentals.db'
 OUTPUT_DIR = PROJECT_DIR / 'output' / 'negotiation_report'
+
+# Database connection - supports Postgres (if POSTGRES_URL set) or SQLite
+def get_db_connection():
+    """Get database connection - Postgres if POSTGRES_URL set, else SQLite."""
+    postgres_url = os.environ.get('POSTGRES_URL')
+    if postgres_url:
+        import psycopg2
+        return psycopg2.connect(postgres_url), 'postgres'
+    else:
+        return sqlite3.connect(DB_PATH), 'sqlite'
 
 # SW1 area districts (NOT SW10, SW11, SW12 - those are different areas!)
 SW1_DISTRICTS = {'SW1A', 'SW1E', 'SW1H', 'SW1P', 'SW1V', 'SW1W', 'SW1X', 'SW1Y'}
@@ -168,12 +179,15 @@ def load_comparables(subject, size_range=0.20, bed_match=True):
     - Size similarity (25%): Linear scale based on % difference
     - PPSF similarity (25%): Linear scale based on % difference
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn, db_type = get_db_connection()
 
     min_size = subject['size_sqft'] * (1 - size_range)
     max_size = subject['size_sqft'] * (1 + size_range)
 
-    query = """
+    # Use appropriate placeholder for database type
+    ph = '%s' if db_type == 'postgres' else '?'
+
+    query = f"""
     SELECT
         address, postcode, source, price_pcm, size_sqft,
         bedrooms, bathrooms, url,
@@ -184,12 +198,12 @@ def load_comparables(subject, size_range=0.20, bed_match=True):
       AND size_sqft > 0
       AND price_pcm IS NOT NULL
       AND price_pcm > 0
-      AND size_sqft BETWEEN ? AND ?
+      AND size_sqft BETWEEN {ph} AND {ph}
     """
     params = [min_size, max_size]
 
     if bed_match:
-        query += " AND bedrooms = ?"
+        query += f" AND bedrooms = {ph}"
         params.append(subject['bedrooms'])
 
     df = pd.read_sql_query(query, conn, params=params)
@@ -245,17 +259,31 @@ def load_comparables(subject, size_range=0.20, bed_match=True):
 
 def load_all_listings_with_ppsf():
     """Load all listings with valid PPSF for distribution analysis."""
-    conn = sqlite3.connect(DB_PATH)
-    query = """
+    conn, db_type = get_db_connection()
+
+    # Use database-specific substring function
+    if db_type == 'postgres':
+        district_expr = """
+            CASE
+                WHEN POSITION(' ' IN postcode) > 0 THEN SUBSTRING(postcode, 1, POSITION(' ' IN postcode) - 1)
+                ELSE postcode
+            END
+        """
+    else:
+        district_expr = """
+            SUBSTR(postcode, 1,
+                CASE
+                    WHEN INSTR(postcode, ' ') > 0 THEN INSTR(postcode, ' ') - 1
+                    ELSE LENGTH(postcode)
+                END
+            )
+        """
+
+    query = f"""
     SELECT
         address, postcode, source, price_pcm, size_sqft, bedrooms,
         CAST(price_pcm AS FLOAT) / size_sqft as ppsf,
-        SUBSTR(postcode, 1,
-            CASE
-                WHEN INSTR(postcode, ' ') > 0 THEN INSTR(postcode, ' ') - 1
-                ELSE LENGTH(postcode)
-            END
-        ) as district
+        {district_expr} as district
     FROM listings
     WHERE is_active = 1
       AND size_sqft IS NOT NULL AND size_sqft > 100

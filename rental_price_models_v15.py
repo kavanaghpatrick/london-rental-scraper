@@ -154,9 +154,10 @@ def parse_amenities(features_str, description_str=''):
 
 
 def load_and_clean_data():
-    """Load data from SQLite."""
-    conn = sqlite3.connect('output/rentals.db')
-    df = pd.read_sql("""
+    """Load data from Postgres (if POSTGRES_URL set) or SQLite."""
+    import os
+
+    query = """
         SELECT
             bedrooms, bathrooms, size_sqft,
             postcode, area, property_type,
@@ -169,8 +170,20 @@ def load_and_clean_data():
         WHERE size_sqft > 0 AND bedrooms IS NOT NULL AND price_pcm > 0
         AND is_active = 1
         AND (is_short_let = 0 OR is_short_let IS NULL)
-    """, conn)
-    conn.close()
+    """
+
+    postgres_url = os.environ.get('POSTGRES_URL')
+    if postgres_url:
+        import psycopg2
+        conn = psycopg2.connect(postgres_url)
+        df = pd.read_sql(query, conn)
+        conn.close()
+        print(f"Loaded from Postgres")
+    else:
+        conn = sqlite3.connect('output/rentals.db')
+        df = pd.read_sql(query, conn)
+        conn.close()
+        print(f"Loaded from SQLite")
 
     print(f"Raw data: {len(df)} records")
 
@@ -597,7 +610,45 @@ def main():
     print("  V14: R²=0.674")
     print(f"\nV15 (NO leakage): R²={best['R2']:.3f}, MAE=£{best['MAE']:,.0f}, MAPE={best['MAPE']:.1f}%")
 
+    # ========== Log to Postgres (if available) ==========
+    log_model_metrics_to_postgres(best, len(X), len(feature_cols))
+
     return results
+
+
+def log_model_metrics_to_postgres(metrics, samples, features_count):
+    """Log model run metrics to Postgres model_runs table."""
+    import os
+    from datetime import datetime
+
+    postgres_url = os.environ.get('POSTGRES_URL')
+    if not postgres_url:
+        print("\nSkipping Postgres logging (POSTGRES_URL not set)")
+        return
+
+    try:
+        import psycopg2
+        conn = psycopg2.connect(postgres_url)
+        cur = conn.cursor()
+
+        run_date = datetime.utcnow().strftime('%Y-%m-%d')
+        run_id = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+
+        cur.execute('''
+            INSERT INTO model_runs (
+                run_date, run_id, version, samples_total, features_count,
+                r2_score, mae, mape, median_ape
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ''', (
+            run_date, run_id, 'v15', samples, features_count,
+            metrics['R2'], metrics['MAE'], metrics['MAPE'], metrics['Median_APE']
+        ))
+
+        conn.commit()
+        conn.close()
+        print(f"\n✅ Logged model metrics to Postgres (run_id: {run_id})")
+    except Exception as e:
+        print(f"\n⚠️ Failed to log to Postgres: {e}")
 
 
 if __name__ == '__main__':
