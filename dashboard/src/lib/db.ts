@@ -188,33 +188,45 @@ export async function getComparables(
   // e.g., 'SW1' matches SW1W, SW1X, SW1A, etc.
   const postcodePattern = postcodeArea ? `${postcodeArea}%` : '%';
 
+  // Use CTE with ROW_NUMBER to dedupe cross-source duplicates
+  // Same property appears on Rightmove AND agent sites - keep agent version (better data)
   const { rows } = await sql<Comparable>`
-    SELECT
-      address,
-      postcode,
-      CASE
-        WHEN POSITION(' ' IN postcode) > 0 THEN SUBSTRING(postcode, 1, POSITION(' ' IN postcode) - 1)
-        ELSE postcode
-      END as district,
-      source,
-      price_pcm::int as price_pcm,
-      size_sqft::int as size_sqft,
-      bedrooms::int as bedrooms,
-      COALESCE(bathrooms, 1)::int as bathrooms,
-      url,
-      ROUND((price_pcm::numeric / size_sqft::numeric), 2)::float as ppsf,
-      ROUND(ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf}), 2)::float as ppsf_diff,
-      ROUND(ABS(size_sqft::numeric - ${sizeSqft}) / ${sizeSqft} * 100, 0)::int as size_diff_pct
-    FROM listings
-    WHERE is_active = 1
-      AND size_sqft IS NOT NULL
-      AND size_sqft > 0
-      AND price_pcm IS NOT NULL
-      AND price_pcm > 0
-      AND size_sqft BETWEEN ${minSize} AND ${maxSize}
-      AND bedrooms = ${bedrooms}
-      AND postcode LIKE ${postcodePattern}
-    ORDER BY ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf})
+    WITH ranked AS (
+      SELECT
+        address,
+        postcode,
+        CASE
+          WHEN POSITION(' ' IN postcode) > 0 THEN SUBSTRING(postcode, 1, POSITION(' ' IN postcode) - 1)
+          ELSE postcode
+        END as district,
+        source,
+        price_pcm::int as price_pcm,
+        size_sqft::int as size_sqft,
+        bedrooms::int as bedrooms,
+        COALESCE(bathrooms, 1)::int as bathrooms,
+        url,
+        ROUND((price_pcm::numeric / size_sqft::numeric), 2)::float as ppsf,
+        ROUND(ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf}), 2)::float as ppsf_diff,
+        ROUND(ABS(size_sqft::numeric - ${sizeSqft}) / ${sizeSqft} * 100, 0)::int as size_diff_pct,
+        ROW_NUMBER() OVER (
+          PARTITION BY price_pcm, size_sqft,
+            CASE WHEN POSITION(' ' IN postcode) > 0 THEN SUBSTRING(postcode, 1, POSITION(' ' IN postcode) - 1) ELSE postcode END
+          ORDER BY CASE WHEN source = 'rightmove' THEN 1 ELSE 0 END, source
+        ) as rn
+      FROM listings
+      WHERE is_active = 1
+        AND size_sqft IS NOT NULL
+        AND size_sqft > 0
+        AND price_pcm IS NOT NULL
+        AND price_pcm > 0
+        AND size_sqft BETWEEN ${minSize} AND ${maxSize}
+        AND bedrooms = ${bedrooms}
+        AND postcode LIKE ${postcodePattern}
+    )
+    SELECT address, postcode, district, source, price_pcm, size_sqft, bedrooms, bathrooms, url, ppsf, ppsf_diff, size_diff_pct
+    FROM ranked
+    WHERE rn = 1
+    ORDER BY ppsf_diff
     LIMIT 100
   `;
   return rows;
