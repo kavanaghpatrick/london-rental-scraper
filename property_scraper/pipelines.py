@@ -522,6 +522,35 @@ class SQLitePipeline:
                             else:
                                 logger.debug(f"[PIPELINE:SQLite] Fingerprint match rejected: price diff {price_diff_pct:.1%} > {self.FINGERPRINT_PRICE_TOLERANCE:.0%}")
 
+            # FALLBACK 3: Match by price + size + district + bedrooms (catches address variations)
+            # Same property listed with different addresses (e.g., "Young Street" vs "Imperial House")
+            if not existing:
+                new_price = adapter.get('price_pcm')
+                new_size = adapter.get('size_sqft')
+                bedrooms = adapter.get('bedrooms')
+                postcode = adapter.get('postcode', '')
+                # Extract district from postcode (e.g., "SW1W 8AT" -> "SW1W")
+                district = postcode.split()[0] if postcode and ' ' in postcode else postcode
+
+                if new_price and new_size and bedrooms and district:
+                    # Exact match on price, size, bedrooms, district within same source
+                    self.cursor.execute(
+                        '''SELECT id, price_pcm, first_seen, price_change_count, property_id, address
+                           FROM listings
+                           WHERE source=? AND price_pcm=? AND size_sqft=? AND bedrooms=?
+                             AND (postcode LIKE ? OR postcode LIKE ?)
+                           ORDER BY last_seen DESC LIMIT 1''',
+                        (source, new_price, new_size, bedrooms, f"{district} %", f"{district}")
+                    )
+                    candidate = self.cursor.fetchone()
+                    if candidate:
+                        existing = candidate[:5]  # Same structure as other queries
+                        matched_by_fingerprint = True  # Reuse flag for property_id update
+                        old_pid = candidate[4]
+                        old_addr = candidate[5][:30] if candidate[5] else 'unknown'
+                        new_addr = (adapter.get('address', '')[:30] or 'unknown')
+                        logger.info(f"[PIPELINE:SQLite] Content match: {source} '{old_addr}' -> '{new_addr}' (same price/size/beds/district)")
+
             if existing:
                 # UPDATE existing record
                 listing_id, old_price, first_seen, change_count, _ = existing
