@@ -636,7 +636,129 @@ def main():
     # ========== Log to Postgres (if available) ==========
     log_model_metrics_to_postgres(best, len(X), len(feature_cols))
 
+    # ========== Predict for Subject Property ==========
+    predict_subject_property(final_model, feature_cols, df, best)
+
     return results
+
+
+def predict_subject_property(model, feature_cols, training_df, metrics):
+    """Predict rent for the subject property and store in Postgres."""
+    import os
+
+    # Subject property details (4 South Eaton Place, SW1W)
+    subject = {
+        'address': '4 South Eaton Place',
+        'postcode': 'SW1W 9JA',
+        'size_sqft': 1312,
+        'bedrooms': 2,
+        'bathrooms': 2,
+    }
+
+    print("\n" + "=" * 70)
+    print("SUBJECT PROPERTY VALUATION")
+    print("=" * 70)
+    print(f"  Address: {subject['address']}, {subject['postcode']}")
+    print(f"  Size: {subject['size_sqft']} sqft, {subject['bedrooms']} bed, {subject['bathrooms']} bath")
+
+    # Create feature row matching training data structure
+    feature_row = pd.DataFrame([{
+        'bedrooms': subject['bedrooms'],
+        'bathrooms': subject['bathrooms'],
+        'size_sqft': subject['size_sqft'],
+        'postcode': subject['postcode'],
+        'postcode_normalized': 'SW1W',
+        'postcode_district': 'SW1W',
+        'area': 'Belgravia',
+        'property_type': 'flat',
+        'property_type_std': 'flat',
+        'let_type': 'long',
+        'source': 'manual',
+        'features': '',
+        'description': '',
+        'latitude': 51.4934,
+        'longitude': -0.1508,
+        'agent_brand': '',
+        'floor_count': 0,
+        'has_roof_terrace': 0,
+        'has_basement': 0,
+        'has_ground': 0,
+        'has_first_floor': 1,
+        'has_second_floor': 0,
+        'has_third_floor': 0,
+        'has_fourth_plus': 0,
+    }])
+
+    # Apply same feature engineering
+    feature_row = engineer_features_v15(feature_row)
+
+    # Ensure all feature columns exist
+    for col in feature_cols:
+        if col not in feature_row.columns:
+            feature_row[col] = 0
+
+    X_subject = feature_row[feature_cols].fillna(0)
+
+    # Predict (model predicts log(price), so expm1 to get actual)
+    pred_log = model.predict(X_subject)[0]
+    predicted_pcm = np.expm1(pred_log)
+
+    # Calculate confidence range using model's MAPE
+    mape = metrics['MAPE'] / 100
+    range_low = int(predicted_pcm * (1 - mape))
+    range_high = int(predicted_pcm * (1 + mape))
+    predicted_pcm = int(predicted_pcm)
+
+    print(f"\n  Predicted Rent: £{predicted_pcm:,}/month")
+    print(f"  Confidence Range: £{range_low:,} - £{range_high:,}")
+    print(f"  £/sqft: £{predicted_pcm / subject['size_sqft']:.2f}")
+
+    # Store in Postgres
+    postgres_url = os.environ.get('POSTGRES_URL')
+    if postgres_url:
+        try:
+            import psycopg2
+            conn = psycopg2.connect(postgres_url)
+            cur = conn.cursor()
+
+            # Create valuations table if not exists
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS property_valuations (
+                    id SERIAL PRIMARY KEY,
+                    address TEXT NOT NULL,
+                    postcode TEXT,
+                    size_sqft INTEGER,
+                    bedrooms INTEGER,
+                    bathrooms INTEGER,
+                    predicted_pcm INTEGER,
+                    range_low INTEGER,
+                    range_high INTEGER,
+                    model_version TEXT,
+                    model_r2 REAL,
+                    model_mape REAL,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            ''')
+
+            # Insert new valuation
+            cur.execute('''
+                INSERT INTO property_valuations (
+                    address, postcode, size_sqft, bedrooms, bathrooms,
+                    predicted_pcm, range_low, range_high,
+                    model_version, model_r2, model_mape
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ''', (
+                subject['address'], subject['postcode'], subject['size_sqft'],
+                subject['bedrooms'], subject['bathrooms'],
+                predicted_pcm, range_low, range_high,
+                'v15', metrics['R2'], metrics['MAPE']
+            ))
+
+            conn.commit()
+            conn.close()
+            print(f"\n  ✅ Stored valuation in Postgres")
+        except Exception as e:
+            print(f"\n  ⚠️ Failed to store valuation: {e}")
 
 
 def log_model_metrics_to_postgres(metrics, samples, features_count):

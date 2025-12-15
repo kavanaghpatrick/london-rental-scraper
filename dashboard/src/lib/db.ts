@@ -144,6 +144,39 @@ export async function getModelRuns(limit: number = 20): Promise<ModelRun[]> {
   return rows;
 }
 
+// ============ Property Valuations ============
+
+export interface PropertyValuation {
+  id: number;
+  address: string;
+  postcode: string;
+  size_sqft: number;
+  bedrooms: number;
+  bathrooms: number;
+  predicted_pcm: number;
+  range_low: number;
+  range_high: number;
+  model_version: string;
+  model_r2: number;
+  model_mape: number;
+  created_at: string;
+}
+
+export async function getLatestValuation(address: string): Promise<PropertyValuation | null> {
+  const { rows } = await sql<PropertyValuation>`
+    SELECT
+      id, address, postcode, size_sqft, bedrooms, bathrooms,
+      predicted_pcm, range_low, range_high,
+      model_version, model_r2, model_mape,
+      created_at::text as created_at
+    FROM property_valuations
+    WHERE address = ${address}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  return rows[0] || null;
+}
+
 // ============ Valuation Report Functions ============
 
 export interface Comparable {

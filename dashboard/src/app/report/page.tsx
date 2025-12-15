@@ -1,14 +1,14 @@
-import { getComparables, getMarketStats, getPpsfDistribution, getPpsfByDistrict, Comparable } from '@/lib/db';
+import { getComparables, getMarketStats, getPpsfDistribution, getPpsfByDistrict, getLatestValuation, Comparable } from '@/lib/db';
 import ReportCharts from './ReportCharts';
 
-// Default subject property - can be made configurable via URL params
-const SUBJECT = {
+// Default subject property - values updated from model predictions in DB
+const SUBJECT_DEFAULTS = {
   address: '4 South Eaton Place',
   postcode: 'SW1W',
   size_sqft: 1312,
   bedrooms: 2,
   bathrooms: 2,
-  predicted_pcm: 8925,
+  predicted_pcm: 8925,  // Fallback if no DB valuation
   range_low: 7318,
   range_high: 10531,
 };
@@ -53,6 +53,29 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function ValuationReport() {
+  // Fetch latest valuation from database, fall back to defaults
+  let SUBJECT = { ...SUBJECT_DEFAULTS };
+  let valuationSource = 'default';
+
+  try {
+    const dbValuation = await getLatestValuation(SUBJECT_DEFAULTS.address);
+    if (dbValuation) {
+      SUBJECT = {
+        address: dbValuation.address,
+        postcode: dbValuation.postcode?.split(' ')[0] || SUBJECT_DEFAULTS.postcode,
+        size_sqft: dbValuation.size_sqft,
+        bedrooms: dbValuation.bedrooms,
+        bathrooms: dbValuation.bathrooms,
+        predicted_pcm: dbValuation.predicted_pcm,
+        range_low: dbValuation.range_low,
+        range_high: dbValuation.range_high,
+      };
+      valuationSource = `model ${dbValuation.model_version} (R²=${dbValuation.model_r2.toFixed(3)})`;
+    }
+  } catch {
+    // Use defaults if DB query fails
+  }
+
   const subjectPpsf = SUBJECT.predicted_pcm / SUBJECT.size_sqft;
 
   let comparables: Comparable[] = [];
