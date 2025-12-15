@@ -1,0 +1,262 @@
+name: Daily Property Scrape
+
+on:
+  schedule:
+    # Run daily at 6 AM UTC (7 AM UK time in winter, 8 AM in summer)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      spiders:
+        description: 'Spiders to run (comma-separated or "all")'
+        required: false
+        default: 'all'
+      full_mode:
+        description: 'Run with --full (fetch details + floorplans)'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+  # Vercel Postgres connection (set in GitHub Secrets)
+  POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180  # 3 hour timeout (scrape takes ~2 hours)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: scrapy_project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: |
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Check Postgres connection
+        working-directory: scrapy_project
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              print("ERROR: POSTGRES_URL not set!")
+              exit(1)
+
+          try:
+              conn = psycopg2.connect(url)
+              cursor = conn.cursor()
+              cursor.execute("SELECT COUNT(*) FROM listings")
+              count = cursor.fetchone()[0]
+              print(f"Connected to Vercel Postgres. Current listings: {count}")
+              conn.close()
+          except Exception as e:
+              print(f"Database connection failed: {e}")
+              print("Will create tables on first scrape")
+          EOF
+
+      - name: Run scraper (Postgres mode)
+        id: scrape
+        working-directory: scrapy_project
+        env:
+          # Use Postgres settings for all spiders
+          USE_POSTGRES: "true"
+        run: |
+          # Determine spider arguments
+          SPIDER_ARG=""
+          if [ "${{ github.event.inputs.spiders }}" != "" ] && [ "${{ github.event.inputs.spiders }}" != "all" ]; then
+            IFS=',' read -ra SPIDERS <<< "${{ github.event.inputs.spiders }}"
+            for spider in "${SPIDERS[@]}"; do
+              SPIDER_ARG="$SPIDER_ARG -s $(echo $spider | xargs)"
+            done
+          else
+            SPIDER_ARG="--all"
+          fi
+
+          # Determine full mode
+          FULL_FLAG=""
+          if [ "${{ github.event.inputs.full_mode }}" = "true" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+            FULL_FLAG="--full"
+          fi
+
+          # Run the scrape with Postgres settings
+          echo "Running: python -m cli.main scrape $SPIDER_ARG $FULL_FLAG --postgres"
+          python -m cli.main scrape $SPIDER_ARG $FULL_FLAG --postgres 2>&1 | tee scrape_output.txt
+
+          # Extract summary for GitHub output
+          ITEMS=$(grep -oP 'Total: \K[\d,]+' scrape_output.txt | tail -1 || echo "0")
+          echo "items_scraped=$ITEMS" >> $GITHUB_OUTPUT
+
+      - name: Show database stats
+        working-directory: scrapy_project
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              print("POSTGRES_URL not set")
+              exit(0)
+
+          try:
+              conn = psycopg2.connect(url)
+              cursor = conn.cursor()
+
+              print("=== Post-scrape database stats ===")
+              cursor.execute("""
+                  SELECT source, COUNT(*) as total,
+                         SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
+                         SUM(CASE WHEN size_sqft > 0 THEN 1 ELSE 0 END) as with_sqft
+                  FROM listings GROUP BY source ORDER BY total DESC
+              """)
+              for row in cursor.fetchall():
+                  print(f"  {row[0]}: {row[1]} total, {row[2]} active, {row[3]} with sqft")
+
+              cursor.execute("SELECT COUNT(*) FROM listings")
+              print(f"\nTotal listings: {cursor.fetchone()[0]}")
+
+              cursor.execute("SELECT COUNT(*) FROM listings WHERE size_sqft > 0")
+              print(f"With sqft: {cursor.fetchone()[0]}")
+
+              conn.close()
+          except Exception as e:
+              print(f"Error querying database: {e}")
+          EOF
+
+      - name: Show recent scrape runs
+        working-directory: scrapy_project
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              exit(0)
+
+          try:
+              conn = psycopg2.connect(url)
+              cursor = conn.cursor()
+
+              print("=== Recent Scrape Runs ===")
+              cursor.execute("""
+                  SELECT run_id, spider_name, status, items_scraped, error_count,
+                         ROUND(duration_seconds/60, 1) as minutes
+                  FROM scrape_runs
+                  ORDER BY started_at DESC
+                  LIMIT 10
+              """)
+              for row in cursor.fetchall():
+                  status_icon = "✓" if row[2] == "completed" else "✗"
+                  print(f"  {status_icon} {row[0]} | {row[1]}: {row[3]} items, {row[4]} errors ({row[5]}m)")
+
+              conn.close()
+          except Exception as e:
+              print(f"Error: {e}")
+          EOF
+
+      - name: Upload logs artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scrape-logs-${{ github.run_id }}
+          path: |
+            scrapy_project/logs/*.log
+            scrapy_project/scrape_output.txt
+          retention-days: 7
+
+      - name: Create summary
+        working-directory: scrapy_project
+        run: |
+          echo "## Scrape Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Items scraped:** ${{ steps.scrape.outputs.items_scraped }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Database:** Vercel Postgres" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dashboard:** https://your-dashboard.vercel.app" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          python3 << 'EOF' >> $GITHUB_STEP_SUMMARY
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              print("Database not configured")
+              exit(0)
+
+          try:
+              conn = psycopg2.connect(url)
+              cursor = conn.cursor()
+
+              print("### Database Stats")
+              print("| Source | Total | Active | With sqft |")
+              print("|--------|-------|--------|-----------|")
+
+              cursor.execute("""
+                  SELECT source, COUNT(*),
+                         SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END),
+                         SUM(CASE WHEN size_sqft > 0 THEN 1 ELSE 0 END)
+                  FROM listings GROUP BY source ORDER BY COUNT(*) DESC
+              """)
+              for row in cursor.fetchall():
+                  print(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} |")
+
+              conn.close()
+          except Exception as e:
+              print(f"Error: {e}")
+          EOF
+
+  notify-failure:
+    needs: scrape
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - name: Create issue on failure
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Scrape failed: ${new Date().toISOString().split('T')[0]}`;
+            const body = `
+            The daily scrape workflow failed.
+
+            **Workflow run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+
+            **Dashboard:** Check https://your-dashboard.vercel.app for details.
+
+            Please check the logs for details.
+            `;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'scrape-failure'
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['scrape-failure', 'automated']
+              });
+            }
