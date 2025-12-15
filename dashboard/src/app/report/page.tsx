@@ -19,7 +19,13 @@ const PRIME_ADJACENT = new Set(['SW3', 'SW7', 'W1', 'W8', 'NW1', 'NW3', 'NW8']);
 
 function isSW1District(district: string): boolean {
   if (!district) return false;
-  return SW1_DISTRICTS.has(district) || (district.startsWith('SW1') && district.length === 4 && /[A-Z]/.test(district[3]));
+  // Handle exact matches (SW1A, SW1W, etc.)
+  if (SW1_DISTRICTS.has(district)) return true;
+  // Handle partial 'SW1' or 'SW1X' format
+  if (district === 'SW1') return true;
+  // Handle SW1X format where X is a letter (length 4)
+  if (district.startsWith('SW1') && district.length === 4 && /[A-Z]/.test(district[3])) return true;
+  return false;
 }
 
 function getTier(district: string, subjectDistrict: string): { num: number; label: string } {
@@ -224,6 +230,7 @@ export default async function ValuationReport() {
               items={tier1}
               stats={tierStats.tier1}
               subjectPpsf={subjectPpsf}
+              subjectSize={SUBJECT.size_sqft}
             />
           )}
 
@@ -236,6 +243,7 @@ export default async function ValuationReport() {
               items={tier2}
               stats={tierStats.tier2}
               subjectPpsf={subjectPpsf}
+              subjectSize={SUBJECT.size_sqft}
             />
           )}
 
@@ -248,6 +256,7 @@ export default async function ValuationReport() {
               items={tier3}
               stats={tierStats.tier3}
               subjectPpsf={subjectPpsf}
+              subjectSize={SUBJECT.size_sqft}
             />
           )}
 
@@ -260,6 +269,7 @@ export default async function ValuationReport() {
               items={tier4}
               stats={tierStats.tier4}
               subjectPpsf={subjectPpsf}
+              subjectSize={SUBJECT.size_sqft}
             />
           )}
 
@@ -327,6 +337,7 @@ function TierSection({
   items,
   stats,
   subjectPpsf,
+  subjectSize,
 }: {
   title: string;
   description: string;
@@ -334,13 +345,14 @@ function TierSection({
   items: (Comparable & { tier: { num: number; label: string } })[];
   stats: { count: number; median: number };
   subjectPpsf: number;
+  subjectSize: number;
 }) {
   return (
     <div className={`${bgColor} rounded-lg p-4 mb-4`}>
       <h4 className="font-semibold text-blue-900 mb-1">{title} ({stats.count} properties)</h4>
       <p className="text-xs text-gray-600 mb-2">{description}</p>
       <p className="text-sm font-medium mb-3">
-        Tier Median: £{stats.median.toFixed(2)}/sqft | £{Math.round(stats.median * 1312).toLocaleString()}/month
+        Tier Median: £{stats.median.toFixed(2)}/sqft | £{Math.round(stats.median * subjectSize).toLocaleString()}/month
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

@@ -153,12 +153,23 @@ export default function ReportCharts({
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   const data = payload[0].payload;
+                  // Handle subject marker (has isSubject flag, no ppsf)
+                  if (data.isSubject) {
+                    return (
+                      <div className="bg-white border shadow-lg p-2 text-xs">
+                        <p className="font-semibold text-red-600">Subject Property</p>
+                        <p>Size: {data.size} sqft</p>
+                        <p>Rent: £{data.price.toLocaleString()}</p>
+                        <p>£/sqft: £{(data.price / data.size).toFixed(2)}</p>
+                      </div>
+                    );
+                  }
                   return (
                     <div className="bg-white border shadow-lg p-2 text-xs">
-                      <p className="font-semibold">{data.address}</p>
+                      <p className="font-semibold">{data.address || 'Unknown'}</p>
                       <p>Size: {data.size} sqft</p>
-                      <p>Rent: £{data.price.toLocaleString()}</p>
-                      <p>£/sqft: £{data.ppsf.toFixed(2)}</p>
+                      <p>Rent: £{data.price?.toLocaleString() || 'N/A'}</p>
+                      <p>£/sqft: £{data.ppsf?.toFixed(2) || (data.price && data.size ? (data.price / data.size).toFixed(2) : 'N/A')}</p>
                     </div>
                   );
                 }
@@ -173,7 +184,7 @@ export default function ReportCharts({
             {/* Subject property marker */}
             <Scatter
               name="Subject"
-              data={[{ size: subjectSize, price: subjectPrice }]}
+              data={[{ size: subjectSize, price: subjectPrice, isSubject: true }]}
               fill="#dc2626"
               shape="star"
             />
