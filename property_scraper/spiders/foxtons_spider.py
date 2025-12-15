@@ -261,12 +261,17 @@ class FoxtonsSpider(scrapy.Spider):
         item['latitude'] = location.get('lat')
         item['longitude'] = location.get('lon')
 
-        # Extract postcode from address
-        postcode_match = re.search(
-            r'([A-Z]{1,2}\d{1,2}[A-Z]?)\s*\d?[A-Z]{0,2}',
-            item['address'].upper()
-        )
-        item['postcode'] = postcode_match.group(1) if postcode_match else None
+        # Extract postcode - prefer postcodeShort from JSON, fallback to address parsing
+        postcode_short = prop.get('postcodeShort')
+        if postcode_short:
+            item['postcode'] = postcode_short.upper()
+        else:
+            # Fallback: try to extract from address
+            postcode_match = re.search(
+                r'([A-Z]{1,2}\d{1,2}[A-Z]?)',
+                item['address'].upper()
+            )
+            item['postcode'] = postcode_match.group(1) if postcode_match else None
 
         # Property details
         item['bedrooms'] = prop.get('bedrooms')

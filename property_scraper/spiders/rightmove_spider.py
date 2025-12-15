@@ -339,12 +339,24 @@ class RightmoveSpider(scrapy.Spider):
         if not item['latitude'] or not item['longitude']:
             self._track_missing('coordinates', area)
 
-        # Extract postcode from address
-        postcode_match = re.search(
+        # Extract postcode from address - try full postcode first, then outcode only
+        address_upper = item['address'].upper()
+
+        # Try full postcode (e.g., "SW1X 8AB")
+        full_postcode_match = re.search(
             r'([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})',
-            item['address'].upper()
+            address_upper
         )
-        item['postcode'] = postcode_match.group(1) if postcode_match else None
+        if full_postcode_match:
+            item['postcode'] = full_postcode_match.group(1).replace(' ', '')
+        else:
+            # Fallback: try outcode only (e.g., "SW1X" at end of address)
+            # Look for pattern at end of address or before comma
+            outcode_match = re.search(
+                r'\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*(?:,|$)',
+                address_upper
+            )
+            item['postcode'] = outcode_match.group(1) if outcode_match else None
 
         if not item['postcode']:
             self._track_missing('postcode', area)
