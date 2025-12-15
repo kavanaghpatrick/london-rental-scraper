@@ -8,5 +8,15 @@ itemadapter>=0.8.0
 scrapy-playwright>=0.0.33
 playwright>=1.40.0
 
+# CLI
+typer>=0.9.0
+rich>=13.0.0
+
+# Monitoring
+psutil>=5.9.0
+
+# Database
+psycopg2-binary>=2.9.9
+
 # Data processing
 python-dateutil>=2.8.2
