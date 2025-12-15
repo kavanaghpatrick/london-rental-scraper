@@ -169,6 +169,8 @@ def run_spider(
     dry_run: bool = False,
     fetch_details: bool = False,
     fetch_floorplans: bool = False,
+    audit_run_id: str | None = None,
+    use_postgres: bool = False,
 ) -> tuple[bool, str, bool, dict]:
     """
     Run a spider using subprocess (avoids Twisted reactor issues).
@@ -204,11 +206,19 @@ def run_spider(
     if fetch_floorplans:
         cmd.extend(["-a", "fetch_floorplans=true"])
 
-    # Choose settings based on spider type
-    if config.requires_playwright:
-        settings_module = "property_scraper.settings"
+    # Choose settings based on spider type and database backend
+    if use_postgres:
+        # Use Postgres settings for cloud deployment
+        if config.requires_playwright:
+            settings_module = "property_scraper.settings_postgres"
+        else:
+            settings_module = "property_scraper.settings_postgres_standard"
     else:
-        settings_module = "property_scraper.settings_standard"
+        # Use SQLite settings for local development
+        if config.requires_playwright:
+            settings_module = "property_scraper.settings"
+        else:
+            settings_module = "property_scraper.settings_standard"
 
     # Set environment
     env = os.environ.copy()
@@ -216,15 +226,16 @@ def run_spider(
     # Add project root to PYTHONPATH so scrapy can find property_scraper module
     env["PYTHONPATH"] = str(PROJECT_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
 
+    # Pass audit run ID to scrapy settings for audit logging
+    if audit_run_id:
+        cmd.extend(["-s", f"AUDIT_RUN_ID={audit_run_id}"])
+
     # If dry_run, disable SQLite pipeline to prevent database writes
     # (Fix for Codex review: dry_run flag was being ignored)
     if dry_run:
         # Override ITEM_PIPELINES to exclude SQLitePipeline
-        cmd.extend([
-            "-s", "ITEM_PIPELINES={'property_scraper.pipelines.CleanDataPipeline': 100, "
-                  "'property_scraper.pipelines.DuplicateFilterPipeline': 200, "
-                  "'property_scraper.pipelines.JsonWriterPipeline': 300}"
-        ])
+        pipelines = "{'property_scraper.pipelines.CleanDataPipeline':100,'property_scraper.pipelines.DuplicateFilterPipeline':200,'property_scraper.pipelines.JsonWriterPipeline':300}"
+        cmd.extend(["-s", f"ITEM_PIPELINES={pipelines}"])
 
     # Create log file
     # Issue #27 FIX: Use /tmp for dry-run logs to avoid cluttering logs/ directory
@@ -464,6 +475,7 @@ def scrape(
     fetch_details: bool = typer.Option(False, "--fetch-details", "-d", help="Fetch sqft/descriptions from detail pages (slower but more complete)"),
     fetch_floorplans: bool = typer.Option(False, "--fetch-floorplans", "-f", help="Fetch floorplan URLs from detail pages"),
     full: bool = typer.Option(False, "--full", help="Enable both --fetch-details and --fetch-floorplans for maximum data"),
+    postgres: bool = typer.Option(False, "--postgres", help="Write to Vercel Postgres instead of SQLite"),
 ):
     """Run property scrapers."""
     if not all and not source:
@@ -488,7 +500,13 @@ def scrape(
                 raise typer.Exit(1)
             spiders_to_run.append(src.lower())
 
+    # Generate audit run ID for this scrape session
+    audit_run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+
     console.print(f"\n[bold]Running {len(spiders_to_run)} spider(s)...[/bold]")
+    console.print(f"[dim]Run ID: {audit_run_id}[/dim]")
+    if postgres:
+        console.print(f"[dim]Database: Vercel Postgres[/dim]")
     if fetch_details or fetch_floorplans:
         options = []
         if fetch_details:
@@ -520,6 +538,8 @@ def scrape(
                 dry_run=dry_run,
                 fetch_details=fetch_details,
                 fetch_floorplans=fetch_floorplans,
+                audit_run_id=audit_run_id,
+                use_postgres=postgres,
             )
 
             progress.remove_task(task)
@@ -1054,6 +1074,137 @@ def spiders():
         )
 
     console.print(table)
+
+
+@app.command()
+def audit(
+    runs: int = typer.Option(10, "--runs", "-r", help="Number of recent runs to show"),
+    run_id: str = typer.Option(None, "--run-id", help="Show details for a specific run"),
+    events: bool = typer.Option(False, "--events", "-e", help="Show detailed events"),
+    errors_only: bool = typer.Option(False, "--errors", help="Show only errors"),
+):
+    """View audit logs for scrape runs.
+
+    Shows recent scrape runs with timing, item counts, and errors.
+    Use --run-id to see details for a specific run.
+    """
+    db_path = get_db_path()
+
+    if not db_path.exists():
+        console.print(f"[red]Error:[/red] Database not found at {db_path}")
+        raise typer.Exit(1)
+
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+
+        # Check if audit tables exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='scrape_runs'")
+        if not cursor.fetchone():
+            console.print("[yellow]No audit data yet.[/yellow] Run a scrape to start logging.")
+            return
+
+        if run_id:
+            # Show details for specific run
+            cursor.execute("""
+                SELECT spider_name, started_at, finished_at, duration_seconds, status,
+                       items_scraped, items_new, items_updated, items_dropped, items_errors,
+                       request_count, response_count, error_count, retry_count,
+                       memory_start_mb, memory_peak_mb, memory_end_mb,
+                       log_file, exit_reason, error_summary
+                FROM scrape_runs
+                WHERE run_id = ?
+                ORDER BY started_at
+            """, (run_id,))
+            spider_runs = cursor.fetchall()
+
+            if not spider_runs:
+                console.print(f"[red]No runs found for run_id: {run_id}[/red]")
+                return
+
+            console.print(f"\n[bold]Run Details: {run_id}[/bold]\n")
+
+            for row in spider_runs:
+                (spider_name, started, finished, duration, status,
+                 items_scraped, items_new, items_updated, items_dropped, items_errors,
+                 request_count, response_count, error_count, retry_count,
+                 mem_start, mem_peak, mem_end, log_file, exit_reason, error_summary) = row
+
+                status_color = "green" if status == "completed" else "red"
+                console.print(f"[bold]{spider_name}[/bold] [{status_color}]{status}[/{status_color}]")
+                console.print(f"  Started: {started}")
+                console.print(f"  Duration: {duration:.1f}s" if duration else "  Duration: N/A")
+                console.print(f"  Items: {items_scraped} scraped, {items_errors} errors")
+                console.print(f"  Requests: {request_count}, Retries: {retry_count}")
+                console.print(f"  Memory: {mem_start:.0f}MB → {mem_peak:.0f}MB peak → {mem_end:.0f}MB" if mem_start else "")
+                if error_summary:
+                    console.print(f"  [red]Errors:[/red]\n    {error_summary[:200]}")
+                console.print()
+
+            # Show events if requested
+            if events:
+                console.print("[bold]Events:[/bold]\n")
+                severity_filter = "AND severity = 'error'" if errors_only else ""
+                cursor.execute(f"""
+                    SELECT spider_name, event_type, event_time, message, severity
+                    FROM scrape_events
+                    WHERE run_id = ? {severity_filter}
+                    ORDER BY event_time
+                    LIMIT 50
+                """, (run_id,))
+                event_rows = cursor.fetchall()
+
+                for spider, etype, etime, msg, sev in event_rows:
+                    sev_color = "red" if sev == "error" else "yellow" if sev == "warning" else "dim"
+                    console.print(f"  [{sev_color}]{etime[11:19]}[/{sev_color}] {spider}: {msg[:80]}")
+
+        else:
+            # Show recent runs summary
+            cursor.execute("""
+                SELECT run_id, MIN(started_at) as started, MAX(finished_at) as finished,
+                       GROUP_CONCAT(DISTINCT spider_name) as spiders,
+                       SUM(items_scraped) as total_items,
+                       SUM(error_count) as total_errors,
+                       SUM(duration_seconds) as total_duration,
+                       CASE WHEN SUM(CASE WHEN status != 'completed' THEN 1 ELSE 0 END) > 0
+                            THEN 'failed' ELSE 'completed' END as overall_status
+                FROM scrape_runs
+                GROUP BY run_id
+                ORDER BY started DESC
+                LIMIT ?
+            """, (runs,))
+            run_summaries = cursor.fetchall()
+
+            if not run_summaries:
+                console.print("[yellow]No scrape runs recorded yet.[/yellow]")
+                return
+
+            console.print("\n[bold]Recent Scrape Runs[/bold]\n")
+
+            table = Table()
+            table.add_column("Run ID", style="bold")
+            table.add_column("Started")
+            table.add_column("Duration", justify="right")
+            table.add_column("Spiders")
+            table.add_column("Items", justify="right")
+            table.add_column("Errors", justify="right")
+            table.add_column("Status")
+
+            for run_id, started, finished, spiders, items, errors, duration, status in run_summaries:
+                status_display = "[green]OK[/green]" if status == "completed" else "[red]FAIL[/red]"
+                duration_display = f"{duration/60:.1f}m" if duration else "?"
+                errors_display = f"[red]{errors}[/red]" if errors and errors > 0 else str(errors or 0)
+                table.add_row(
+                    run_id,
+                    started[5:16] if started else "?",  # MM-DD HH:MM
+                    duration_display,
+                    spiders[:30] + "..." if spiders and len(spiders) > 30 else (spiders or "?"),
+                    str(items or 0),
+                    errors_display,
+                    status_display,
+                )
+
+            console.print(table)
+            console.print("\n[dim]Use --run-id <id> for details, --events to see event log[/dim]")
 
 
 def main():

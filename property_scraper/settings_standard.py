@@ -66,3 +66,12 @@ USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
 ]
+
+# Extensions (audit logging for remote monitoring)
+EXTENSIONS = {
+    'property_scraper.extensions.audit_logger.AuditLoggerExtension': 100,
+}
+
+# Resilience settings
+CLOSESPIDER_TIMEOUT = 3600  # 1 hour max
+CLOSESPIDER_ERRORCOUNT = 50
