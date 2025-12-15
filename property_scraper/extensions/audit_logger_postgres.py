@@ -237,11 +237,38 @@ class PostgresAuditLoggerExtension:
         """Called for each successfully scraped item."""
         if spider.name in self.spider_runs:
             self.spider_runs[spider.name]['items_scraped'] += 1
+            count = self.spider_runs[spider.name]['items_scraped']
 
-            if self.process and self.spider_runs[spider.name]['items_scraped'] % 100 == 0:
+            # Update database every 10 items for live progress
+            if count % 10 == 0:
+                self._update_live_progress(spider)
+
+            if self.process and count % 100 == 0:
                 memory_mb = self.process.memory_info().rss / 1024 / 1024
                 if memory_mb > self.spider_runs[spider.name].get('memory_peak_mb', 0):
                     self.spider_runs[spider.name]['memory_peak_mb'] = memory_mb
+
+    def _update_live_progress(self, spider):
+        """Update items_scraped in database for live progress tracking."""
+        if not self.conn:
+            return
+        try:
+            run_data = self.spider_runs.get(spider.name, {})
+            items = run_data.get('items_scraped', 0)
+            dropped = run_data.get('items_dropped', 0)
+            errors = len(run_data.get('errors', []))
+
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                UPDATE scrape_runs SET
+                    items_scraped = %s,
+                    items_dropped = %s,
+                    error_count = %s
+                WHERE run_id = %s AND spider_name = %s
+            ''', (items, dropped, errors, self.run_id, spider.name))
+            cursor.close()
+        except Exception as e:
+            logger.debug(f"[AUDIT] Live progress update failed: {e}")
 
     def item_dropped(self, item, spider, exception):
         """Called when an item is dropped."""
