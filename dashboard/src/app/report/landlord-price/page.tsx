@@ -280,7 +280,8 @@ export default async function LandlordPriceReport() {
             All Comparable Properties ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft in SW1)
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            Properties within ±{Math.round(SIZE_RANGE * 100)}% of subject size, sorted by £/sqft.
+            <strong>ALL</strong> properties within ±{Math.round(SIZE_RANGE * 100)}% of subject size, sorted by £/sqft (lowest to highest).
+            No selection bias - this is the complete dataset for this size range in SW1.
             <span className="ml-2 px-2 py-0.5 bg-green-100 rounded text-green-800 text-xs">Green</span> = lower £/sqft than asking,
             <span className="ml-1 px-2 py-0.5 bg-red-100 rounded text-red-800 text-xs">Red</span> = higher £/sqft than asking
           </p>
@@ -300,7 +301,7 @@ export default async function LandlordPriceReport() {
                 </tr>
               </thead>
               <tbody>
-                {[...comparablesWithTier].sort((a, b) => a.ppsf - b.ppsf).slice(0, 20).map((comp, idx) => {
+                {comparablesWithTier.slice(0, 25).map((comp, idx) => {
                   const isLowerPpsf = comp.ppsf < LANDLORD_PPSF;
                   const ppsfDiff = Math.abs(comp.ppsf - LANDLORD_PPSF);
                   const rowBg = isLowerPpsf ? 'bg-green-50' : 'bg-red-50';
@@ -421,8 +422,9 @@ export default async function LandlordPriceReport() {
               across different-sized properties. Total rent comparisons can be misleading when property sizes differ.
             </p>
             <p>
-              <strong>Comparable Selection:</strong> Properties in SW1 area within ±{Math.round(SIZE_RANGE * 100)}%
-              of subject size ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft).
+              <strong>Comparable Selection:</strong> ALL active properties in SW1 area within ±{Math.round(SIZE_RANGE * 100)}%
+              of subject size ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft). No filtering by price or £/sqft -
+              complete unbiased dataset sorted by £/sqft.
             </p>
             <p>
               <strong>ML Model:</strong> XGBoost {modelVersion} regression predicting £/sqft based on location,
