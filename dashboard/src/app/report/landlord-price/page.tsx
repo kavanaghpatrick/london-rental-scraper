@@ -50,8 +50,8 @@ export default async function LandlordPriceReport() {
   // Get model's fair value prediction
   let modelPrediction = 8925;
   let modelVersion = 'V15';
-  let modelR2 = 0.908;
-  let modelMape = 10.5;
+  let modelR2 = 0.67;  // Actual V15 R² (no data leakage)
+  let modelMape = 18.0;  // Conservative estimate
   try {
     const dbValuation = await getLatestValuation(PROPERTY.address);
     if (dbValuation) {
@@ -300,7 +300,7 @@ export default async function LandlordPriceReport() {
                 </tr>
               </thead>
               <tbody>
-                {comparablesWithTier.slice(0, 20).map((comp, idx) => {
+                {[...comparablesWithTier].sort((a, b) => a.ppsf - b.ppsf).slice(0, 20).map((comp, idx) => {
                   const isLowerPpsf = comp.ppsf < LANDLORD_PPSF;
                   const ppsfDiff = Math.abs(comp.ppsf - LANDLORD_PPSF);
                   const rowBg = isLowerPpsf ? 'bg-green-50' : 'bg-red-50';
@@ -427,7 +427,7 @@ export default async function LandlordPriceReport() {
             <p>
               <strong>ML Model:</strong> XGBoost {modelVersion} regression predicting £/sqft based on location,
               size, bedrooms, and property features. R² = {modelR2.toFixed(2)} (explains {Math.round(modelR2 * 100)}% of
-              price variance). Average prediction error: ±{modelMape.toFixed(1)}%.
+              price variance). Note: Model provides guidance but market comparables are the primary evidence.
             </p>
             <p>
               <strong>Data Source:</strong> {marketStats.total_listings.toLocaleString()} active listings from
