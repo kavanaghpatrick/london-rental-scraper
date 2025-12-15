@@ -37,7 +37,6 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        working-directory: scrapy_project
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -49,7 +48,6 @@ jobs:
           playwright install-deps chromium
 
       - name: Check Postgres connection
-        working-directory: scrapy_project
         run: |
           python3 << 'EOF'
           import os
@@ -74,7 +72,6 @@ jobs:
 
       - name: Run scraper (Postgres mode)
         id: scrape
-        working-directory: scrapy_project
         env:
           # Use Postgres settings for all spiders
           USE_POSTGRES: "true"
@@ -105,7 +102,6 @@ jobs:
           echo "items_scraped=$ITEMS" >> $GITHUB_OUTPUT
 
       - name: Show database stats
-        working-directory: scrapy_project
         run: |
           python3 << 'EOF'
           import os
@@ -142,7 +138,6 @@ jobs:
           EOF
 
       - name: Show recent scrape runs
-        working-directory: scrapy_project
         run: |
           python3 << 'EOF'
           import os
@@ -179,18 +174,17 @@ jobs:
         with:
           name: scrape-logs-${{ github.run_id }}
           path: |
-            scrapy_project/logs/*.log
-            scrapy_project/scrape_output.txt
+            logs/*.log
+            scrape_output.txt
           retention-days: 7
 
       - name: Create summary
-        working-directory: scrapy_project
         run: |
           echo "## Scrape Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Items scraped:** ${{ steps.scrape.outputs.items_scraped }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Database:** Vercel Postgres" >> $GITHUB_STEP_SUMMARY
-          echo "- **Dashboard:** https://your-dashboard.vercel.app" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dashboard:** https://dashboard-fawn-nu-59.vercel.app" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           python3 << 'EOF' >> $GITHUB_STEP_SUMMARY
@@ -239,7 +233,7 @@ jobs:
 
             **Workflow run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
 
-            **Dashboard:** Check https://your-dashboard.vercel.app for details.
+            **Dashboard:** Check https://dashboard-fawn-nu-59.vercel.app for details.
 
             Please check the logs for details.
             `;
