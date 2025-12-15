@@ -80,17 +80,20 @@ export default function ReportCharts({
     isSubject: d.district === subjectDistrict,
   }));
 
-  // Format scatter data for size vs price
-  const scatterData = comparables.map(c => ({
-    size: c.size_sqft,
-    price: c.price_pcm,
-    tier: c.tier.num,
-    address: c.address,
-    ppsf: c.ppsf,
-  }));
+  // Format scatter data for size vs price - only Tier 1 & 2 for relevance
+  const scatterData = comparables
+    .filter(c => c.tier.num <= 2)
+    .map(c => ({
+      size: c.size_sqft,
+      price: c.price_pcm,
+      tier: c.tier.num,
+      address: c.address,
+      ppsf: c.ppsf,
+    }));
 
-  // Top comparables for horizontal bar chart
+  // Top comparables for horizontal bar chart - only Tier 1 & 2 for relevance
   const topComparables = comparables
+    .filter(c => c.tier.num <= 2)
     .slice(0, 15)
     .map(c => ({
       address: c.address?.slice(0, 30) + (c.address?.length > 30 ? '...' : ''),
@@ -125,9 +128,9 @@ export default function ReportCharts({
         </ResponsiveContainer>
       </div>
 
-      {/* Size vs Price Scatter */}
+      {/* Size vs Price Scatter - Best Comparables Only */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Size vs Monthly Rent - Comparable Properties</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Size vs Monthly Rent - Best Comparables (Tier 1 & 2)</h3>
         <ResponsiveContainer width="100%" height={300}>
           <ScatterChart>
             <CartesianGrid strokeDasharray="3 3" />
