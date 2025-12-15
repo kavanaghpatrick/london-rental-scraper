@@ -174,10 +174,16 @@ export interface PpsfDistribution {
 export async function getComparables(
   sizeSqft: number,
   bedrooms: number,
-  sizeRange: number = 0.20
+  sizeRange: number = 0.20,
+  subjectPpsf?: number
 ): Promise<Comparable[]> {
   const minSize = Math.floor(sizeSqft * (1 - sizeRange));
   const maxSize = Math.ceil(sizeSqft * (1 + sizeRange));
+
+  // Order by proximity to subject £/sqft if provided, otherwise by price
+  const orderClause = subjectPpsf
+    ? `ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf})`
+    : `price_pcm`;
 
   const { rows } = await sql<Comparable>`
     SELECT
@@ -201,7 +207,7 @@ export async function getComparables(
       AND price_pcm > 0
       AND size_sqft BETWEEN ${minSize} AND ${maxSize}
       AND bedrooms = ${bedrooms}
-    ORDER BY price_pcm DESC
+    ORDER BY ABS((price_pcm::numeric / size_sqft::numeric) - ${subjectPpsf || 6.80})
     LIMIT 200
   `;
   return rows;

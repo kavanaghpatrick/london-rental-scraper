@@ -63,7 +63,7 @@ export default async function ValuationReport() {
 
   try {
     [comparables, marketStats, ppsfDistribution, ppsfByDistrict] = await Promise.all([
-      getComparables(SUBJECT.size_sqft, SUBJECT.bedrooms),
+      getComparables(SUBJECT.size_sqft, SUBJECT.bedrooms, 0.20, subjectPpsf),
       getMarketStats(),
       getPpsfDistribution(),
       getPpsfByDistrict(),
