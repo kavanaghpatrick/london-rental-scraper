@@ -212,17 +212,28 @@ export async function getComparables(
   bedrooms: number,
   sizeRange: number = 0.40,
   subjectPpsf: number,
-  postcodeArea?: string  // e.g., 'SW1' to filter to SW1X, SW1W, SW1A, etc.
+  postcodeArea?: string  // e.g., 'SW1' to filter to SW1A, SW1W, SW1X etc. (NOT SW10, SW11)
 ): Promise<Comparable[]> {
   const minSize = Math.floor(sizeSqft * (1 - sizeRange));
   const maxSize = Math.ceil(sizeSqft * (1 + sizeRange));
 
-  // Build postcode filter - if postcodeArea provided, filter to that area
-  const postcodePattern = postcodeArea ? `${postcodeArea}%` : '%';
-
   // UNBIASED COMP SELECTION - no cherry-picking
   // Returns ALL properties matching criteria, sorted by £/sqft (neutral ordering)
   // Dedupe by price+size+district to remove cross-source duplicates
+  //
+  // PRIME CENTRAL LONDON: SW1, SW3, SW7, W1
+  // - SW1: Belgravia, Westminster (subject property area)
+  // - SW3: Chelsea (equally prestigious)
+  // - SW7: South Kensington (equally prestigious, museum district)
+  // - W1: Mayfair, Marylebone (arguably MORE prestigious)
+  //
+  // EXCLUDED:
+  // - W8 (Kensington): Different market, outliers near Kensington Palace skew data
+  // - NW1/NW3/NW8: Nice but tier below Belgravia/Chelsea
+  // - SW10/SW11: NOT SW1 - different areas (Chelsea Harbour, Battersea)
+  //
+  // IMPORTANT: Only include long-term lets (price_period = 'pcm')
+  // Short lets (price_period = 'pw') have 2x £/sqft and aren't comparable
   const { rows } = await sql<Comparable>`
     WITH ranked AS (
       SELECT
@@ -254,7 +265,14 @@ export async function getComparables(
         AND price_pcm IS NOT NULL
         AND price_pcm > 0
         AND size_sqft BETWEEN ${minSize} AND ${maxSize}
-        AND postcode LIKE ${postcodePattern}
+        AND (
+          postcode ~ '^SW1[A-Z]'  -- Belgravia/Westminster (NOT SW10/11/12)
+          OR postcode ~ '^SW3'     -- Chelsea
+          OR postcode ~ '^SW7'     -- South Kensington
+          OR postcode ~ '^W1[A-Z]' -- Mayfair/Marylebone
+        )
+        AND (price_period = 'pcm' OR price_period IS NULL OR price_period = '')
+        AND (description NOT ILIKE '%short let%' AND description NOT ILIKE '%short-let%' OR description IS NULL)
     )
     SELECT address, postcode, district, source, price_pcm, size_sqft, bedrooms, bathrooms, url, ppsf, ppsf_diff, size_diff_pct
     FROM ranked

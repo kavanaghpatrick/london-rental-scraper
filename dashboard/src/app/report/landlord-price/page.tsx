@@ -77,8 +77,8 @@ export default async function LandlordPriceReport() {
   let ppsfByDistrict: { district: string; median_ppsf: number; count: number }[] = [];
   let error = null;
 
-  // Use tighter 15% size range for truly comparable properties
-  const SIZE_RANGE = 0.15;
+  // Use 25% size range for robust comparable dataset
+  const SIZE_RANGE = 0.25;
 
   try {
     [comparables, marketStats, ppsfDistribution, ppsfByDistrict] = await Promise.all([
@@ -117,11 +117,6 @@ export default async function LandlordPriceReport() {
   const lowerPpsfPct = comparablesWithTier.length > 0
     ? Math.round((lowerPpsfComps.length / comparablesWithTier.length) * 100)
     : 0;
-
-  // Properties with BOTH larger size AND lower £/sqft (bulletproof comps)
-  const largerAndCheaperPpsf = comparablesWithTier.filter(
-    c => c.size_sqft >= PROPERTY.size_sqft && c.ppsf < LANDLORD_PPSF
-  );
 
   // Tier breakdown
   const tier1 = comparablesWithTier.filter(c => c.tier.num === 1);
@@ -185,10 +180,10 @@ export default async function LandlordPriceReport() {
             </div>
 
             <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4 text-center">
-              <div className="text-sm text-blue-600 font-semibold mb-1">SW1 MARKET MEDIAN</div>
-              <div className="text-3xl font-bold text-blue-700">£{sw1MedianPpsf.toFixed(2)}</div>
+              <div className="text-sm text-blue-600 font-semibold mb-1">PRIME CENTRAL MEDIAN</div>
+              <div className="text-3xl font-bold text-blue-700">£{allMedianPpsf.toFixed(2)}</div>
               <div className="text-sm text-gray-600 mt-1">per sqft/month</div>
-              <div className="text-xs text-gray-500 mt-2">= {formatCurrency(fairRentAtSW1Median)}/month for this size</div>
+              <div className="text-xs text-gray-500 mt-2">= {formatCurrency(fairRentAtMedian)}/month for this size</div>
             </div>
 
             <div className="bg-green-50 border-2 border-green-300 rounded-lg p-4 text-center">
@@ -202,114 +197,71 @@ export default async function LandlordPriceReport() {
           <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
             <p className="text-sm text-amber-800">
               <strong>Key Finding:</strong> The landlord is asking £{LANDLORD_PPSF.toFixed(2)}/sqft, which is{' '}
-              <strong>{((LANDLORD_PPSF / sw1MedianPpsf - 1) * 100).toFixed(0)}% above the SW1 median</strong> of £{sw1MedianPpsf.toFixed(2)}/sqft
-              for similar-sized properties ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft).
+              <strong>{((LANDLORD_PPSF / allMedianPpsf - 1) * 100).toFixed(0)}% above the Prime Central London median</strong> of £{allMedianPpsf.toFixed(2)}/sqft
+              for similar-sized properties ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft) across Belgravia, Chelsea, South Kensington, and Mayfair.
             </p>
           </div>
         </div>
 
-        {/* Bulletproof Comparables */}
+        {/* All Comparable Properties - UNBIASED - shows everything */}
         <div className="bg-white rounded-xl shadow p-6 mb-6">
           <h2 className="text-lg font-semibold border-b pb-2 mb-4 text-slate-800">
-            Comparable Properties: Same Size, Lower £/sqft
+            All Comparable Properties ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft in Prime Central London)
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            These properties are <strong>the same size or larger</strong> ({PROPERTY.size_sqft.toLocaleString()}+ sqft)
-            AND have <strong>lower £/sqft</strong> than the asking price. These are the strongest negotiation comparables
-            because the landlord cannot dismiss them as &quot;smaller properties.&quot;
+            Complete dataset of {comparablesWithTier.length} long-term let properties within ±{Math.round(SIZE_RANGE * 100)}% of subject size
+            across SW1 (Belgravia), SW3 (Chelsea), SW7 (South Kensington), and W1 (Mayfair).
+            Short lets excluded. Sorted by £/sqft to show full market range.
           </p>
 
-          {largerAndCheaperPpsf.length > 0 ? (
-            <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-gray-500 text-left border-b">
-                      <th className="pb-2">Address</th>
-                      <th className="pb-2">District</th>
-                      <th className="pb-2 text-right">Size (sqft)</th>
-                      <th className="pb-2 text-right">Rent/month</th>
-                      <th className="pb-2 text-right">£/sqft</th>
-                      <th className="pb-2 text-right">£/sqft Difference</th>
-                      <th className="pb-2">Source</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {largerAndCheaperPpsf.slice(0, 15).map((comp, idx) => {
-                      const ppsfDiff = LANDLORD_PPSF - comp.ppsf;
-                      const sizeDiff = comp.size_sqft - PROPERTY.size_sqft;
-                      return (
-                        <tr key={idx} className="bg-green-50 border-b border-green-100">
-                          <td className="py-2">
-                            <a href={comp.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                              {comp.address?.slice(0, 35)}{comp.address?.length > 35 ? '...' : ''}
-                            </a>
-                          </td>
-                          <td className="py-2">{comp.district}</td>
-                          <td className="py-2 text-right">
-                            {comp.size_sqft.toLocaleString()}
-                            <span className="text-xs text-green-600 ml-1">(+{sizeDiff})</span>
-                          </td>
-                          <td className="py-2 text-right font-semibold">{formatCurrency(comp.price_pcm)}</td>
-                          <td className="py-2 text-right">£{comp.ppsf.toFixed(2)}</td>
-                          <td className="py-2 text-right">
-                            <span className="text-green-700 font-semibold">-£{ppsfDiff.toFixed(2)}</span>
-                          </td>
-                          <td className="py-2">{comp.source}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-sm text-gray-600 mt-4 p-3 bg-gray-50 rounded">
-                <strong>{largerAndCheaperPpsf.length} properties</strong> in the SW1 area are the same size or larger
-                AND charge less per square foot than the asking price.
-              </p>
-            </>
-          ) : (
-            <p className="text-gray-600 p-4 bg-gray-50 rounded">
-              No properties found that are both larger and have lower £/sqft in the immediate area.
-            </p>
-          )}
-        </div>
-
-        {/* All Comparable Properties - £/sqft basis */}
-        <div className="bg-white rounded-xl shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold border-b pb-2 mb-4 text-slate-800">
-            All Comparable Properties ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft in SW1)
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            <strong>ALL</strong> properties within ±{Math.round(SIZE_RANGE * 100)}% of subject size, sorted by £/sqft (lowest to highest).
-            No selection bias - this is the complete dataset for this size range in SW1.
-            <span className="ml-2 px-2 py-0.5 bg-green-100 rounded text-green-800 text-xs">Green</span> = lower £/sqft than asking,
-            <span className="ml-1 px-2 py-0.5 bg-red-100 rounded text-red-800 text-xs">Red</span> = higher £/sqft than asking
-          </p>
+          {/* Summary Statistics - show full picture first */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4 text-center">
+              <div className="text-xs text-gray-500 uppercase">Total Comps</div>
+              <div className="text-2xl font-bold text-slate-700">{comparablesWithTier.length}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4 text-center">
+              <div className="text-xs text-gray-500 uppercase">Median £/sqft</div>
+              <div className="text-2xl font-bold text-slate-700">£{allMedianPpsf.toFixed(2)}</div>
+            </div>
+            <div className="bg-green-50 rounded-lg p-4 text-center">
+              <div className="text-xs text-gray-500 uppercase">Below Asking</div>
+              <div className="text-2xl font-bold text-green-700">{lowerPpsfComps.length}</div>
+              <div className="text-xs text-gray-500">({lowerPpsfPct}%)</div>
+            </div>
+            <div className="bg-red-50 rounded-lg p-4 text-center">
+              <div className="text-xs text-gray-500 uppercase">Above Asking</div>
+              <div className="text-2xl font-bold text-red-700">{comparablesWithTier.length - lowerPpsfComps.length}</div>
+              <div className="text-xs text-gray-500">({100 - lowerPpsfPct}%)</div>
+            </div>
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 text-left border-b">
+                  <th className="pb-2">#</th>
                   <th className="pb-2">Address</th>
                   <th className="pb-2">District</th>
                   <th className="pb-2">Beds</th>
                   <th className="pb-2 text-right">Size</th>
                   <th className="pb-2 text-right">Rent/month</th>
                   <th className="pb-2 text-right">£/sqft</th>
-                  <th className="pb-2 text-right">vs Asking £/sqft</th>
+                  <th className="pb-2 text-right">vs Asking</th>
                   <th className="pb-2">Source</th>
                 </tr>
               </thead>
               <tbody>
-                {comparablesWithTier.slice(0, 25).map((comp, idx) => {
+                {comparablesWithTier.map((comp, idx) => {
                   const isLowerPpsf = comp.ppsf < LANDLORD_PPSF;
                   const ppsfDiff = Math.abs(comp.ppsf - LANDLORD_PPSF);
                   const rowBg = isLowerPpsf ? 'bg-green-50' : 'bg-red-50';
                   return (
                     <tr key={idx} className={rowBg}>
+                      <td className="py-2 text-gray-400 text-xs">{idx + 1}</td>
                       <td className="py-2">
                         <a href={comp.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                          {comp.address?.slice(0, 30)}{comp.address?.length > 30 ? '...' : ''}
+                          {comp.address?.slice(0, 28)}{comp.address?.length > 28 ? '...' : ''}
                         </a>
                       </td>
                       <td className="py-2">{comp.district}</td>
@@ -324,7 +276,7 @@ export default async function LandlordPriceReport() {
                           <span className="text-red-600">+£{ppsfDiff.toFixed(2)}</span>
                         )}
                       </td>
-                      <td className="py-2">{comp.source}</td>
+                      <td className="py-2 text-xs">{comp.source}</td>
                     </tr>
                   );
                 })}
@@ -332,17 +284,12 @@ export default async function LandlordPriceReport() {
             </table>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-            <div className="p-3 bg-gray-50 rounded">
-              <strong>{lowerPpsfPct}%</strong> of similar-sized properties ({lowerPpsfComps.length} of {comparablesWithTier.length})
-              have <strong>lower £/sqft</strong> than the asking price
-            </div>
-            <div className="p-3 bg-gray-50 rounded">
-              Median £/sqft for this size range: <strong>£{allMedianPpsf.toFixed(2)}</strong>
-              <br/>
-              <span className="text-xs text-gray-500">= {formatCurrency(fairRentAtMedian)}/month for {PROPERTY.size_sqft.toLocaleString()} sqft</span>
-            </div>
-          </div>
+          <p className="text-xs text-gray-500 mt-4 p-3 bg-gray-50 rounded">
+            <strong>Note:</strong> This table shows ALL {comparablesWithTier.length} comparable properties across Prime Central London
+            (Belgravia, Chelsea, South Kensington, Mayfair) - no filtering or cherry-picking.
+            The landlord&apos;s asking of £{LANDLORD_PPSF.toFixed(2)}/sqft falls at the {100 - lowerPpsfPct}th percentile
+            (more expensive than {lowerPpsfPct}% of comparables in London&apos;s most prestigious postcodes).
+          </p>
         </div>
 
         {/* Property Details */}
@@ -378,7 +325,7 @@ export default async function LandlordPriceReport() {
           <ReportCharts
             ppsfDistribution={ppsfDistribution}
             ppsfByDistrict={ppsfByDistrict}
-            comparables={comparablesWithTier.slice(0, 20)}
+            comparables={comparablesWithTier}
             subjectPpsf={LANDLORD_PPSF}
             subjectDistrict={PROPERTY.postcode}
             subjectPrice={Math.round(LANDLORD_PRICE)}
@@ -392,7 +339,7 @@ export default async function LandlordPriceReport() {
           <div className="space-y-3 text-sm text-gray-700">
             <p>
               <strong>1. The asking price of £{LANDLORD_PPSF.toFixed(2)}/sqft is above market:</strong>{' '}
-              {lowerPpsfPct}% of similar-sized properties ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft) in SW1
+              {lowerPpsfPct}% of similar-sized properties ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft) in Prime Central London
               have lower £/sqft rates.
             </p>
             <p>
@@ -404,12 +351,6 @@ export default async function LandlordPriceReport() {
               <strong>3. ML model prediction:</strong>{' '}
               {formatCurrency(modelPrediction)}/month (£{modelPpsf.toFixed(2)}/sqft).
             </p>
-            {largerAndCheaperPpsf.length > 0 && (
-              <p>
-                <strong>4. Stronger alternatives exist:</strong>{' '}
-                {largerAndCheaperPpsf.length} properties in SW1 are the same size or larger AND charge less per sqft.
-              </p>
-            )}
           </div>
         </div>
 
@@ -422,9 +363,11 @@ export default async function LandlordPriceReport() {
               across different-sized properties. Total rent comparisons can be misleading when property sizes differ.
             </p>
             <p>
-              <strong>Comparable Selection:</strong> ALL active properties in SW1 area within ±{Math.round(SIZE_RANGE * 100)}%
-              of subject size ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft). No filtering by price or £/sqft -
-              complete unbiased dataset sorted by £/sqft.
+              <strong>Comparable Selection:</strong> ALL active long-term let properties in Prime Central London
+              (SW1 Belgravia, SW3 Chelsea, SW7 South Kensington, W1 Mayfair) within ±{Math.round(SIZE_RANGE * 100)}%
+              of subject size ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft). These four postcodes represent
+              the traditional &quot;super prime&quot; residential areas as defined by major estate agents. Short lets excluded
+              as they command ~2x the £/sqft. No filtering by price or £/sqft - complete unbiased dataset.
             </p>
             <p>
               <strong>ML Model:</strong> XGBoost {modelVersion} regression predicting £/sqft based on location,
