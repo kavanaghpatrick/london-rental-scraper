@@ -65,9 +65,6 @@ export default async function LandlordPriceReport() {
   }
 
   const modelPpsf = modelPrediction / PROPERTY.size_sqft;
-  const overpayment = LANDLORD_PRICE - modelPrediction;
-  const overpaymentPct = ((LANDLORD_PRICE / modelPrediction) - 1) * 100;
-  const annualOverpayment = overpayment * 12;
 
   const postcodeArea = PROPERTY.postcode.match(/^([A-Z]+\d+)/)?.[1] || PROPERTY.postcode.slice(0, 3);
 
