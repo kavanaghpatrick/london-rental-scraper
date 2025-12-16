@@ -295,7 +295,12 @@ def engineer_features_v15(df):
     df['beds_squared'] = df['bedrooms'] ** 2
 
     # Size bins (quintiles of size, not price)
-    df['size_bin'] = pd.qcut(df['size_sqft'], q=5, labels=[0, 1, 2, 3, 4], duplicates='drop').astype(float).fillna(2)
+    # Note: qcut fails on single rows, so use fallback for prediction
+    if len(df) > 1:
+        df['size_bin'] = pd.qcut(df['size_sqft'], q=5, labels=[0, 1, 2, 3, 4], duplicates='drop').astype(float).fillna(2)
+    else:
+        # Single row (prediction mode) - assign middle bin
+        df['size_bin'] = 2.0
 
     # ========== FLOOR FEATURES ==========
     df['floor_count'] = df['floor_count'].fillna(0)
@@ -740,7 +745,7 @@ def predict_subject_property(model, feature_cols, training_df, metrics):
                 )
             ''')
 
-            # Insert new valuation
+            # Insert new valuation (convert numpy types to Python native)
             cur.execute('''
                 INSERT INTO property_valuations (
                     address, postcode, size_sqft, bedrooms, bathrooms,
@@ -748,10 +753,10 @@ def predict_subject_property(model, feature_cols, training_df, metrics):
                     model_version, model_r2, model_mape
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', (
-                subject['address'], subject['postcode'], subject['size_sqft'],
-                subject['bedrooms'], subject['bathrooms'],
-                predicted_pcm, range_low, range_high,
-                'v15', metrics['R2'], metrics['MAPE']
+                subject['address'], subject['postcode'], int(subject['size_sqft']),
+                int(subject['bedrooms']), int(subject['bathrooms']),
+                int(predicted_pcm), int(range_low), int(range_high),
+                'v15', float(metrics['R2']), float(metrics['MAPE'])
             ))
 
             conn.commit()
@@ -779,14 +784,20 @@ def log_model_metrics_to_postgres(metrics, samples, features_count):
         run_date = datetime.utcnow().strftime('%Y-%m-%d')
         run_id = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
 
+        # Convert numpy types to Python native types for psycopg2
+        r2 = float(metrics['R2'])
+        mae = float(metrics['MAE'])
+        mape = float(metrics['MAPE'])
+        median_ape = float(metrics['Median_APE'])
+
         cur.execute('''
             INSERT INTO model_runs (
                 run_date, run_id, version, samples_total, features_count,
                 r2_score, mae, mape, median_ape
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (
-            run_date, run_id, 'v15', samples, features_count,
-            metrics['R2'], metrics['MAE'], metrics['MAPE'], metrics['Median_APE']
+            run_date, run_id, 'v15', int(samples), int(features_count),
+            r2, mae, mape, median_ape
         ))
 
         conn.commit()
