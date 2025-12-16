@@ -206,49 +206,81 @@ jobs:
               print(f"Error: {e}")
           EOF
 
-      - name: Clean duplicate listings
+      - name: Clean duplicate listings (address similarity)
         run: |
           python3 << 'EOF'
           import os
           import psycopg2
+          from difflib import SequenceMatcher
+          from collections import defaultdict
 
           url = os.environ.get('POSTGRES_URL')
           if not url:
               print("POSTGRES_URL not set")
               exit(0)
 
-          conn = psycopg2.connect(url)
-          cursor = conn.cursor()
+          # Source priority (lower = better, agents have better data)
+          SOURCE_PRIORITY = {'savills': 1, 'knightfrank': 2, 'foxtons': 3, 'chestertons': 4, 'rightmove': 5}
 
-          # Find duplicates to delete (keep best source per price/size/beds/district cluster)
-          cursor.execute("""
-              WITH ranked AS (
-                  SELECT
-                      id,
-                      ROW_NUMBER() OVER (
-                          PARTITION BY price_pcm, size_sqft, bedrooms, SPLIT_PART(postcode, ' ', 1)
-                          ORDER BY
-                              CASE source
-                                  WHEN 'savills' THEN 1 WHEN 'knightfrank' THEN 2
-                                  WHEN 'chestertons' THEN 3 WHEN 'foxtons' THEN 4
-                                  ELSE 5
-                              END, id
-                      ) as rn,
-                      COUNT(*) OVER (PARTITION BY price_pcm, size_sqft, bedrooms, SPLIT_PART(postcode, ' ', 1)) as cnt
-                  FROM listings
-                  WHERE is_active = 1 AND size_sqft > 0 AND price_pcm > 0
-              )
-              SELECT id FROM ranked WHERE cnt > 1 AND rn > 1
+          def normalize_addr(addr):
+              if not addr: return ''
+              addr = addr.lower()
+              for word in ['london', 'uk', ',', '.']:
+                  addr = addr.replace(word, ' ')
+              return ' '.join(addr.split())
+
+          conn = psycopg2.connect(url)
+          cur = conn.cursor()
+
+          # Get all active listings
+          cur.execute("""
+              SELECT id, source, address, postcode, price_pcm, bedrooms, size_sqft,
+                     SPLIT_PART(postcode, ' ', 1) as district
+              FROM listings WHERE is_active = 1 AND price_pcm > 0 ORDER BY id
           """)
-          to_delete = [row[0] for row in cursor.fetchall()]
+
+          listings = [{'id': r[0], 'source': r[1], 'address': r[2], 'postcode': r[3],
+                       'price_pcm': r[4], 'bedrooms': r[5], 'size_sqft': r[6],
+                       'district': r[7], 'norm_addr': normalize_addr(r[2])} for r in cur.fetchall()]
+
+          print(f"Checking {len(listings)} active listings for duplicates...")
+
+          # Union-Find for clustering
+          parent = {l['id']: l['id'] for l in listings}
+          def find(x):
+              if parent[x] != x: parent[x] = find(parent[x])
+              return parent[x]
+          def union(x, y):
+              px, py = find(x), find(y)
+              if px != py: parent[px] = py
+
+          # Compare listings (same district, beds, price within 5%, address >70% similar)
+          for i, a in enumerate(listings):
+              for b in listings[i+1:]:
+                  if a['district'] != b['district']: continue
+                  if a['bedrooms'] != b['bedrooms']: continue
+                  if abs(a['price_pcm'] - b['price_pcm']) > 0.05 * max(a['price_pcm'], b['price_pcm']): continue
+                  if SequenceMatcher(None, a['norm_addr'], b['norm_addr']).ratio() > 0.70:
+                      union(a['id'], b['id'])
+
+          # Group and identify deletions
+          clusters = defaultdict(list)
+          for l in listings: clusters[find(l['id'])].append(l)
+
+          to_delete = []
+          for members in clusters.values():
+              if len(members) < 2: continue
+              # Sort by: has sqft, source priority, id
+              members.sort(key=lambda x: (0 if x['size_sqft'] and x['size_sqft'] > 0 else 1,
+                                          SOURCE_PRIORITY.get(x['source'], 9), x['id']))
+              to_delete.extend([m['id'] for m in members[1:]])
 
           if to_delete:
-              # Delete price_history first (FK constraint)
               placeholders = ','.join(['%s'] * len(to_delete))
-              cursor.execute(f"DELETE FROM price_history WHERE listing_id IN ({placeholders})", to_delete)
-              cursor.execute(f"DELETE FROM listings WHERE id IN ({placeholders})", to_delete)
+              cur.execute(f"DELETE FROM price_history WHERE listing_id IN ({placeholders})", to_delete)
+              cur.execute(f"DELETE FROM listings WHERE id IN ({placeholders})", to_delete)
               conn.commit()
-              print(f"✅ Removed {len(to_delete)} duplicate listings")
+              print(f"✅ Removed {len(to_delete)} duplicate listings (address similarity >70%)")
           else:
               print("✅ No duplicates found")
 
