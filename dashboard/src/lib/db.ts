@@ -273,6 +273,7 @@ export async function getComparables(
         )
         AND (price_period = 'pcm' OR price_period IS NULL OR price_period = '')
         AND (description NOT ILIKE '%short let%' AND description NOT ILIKE '%short-let%' OR description IS NULL)
+        AND (price_pcm::numeric / size_sqft::numeric) >= 3  -- Filter obvious bad data (< £3/sqft impossible in Prime Central)
     )
     SELECT address, postcode, district, source, price_pcm, size_sqft, bedrooms, bathrooms, url, ppsf, ppsf_diff, size_diff_pct
     FROM ranked
