@@ -686,25 +686,25 @@ def predict_subject_property(model, feature_cols, training_df, metrics):
         'latitude': 51.4934,
         'longitude': -0.1508,
         'agent_brand': 'Savills',  # Must match PREMIUM_AGENTS case
-        # Floor features
-        'floor_count': 1,
+        # Floor features - DUPLEX over first and second floors
+        'floor_count': 2,  # Duplex spans 2 floors
         'has_roof_terrace': 0,
         'has_basement': 0,
         'has_ground': 0,
         'has_first_floor': 1,
-        'has_second_floor': 0,
+        'has_second_floor': 1,  # Duplex includes second floor
         'has_third_floor': 0,
         'has_fourth_plus': 0,
-        # Amenity features (typical for Belgravia mansion block)
-        'has_balcony': 0,
-        'has_terrace': 0,
-        'has_garden': 0,
-        'has_porter': 1,  # Most Belgravia buildings have porters
+        # Amenity features - ACTUAL FEATURES FROM LISTING
+        'has_balcony': 1,  # Yes - shown on floorplan (first floor kitchen)
+        'has_terrace': 1,  # Yes - "private terrace" per listing
+        'has_garden': 0,   # No private garden (but Belgrave Square access)
+        'has_porter': 1,   # Most Belgravia buildings have porters
         'has_gym': 0,
         'has_pool': 0,
         'has_parking': 0,
-        'has_lift': 1,    # Period buildings typically have lifts
-        'has_ac': 0,
+        'has_lift': 1,     # "Lift in building" per listing
+        'has_ac': 1,       # "Air-conditioning throughout" per listing
         'has_epc': 0,
     }])
 
