@@ -49,9 +49,9 @@ output/*.jsonl
 output/*_backup*.db
 output/*.pre_v*_backup
 output/*.csv
+output/rentals.db
 
-# Keep the main database and analysis PNGs
-!output/rentals.db
+# Keep analysis PNGs
 !output/*.png
 
 # Catboost
