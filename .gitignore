@@ -74,6 +74,8 @@ savills_exploration/
 # Environment variables
 .env
 .env.local
+.env.prod
+.env*.prod
 
 # Archive old scripts
 archive/
@@ -82,3 +84,4 @@ archive/
 *.tmp
 *.temp
 .vercel
+.env*.local
