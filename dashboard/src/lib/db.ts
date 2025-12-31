@@ -1,5 +1,13 @@
 import { sql } from '@vercel/postgres';
 
+/**
+ * Data Quality Thresholds - keep in sync with shared_constants.py
+ *
+ * PPSF_MIN = 3      // £/sqft minimum (below = data error)
+ * PPSF_MAX = 30     // £/sqft maximum (above = outlier)
+ * PRICE_MIN = 500   // Minimum rent (below = parking/storage)
+ */
+
 export interface ScrapeRun {
   id: number;
   run_id: string;

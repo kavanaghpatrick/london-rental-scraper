@@ -42,6 +42,23 @@ try:
 except ImportError:
     HAS_OPTUNA = False
 
+# Import shared constants for data quality thresholds
+try:
+    from shared_constants import (
+        PPSF_MIN, PPSF_MAX, PRICE_MIN_PCM, SQFT_MIN, SQFT_MAX,
+        SQFT_PER_BED_MIN, PRIME_POSTCODES, PREMIUM_AGENTS, SOURCE_QUALITY
+    )
+except ImportError:
+    # Fallback if running from different directory
+    PPSF_MIN, PPSF_MAX = 3, 30
+    PRICE_MIN_PCM = 500
+    SQFT_MIN, SQFT_MAX = 150, 10000
+    SQFT_PER_BED_MIN = 70
+    PRIME_POSTCODES = ['SW1', 'SW3', 'SW7', 'SW10', 'W1', 'W8', 'W11', 'NW3', 'NW8']
+    PREMIUM_AGENTS = ['Knight Frank', 'Savills', 'Harrods Estates', 'Sotheby',
+                      'Beauchamp Estates', 'Strutt & Parker', 'Chestertons']
+    SOURCE_QUALITY = {'savills': 4, 'knightfrank': 4, 'chestertons': 3, 'foxtons': 2, 'rightmove': 1}
+
 OUTPUT_DIR = Path('output')
 
 # Location data (no price info - just coordinates)
@@ -77,12 +94,7 @@ POSTCODE_CENTROIDS = {
 
 CITY_CENTER = (51.5074, -0.1278)
 
-# Premium postcodes (known from domain knowledge, not from price data)
-PRIME_POSTCODES = ['SW1', 'SW3', 'SW7', 'SW10', 'W1', 'W8', 'W11', 'NW3', 'NW8']
-
-# Premium agents (known brand reputation, not from price data)
-PREMIUM_AGENTS = ['Knight Frank', 'Savills', 'Harrods Estates', 'Sotheby',
-                  'Beauchamp Estates', 'Strutt & Parker', 'Chestertons']
+# PRIME_POSTCODES and PREMIUM_AGENTS imported from shared_constants.py
 
 AMENITY_FEATURES = [
     'has_balcony', 'has_terrace', 'has_garden', 'has_porter',
@@ -216,15 +228,15 @@ def load_and_clean_data():
     # Calculate £/sqft for filtering
     df['ppsf'] = df['price_pcm'] / df['size_sqft']
 
-    # Quality filters - SAME AS DASHBOARD to ensure consistency
+    # Quality filters - SAME AS DASHBOARD (see shared_constants.py)
     sqft_per_bed = df['size_sqft'] / df['bedrooms'].replace(0, 0.5)
-    mask1 = sqft_per_bed < 70          # Too small to be real
-    mask2 = df['price_pcm'] > 100000   # Obvious data error (>£100k/month)
-    mask3 = df['size_sqft'] < 150      # Studio minimum
-    mask4 = df['size_sqft'] > 10000    # Obvious error (reduced from 20k)
-    mask5 = df['ppsf'] < 3             # £/sqft too low - data error (£3 min in Prime Central)
-    mask6 = df['ppsf'] > 30            # £/sqft too high - outlier/error (£30 max reasonable)
-    mask7 = df['price_pcm'] < 500      # Too cheap - parking spaces/storage
+    mask1 = sqft_per_bed < SQFT_PER_BED_MIN   # Too small to be real
+    mask2 = df['price_pcm'] > 100000          # Obvious data error (>£100k/month)
+    mask3 = df['size_sqft'] < SQFT_MIN        # Studio minimum
+    mask4 = df['size_sqft'] > SQFT_MAX        # Obvious error
+    mask5 = df['ppsf'] < PPSF_MIN             # £/sqft too low - data error
+    mask6 = df['ppsf'] > PPSF_MAX             # £/sqft too high - outlier/error
+    mask7 = df['price_pcm'] < PRICE_MIN_PCM   # Too cheap - parking spaces/storage
 
     removed_low_ppsf = mask5.sum()
     removed_high_ppsf = mask6.sum()
