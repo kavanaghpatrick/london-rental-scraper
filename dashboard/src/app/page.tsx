@@ -108,6 +108,12 @@ export default async function Dashboard() {
           <h1 className="text-3xl font-bold">Rental Scraper Dashboard</h1>
           <div className="flex items-center gap-4">
             <a
+              href="/agents"
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-purple-700 transition"
+            >
+              Agent Performance
+            </a>
+            <a
               href="/report"
               className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
             >

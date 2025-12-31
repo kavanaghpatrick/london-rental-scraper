@@ -128,11 +128,16 @@ export default async function ValuationReport() {
   const totalInDist = ppsfDistribution.reduce((sum, d) => sum + d.count, 0);
   const marketPercentile = totalInDist > 0 ? Math.round((belowSubject / totalInDist) * 100) : 0;
 
-  // Tier medians
+  // Tier medians - properly handles even-length arrays
   const getMedianPpsf = (items: typeof comparablesWithTier) => {
     if (items.length === 0) return 0;
     const sorted = [...items].sort((a, b) => a.ppsf - b.ppsf);
-    return sorted[Math.floor(sorted.length / 2)].ppsf;
+    const mid = Math.floor(sorted.length / 2);
+    // For even length, average the two middle values; for odd, return middle
+    if (sorted.length % 2 === 0) {
+      return (sorted[mid - 1].ppsf + sorted[mid].ppsf) / 2;
+    }
+    return sorted[mid].ppsf;
   };
 
   const tierStats = {

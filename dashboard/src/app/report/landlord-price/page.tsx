@@ -120,11 +120,16 @@ export default async function LandlordPriceReport() {
   const tier2 = comparablesWithTier.filter(c => c.tier.num === 2);
   const sw1Comps = [...tier1, ...tier2];
 
-  // Calculate median £/sqft for SW1 comps
+  // Calculate median £/sqft - properly handles even-length arrays
   const getMedianPpsf = (items: typeof comparablesWithTier) => {
     if (items.length === 0) return 0;
     const sorted = [...items].sort((a, b) => a.ppsf - b.ppsf);
-    return sorted[Math.floor(sorted.length / 2)].ppsf;
+    const mid = Math.floor(sorted.length / 2);
+    // For even length, average the two middle values; for odd, return middle
+    if (sorted.length % 2 === 0) {
+      return (sorted[mid - 1].ppsf + sorted[mid].ppsf) / 2;
+    }
+    return sorted[mid].ppsf;
   };
 
   const sw1MedianPpsf = getMedianPpsf(sw1Comps);

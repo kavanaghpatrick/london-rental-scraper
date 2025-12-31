@@ -216,6 +216,8 @@ export async function getComparables(
 ): Promise<Comparable[]> {
   const minSize = Math.floor(sizeSqft * (1 - sizeRange));
   const maxSize = Math.ceil(sizeSqft * (1 + sizeRange));
+  const minBedrooms = Math.max(0, bedrooms - 1);
+  const maxBedrooms = bedrooms + 1;
 
   // UNBIASED COMP SELECTION - no cherry-picking
   // Returns ALL properties matching criteria, sorted by £/sqft (neutral ordering)
@@ -273,7 +275,10 @@ export async function getComparables(
         )
         AND (price_period = 'pcm' OR price_period IS NULL OR price_period = '')
         AND (description NOT ILIKE '%short let%' AND description NOT ILIKE '%short-let%' OR description IS NULL)
+        AND COALESCE(is_short_let, 0) = 0  -- Exclude flagged short lets
         AND (price_pcm::numeric / size_sqft::numeric) >= 3  -- Filter obvious bad data (< £3/sqft impossible in Prime Central)
+        AND (price_pcm::numeric / size_sqft::numeric) <= 30  -- Filter extreme outliers (> £30/sqft likely data errors)
+        AND bedrooms BETWEEN ${minBedrooms} AND ${maxBedrooms}  -- Match similar property types
     )
     SELECT address, postcode, district, source, price_pcm, size_sqft, bedrooms, bathrooms, url, ppsf, ppsf_diff, size_diff_pct
     FROM ranked
@@ -340,6 +345,232 @@ export async function getPpsfByDistrict(): Promise<{ district: string; median_pp
     HAVING COUNT(*) >= 5
     ORDER BY median_ppsf DESC
     LIMIT 15
+  `;
+  return rows;
+}
+
+// ============ Agent Performance Functions ============
+
+export interface AgentPerformance {
+  source: string;
+  active_listings: number;
+  price_reductions: number;
+  avg_reduction_pct: number;
+  price_cut_rate: number;
+  turnover_rate: number;
+}
+
+export interface AgentTrend {
+  date: string;
+  source: string;
+  inventory: number;
+  cumulative_reductions: number;
+  cumulative_new: number;
+}
+
+export async function getAgentPerformance(): Promise<AgentPerformance[]> {
+  const { rows } = await sql<AgentPerformance>`
+    WITH price_changes AS (
+      SELECT
+        ph.listing_id,
+        ph.price_pcm as current_price,
+        LAG(ph.price_pcm) OVER (PARTITION BY ph.listing_id ORDER BY ph.recorded_at) as prev_price,
+        ph.recorded_at
+      FROM price_history ph
+      WHERE ph.recorded_at::timestamp >= NOW() - INTERVAL '30 days'
+    ),
+    reductions AS (
+      SELECT
+        l.source,
+        COUNT(DISTINCT pc.listing_id)::int as price_reductions,
+        COALESCE(ROUND(AVG((pc.current_price - pc.prev_price)::numeric / pc.prev_price::numeric * 100)::numeric, 2), 0)::float as avg_reduction_pct
+      FROM price_changes pc
+      JOIN listings l ON l.id = pc.listing_id
+      WHERE pc.prev_price IS NOT NULL
+        AND pc.current_price < pc.prev_price
+        AND l.source != 'rightmove'
+      GROUP BY l.source
+    ),
+    inventory AS (
+      SELECT
+        source,
+        COUNT(*)::int as active_listings
+      FROM listings
+      WHERE is_active = 1
+        AND source != 'rightmove'
+      GROUP BY source
+    ),
+    turnover AS (
+      SELECT
+        source,
+        COUNT(*)::int as turned_over
+      FROM listings
+      WHERE source != 'rightmove'
+        AND (
+          (is_active = 0 AND last_seen::timestamp >= NOW() - INTERVAL '30 days')
+          OR first_seen::timestamp >= NOW() - INTERVAL '30 days'
+        )
+      GROUP BY source
+    )
+    SELECT
+      i.source,
+      i.active_listings,
+      COALESCE(r.price_reductions, 0)::int as price_reductions,
+      COALESCE(r.avg_reduction_pct, 0)::float as avg_reduction_pct,
+      CASE WHEN i.active_listings > 0
+        THEN ROUND((COALESCE(r.price_reductions, 0) * 100.0 / i.active_listings)::numeric, 1)::float
+        ELSE 0
+      END as price_cut_rate,
+      CASE WHEN i.active_listings > 0
+        THEN ROUND((COALESCE(t.turned_over, 0) * 100.0 / i.active_listings)::numeric, 1)::float
+        ELSE 0
+      END as turnover_rate
+    FROM inventory i
+    LEFT JOIN reductions r ON r.source = i.source
+    LEFT JOIN turnover t ON t.source = i.source
+    ORDER BY i.active_listings DESC
+  `;
+  return rows;
+}
+
+export async function getAgentTrends(days: number = 30): Promise<AgentTrend[]> {
+  const { rows } = await sql<AgentTrend>`
+    WITH dates AS (
+      SELECT generate_series(
+        DATE_TRUNC('day', NOW() - INTERVAL '30 days'),
+        DATE_TRUNC('day', NOW()),
+        '1 day'::interval
+      )::date as date
+    ),
+    sources AS (
+      SELECT DISTINCT source FROM listings WHERE source != 'rightmove'
+    ),
+    date_source AS (
+      SELECT d.date, s.source FROM dates d CROSS JOIN sources s
+    ),
+    daily_inventory AS (
+      SELECT
+        ds.date,
+        ds.source,
+        COUNT(DISTINCT l.id)::int as inventory
+      FROM date_source ds
+      LEFT JOIN listings l ON l.source = ds.source
+        AND l.first_seen::date <= ds.date
+        AND (l.is_active = 1 OR l.last_seen::date >= ds.date)
+      GROUP BY ds.date, ds.source
+    ),
+    price_changes AS (
+      SELECT
+        ph.listing_id,
+        ph.price_pcm as current_price,
+        LAG(ph.price_pcm) OVER (PARTITION BY ph.listing_id ORDER BY ph.recorded_at) as prev_price,
+        ph.recorded_at
+      FROM price_history ph
+    ),
+    cumulative_reductions AS (
+      SELECT
+        ds.date,
+        ds.source,
+        COUNT(DISTINCT pc.listing_id)::int as cumulative_reductions
+      FROM date_source ds
+      LEFT JOIN listings l ON l.source = ds.source
+      LEFT JOIN price_changes pc ON pc.listing_id = l.id
+        AND pc.prev_price IS NOT NULL
+        AND pc.current_price < pc.prev_price
+        AND pc.recorded_at::date <= ds.date
+        AND pc.recorded_at::timestamp >= NOW() - INTERVAL '30 days'
+      GROUP BY ds.date, ds.source
+    ),
+    cumulative_new AS (
+      SELECT
+        ds.date,
+        ds.source,
+        COUNT(DISTINCT l.id)::int as cumulative_new
+      FROM date_source ds
+      LEFT JOIN listings l ON l.source = ds.source
+        AND l.first_seen::date <= ds.date
+        AND l.first_seen::timestamp >= NOW() - INTERVAL '30 days'
+      GROUP BY ds.date, ds.source
+    )
+    SELECT
+      di.date::text,
+      di.source,
+      di.inventory,
+      COALESCE(cr.cumulative_reductions, 0)::int as cumulative_reductions,
+      COALESCE(cn.cumulative_new, 0)::int as cumulative_new
+    FROM daily_inventory di
+    LEFT JOIN cumulative_reductions cr ON cr.date = di.date AND cr.source = di.source
+    LEFT JOIN cumulative_new cn ON cn.date = di.date AND cn.source = di.source
+    ORDER BY di.date ASC, di.source
+  `;
+  return rows;
+}
+
+export interface AgentLeaderboard {
+  rank: number;
+  source: string;
+  score: number;
+  active_listings: number;
+  price_reductions: number;
+  avg_change_pct: number;
+  turnover_pct: number;
+}
+
+export async function getAgentLeaderboard(): Promise<AgentLeaderboard[]> {
+  const { rows } = await sql<AgentLeaderboard>`
+    WITH price_changes AS (
+      SELECT
+        ph.listing_id,
+        ph.price_pcm as current_price,
+        LAG(ph.price_pcm) OVER (PARTITION BY ph.listing_id ORDER BY ph.recorded_at) as prev_price,
+        ph.recorded_at
+      FROM price_history ph
+    ),
+    -- Get the FIRST price reduction per listing (avoids counting oscillations multiple times)
+    first_reduction_per_listing AS (
+      SELECT DISTINCT ON (pc.listing_id)
+        pc.listing_id,
+        (pc.current_price - pc.prev_price)::numeric / pc.prev_price::numeric * 100 as reduction_pct
+      FROM price_changes pc
+      WHERE pc.prev_price IS NOT NULL
+        AND pc.current_price < pc.prev_price
+        AND pc.recorded_at::timestamp >= NOW() - INTERVAL '30 days'
+      ORDER BY pc.listing_id, pc.recorded_at ASC
+    ),
+    metrics AS (
+      SELECT
+        l.source,
+        COUNT(DISTINCT CASE WHEN l.is_active = 1 THEN l.id END)::int as active_listings,
+        COUNT(DISTINCT fr.listing_id)::int as price_reductions,
+        -- Average per-listing, not per-event (fixes oscillation bug)
+        COALESCE(ROUND(AVG(fr.reduction_pct)::numeric, 2), 0)::float as avg_change_pct,
+        COUNT(DISTINCT CASE WHEN l.is_active = 0 AND l.last_seen::timestamp >= NOW() - INTERVAL '30 days' THEN l.id END)::int as turned_over
+      FROM listings l
+      LEFT JOIN first_reduction_per_listing fr ON fr.listing_id = l.id
+      WHERE l.source != 'rightmove'
+      GROUP BY l.source
+    )
+    SELECT
+      ROW_NUMBER() OVER (ORDER BY
+        -- Score: fewer reductions = better, smaller avg cut = better, high turnover = good
+        (100 - LEAST(price_reductions, 100)) +
+        (100 - LEAST(ABS(avg_change_pct)::numeric * 20, 100)) +
+        LEAST((turned_over * 100.0 / NULLIF(active_listings, 0))::numeric, 50)
+        DESC
+      )::int as rank,
+      source,
+      ROUND((
+        (100 - LEAST(price_reductions, 100)) +
+        (100 - LEAST(ABS(avg_change_pct)::numeric * 20, 100)) +
+        LEAST((turned_over * 100.0 / NULLIF(active_listings, 0))::numeric, 50)
+      )::numeric, 1)::float as score,
+      active_listings,
+      price_reductions,
+      avg_change_pct,
+      ROUND((turned_over * 100.0 / NULLIF(active_listings, 0))::numeric, 1)::float as turnover_pct
+    FROM metrics
+    WHERE active_listings > 0  -- Filter out inactive agents (e.g., johndwood)
+    ORDER BY rank
   `;
   return rows;
 }
