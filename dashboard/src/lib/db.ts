@@ -618,3 +618,473 @@ export async function getHealthStatus(): Promise<{
     errorsLast24h: recentResult.rows[0]?.errors || 0,
   };
 }
+
+// ============ Agency Dashboard Functions ============
+
+// Seasonality factors for GMV annualization (Dec = 0.7x normal activity)
+const SEASONALITY: Record<number, number> = {
+  1: 0.70, 2: 0.75, 3: 0.90, 4: 0.95, 5: 1.10, 6: 1.15,
+  7: 1.20, 8: 1.30, 9: 1.35, 10: 1.00, 11: 0.85, 12: 0.70
+};
+
+export interface AgencySummary {
+  source: string;
+  display_name: string;
+  active_listings: number;
+  inactive_listings: number;
+  let_rate: number;
+  avg_price_pcm: number;
+  avg_ppsf: number;
+  total_portfolio_value: number;
+  estimated_annual_gmv: number;
+  estimated_commission: number;
+  rank: number;
+  rank_change: number;
+}
+
+export async function getAgencyList(): Promise<AgencySummary[]> {
+  const currentMonth = new Date().getMonth() + 1;
+  const seasonality = SEASONALITY[currentMonth] || 1.0;
+
+  const { rows } = await sql<AgencySummary>`
+    WITH agency_stats AS (
+      SELECT
+        source,
+        INITCAP(REPLACE(source, '_', ' ')) as display_name,
+        COUNT(*) FILTER (WHERE is_active = 1)::int as active_listings,
+        COUNT(*) FILTER (WHERE is_active = 0)::int as inactive_listings,
+        ROUND(AVG(price_pcm) FILTER (WHERE is_active = 1))::int as avg_price_pcm,
+        ROUND(AVG(price_pcm::numeric / NULLIF(size_sqft, 0)) FILTER (
+          WHERE is_active = 1 AND size_sqft > 0
+        ), 2)::float as avg_ppsf,
+        SUM(price_pcm * 12) FILTER (WHERE is_active = 1)::bigint as total_portfolio_value
+      FROM listings
+      WHERE source != 'rightmove'  -- Exclude aggregator
+        AND (price_pcm::numeric / NULLIF(size_sqft::numeric, 0) BETWEEN 3 AND 30 OR size_sqft IS NULL OR size_sqft = 0)
+      GROUP BY source
+    ),
+    gmv_calc AS (
+      SELECT
+        source,
+        display_name,
+        active_listings,
+        inactive_listings,
+        CASE WHEN active_listings + inactive_listings > 0
+          THEN ROUND(inactive_listings * 100.0 / (active_listings + inactive_listings), 1)
+          ELSE 0
+        END::float as let_rate,
+        COALESCE(avg_price_pcm, 0) as avg_price_pcm,
+        COALESCE(avg_ppsf, 0) as avg_ppsf,
+        COALESCE(total_portfolio_value, 0) as total_portfolio_value,
+        -- GMV estimation: inactive * 0.90 (fall-through) * avg_price * 0.95 (discount) * 12
+        -- Then annualize with seasonality
+        ROUND(
+          (inactive_listings * 0.90 * COALESCE(avg_price_pcm, 0) * 0.95 * 12) / ${seasonality} * (365.0 / 30)
+        )::bigint as estimated_annual_gmv
+      FROM agency_stats
+    )
+    SELECT
+      source,
+      display_name,
+      active_listings,
+      inactive_listings,
+      let_rate,
+      avg_price_pcm,
+      avg_ppsf,
+      total_portfolio_value,
+      estimated_annual_gmv,
+      ROUND(estimated_annual_gmv * 0.10)::bigint as estimated_commission,
+      ROW_NUMBER() OVER (ORDER BY estimated_annual_gmv DESC)::int as rank,
+      0 as rank_change  -- TODO: Calculate from historical data
+    FROM gmv_calc
+    WHERE active_listings > 0
+    ORDER BY rank
+  `;
+  return rows;
+}
+
+export interface AgencyDetail {
+  source: string;
+  display_name: string;
+  active_listings: number;
+  inactive_listings: number;
+  let_rate: number;
+  avg_price_pcm: number;
+  median_price_pcm: number;
+  avg_ppsf: number;
+  median_ppsf: number;
+  avg_days_on_market: number;
+  price_reductions: number;
+  price_reduction_rate: number;
+  sqft_coverage: number;
+  total_portfolio_value: number;
+  estimated_annual_gmv: number;
+  estimated_commission: number;
+  health_score: number;
+}
+
+export async function getAgencyDetail(source: string): Promise<AgencyDetail | null> {
+  const currentMonth = new Date().getMonth() + 1;
+  const seasonality = SEASONALITY[currentMonth] || 1.0;
+
+  const { rows } = await sql<AgencyDetail>`
+    WITH base_stats AS (
+      SELECT
+        source,
+        INITCAP(REPLACE(source, '_', ' ')) as display_name,
+        COUNT(*) FILTER (WHERE is_active = 1)::int as active_listings,
+        COUNT(*) FILTER (WHERE is_active = 0)::int as inactive_listings,
+        ROUND(AVG(price_pcm) FILTER (WHERE is_active = 1))::int as avg_price_pcm,
+        ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price_pcm) FILTER (WHERE is_active = 1))::numeric)::int as median_price_pcm,
+        ROUND(AVG(price_pcm::numeric / NULLIF(size_sqft, 0)) FILTER (
+          WHERE is_active = 1 AND size_sqft > 0
+        ), 2)::float as avg_ppsf,
+        ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price_pcm::numeric / NULLIF(size_sqft, 0)) FILTER (
+          WHERE is_active = 1 AND size_sqft > 0
+        ))::numeric, 2)::float as median_ppsf,
+        ROUND(AVG(
+          EXTRACT(EPOCH FROM (last_seen::timestamp - first_seen::timestamp)) / 86400
+        ) FILTER (WHERE is_active = 0), 1)::float as avg_days_on_market,
+        SUM(price_pcm * 12) FILTER (WHERE is_active = 1)::bigint as total_portfolio_value,
+        ROUND(COUNT(*) FILTER (WHERE size_sqft > 0) * 100.0 / NULLIF(COUNT(*), 0), 1)::float as sqft_coverage
+      FROM listings
+      WHERE source = ${source}
+        AND (price_pcm::numeric / NULLIF(size_sqft::numeric, 0) BETWEEN 3 AND 30 OR size_sqft IS NULL OR size_sqft = 0)
+      GROUP BY source
+    ),
+    price_changes AS (
+      SELECT COUNT(DISTINCT ph.listing_id)::int as price_reductions
+      FROM price_history ph
+      JOIN listings l ON l.id = ph.listing_id
+      WHERE l.source = ${source}
+        AND ph.recorded_at::timestamp >= NOW() - INTERVAL '30 days'
+        AND EXISTS (
+          SELECT 1 FROM price_history ph2
+          WHERE ph2.listing_id = ph.listing_id
+          AND ph2.recorded_at < ph.recorded_at
+          AND ph2.price_pcm > ph.price_pcm
+        )
+    )
+    SELECT
+      b.source,
+      b.display_name,
+      b.active_listings,
+      b.inactive_listings,
+      CASE WHEN b.active_listings + b.inactive_listings > 0
+        THEN ROUND(b.inactive_listings * 100.0 / (b.active_listings + b.inactive_listings), 1)
+        ELSE 0
+      END::float as let_rate,
+      COALESCE(b.avg_price_pcm, 0) as avg_price_pcm,
+      COALESCE(b.median_price_pcm, 0) as median_price_pcm,
+      COALESCE(b.avg_ppsf, 0) as avg_ppsf,
+      COALESCE(b.median_ppsf, 0) as median_ppsf,
+      COALESCE(b.avg_days_on_market, 0) as avg_days_on_market,
+      COALESCE(pc.price_reductions, 0) as price_reductions,
+      CASE WHEN b.active_listings > 0
+        THEN ROUND(COALESCE(pc.price_reductions, 0) * 100.0 / b.active_listings, 1)
+        ELSE 0
+      END::float as price_reduction_rate,
+      COALESCE(b.sqft_coverage, 0) as sqft_coverage,
+      COALESCE(b.total_portfolio_value, 0) as total_portfolio_value,
+      ROUND(
+        (b.inactive_listings * 0.90 * COALESCE(b.avg_price_pcm, 0) * 0.95 * 12) / ${seasonality} * (365.0 / 30)
+      )::bigint as estimated_annual_gmv,
+      ROUND(
+        (b.inactive_listings * 0.90 * COALESCE(b.avg_price_pcm, 0) * 0.95 * 12) / ${seasonality} * (365.0 / 30) * 0.10
+      )::bigint as estimated_commission,
+      -- Health score: composite of velocity, stability, quality, inventory
+      LEAST(100, GREATEST(0, ROUND(
+        (LEAST(50, b.inactive_listings) * 0.5) +  -- Velocity (lets)
+        (100 - LEAST(100, COALESCE(pc.price_reductions, 0))) * 0.2 +  -- Stability
+        (COALESCE(b.sqft_coverage, 0)) * 0.15 +  -- Data quality
+        (LEAST(100, b.active_listings / 5.0)) * 0.15  -- Inventory scale
+      )))::int as health_score
+    FROM base_stats b
+    CROSS JOIN price_changes pc
+  `;
+
+  return rows[0] || null;
+}
+
+export interface AgencyMarketShare {
+  district: string;
+  agency_count: number;
+  total_count: number;
+  market_share: number;
+  rank: number;
+  avg_price_pcm: number;
+}
+
+export async function getAgencyMarketShare(source: string): Promise<AgencyMarketShare[]> {
+  const { rows } = await sql<AgencyMarketShare>`
+    WITH district_stats AS (
+      SELECT
+        CASE
+          WHEN POSITION(' ' IN postcode) > 0 THEN SUBSTRING(postcode, 1, POSITION(' ' IN postcode) - 1)
+          ELSE postcode
+        END as district,
+        COUNT(*) FILTER (WHERE source = ${source})::int as agency_count,
+        COUNT(*)::int as total_count,
+        ROUND(AVG(price_pcm) FILTER (WHERE source = ${source}))::int as avg_price_pcm
+      FROM listings
+      WHERE is_active = 1
+        AND postcode IS NOT NULL AND postcode != ''
+        AND source != 'rightmove'
+      GROUP BY district
+      HAVING COUNT(*) >= 3
+    ),
+    ranked AS (
+      SELECT
+        district,
+        agency_count,
+        total_count,
+        ROUND(agency_count * 100.0 / total_count, 1)::float as market_share,
+        COALESCE(avg_price_pcm, 0) as avg_price_pcm,
+        DENSE_RANK() OVER (
+          PARTITION BY district
+          ORDER BY agency_count DESC
+        )::int as rank
+      FROM district_stats
+      WHERE agency_count > 0
+    )
+    SELECT district, agency_count, total_count, market_share, rank, avg_price_pcm
+    FROM ranked
+    ORDER BY market_share DESC
+    LIMIT 20
+  `;
+  return rows;
+}
+
+export interface AgencyPortfolio {
+  category: string;
+  segment: string;
+  count: number;
+  percentage: number;
+  avg_price: number;
+}
+
+export async function getAgencyPortfolio(source: string): Promise<{
+  by_price_tier: AgencyPortfolio[];
+  by_bedrooms: AgencyPortfolio[];
+  by_property_type: AgencyPortfolio[];
+}> {
+  const [tierRows, bedRows, typeRows] = await Promise.all([
+    sql<AgencyPortfolio>`
+      WITH tiers AS (
+        SELECT
+          CASE
+            WHEN price_pcm < 2000 THEN '<£2k'
+            WHEN price_pcm < 3000 THEN '£2-3k'
+            WHEN price_pcm < 5000 THEN '£3-5k'
+            WHEN price_pcm < 10000 THEN '£5-10k'
+            ELSE '£10k+'
+          END as segment,
+          COUNT(*)::int as count,
+          ROUND(AVG(price_pcm))::int as avg_price
+        FROM listings
+        WHERE source = ${source} AND is_active = 1
+        GROUP BY segment
+      )
+      SELECT
+        'price_tier' as category,
+        segment,
+        count,
+        ROUND(count * 100.0 / SUM(count) OVER (), 1)::float as percentage,
+        avg_price
+      FROM tiers
+      ORDER BY
+        CASE segment
+          WHEN '<£2k' THEN 1
+          WHEN '£2-3k' THEN 2
+          WHEN '£3-5k' THEN 3
+          WHEN '£5-10k' THEN 4
+          ELSE 5
+        END
+    `,
+    sql<AgencyPortfolio>`
+      WITH beds AS (
+        SELECT
+          CASE
+            WHEN bedrooms = 0 THEN 'Studio'
+            WHEN bedrooms = 1 THEN '1 Bed'
+            WHEN bedrooms = 2 THEN '2 Bed'
+            WHEN bedrooms = 3 THEN '3 Bed'
+            WHEN bedrooms = 4 THEN '4 Bed'
+            ELSE '5+ Bed'
+          END as segment,
+          COUNT(*)::int as count,
+          ROUND(AVG(price_pcm))::int as avg_price
+        FROM listings
+        WHERE source = ${source} AND is_active = 1 AND bedrooms IS NOT NULL
+        GROUP BY segment
+      )
+      SELECT
+        'bedrooms' as category,
+        segment,
+        count,
+        ROUND(count * 100.0 / SUM(count) OVER (), 1)::float as percentage,
+        avg_price
+      FROM beds
+      ORDER BY
+        CASE segment
+          WHEN 'Studio' THEN 0
+          WHEN '1 Bed' THEN 1
+          WHEN '2 Bed' THEN 2
+          WHEN '3 Bed' THEN 3
+          WHEN '4 Bed' THEN 4
+          ELSE 5
+        END
+    `,
+    sql<AgencyPortfolio>`
+      WITH types AS (
+        SELECT
+          COALESCE(INITCAP(property_type), 'Unknown') as segment,
+          COUNT(*)::int as count,
+          ROUND(AVG(price_pcm))::int as avg_price
+        FROM listings
+        WHERE source = ${source} AND is_active = 1
+        GROUP BY property_type
+      )
+      SELECT
+        'property_type' as category,
+        segment,
+        count,
+        ROUND(count * 100.0 / SUM(count) OVER (), 1)::float as percentage,
+        avg_price
+      FROM types
+      ORDER BY count DESC
+      LIMIT 6
+    `
+  ]);
+
+  return {
+    by_price_tier: tierRows.rows,
+    by_bedrooms: bedRows.rows,
+    by_property_type: typeRows.rows
+  };
+}
+
+// ============ Agency Historical Trends ============
+
+export interface AgencyDailyMetric {
+  date: string;
+  active_listings: number;
+  new_listings: number;
+  lets: number;
+  price_reductions: number;
+  cumulative_lets: number;
+}
+
+export async function getAgencyTrends(source: string, days: number = 30): Promise<AgencyDailyMetric[]> {
+  // Note: Using 30 days hardcoded as Vercel Postgres doesn't support dynamic intervals well
+  const { rows } = await sql<AgencyDailyMetric>`
+    WITH dates AS (
+      SELECT generate_series(
+        DATE_TRUNC('day', NOW() - INTERVAL '30 days'),
+        DATE_TRUNC('day', NOW()),
+        '1 day'::interval
+      )::date as date
+    ),
+    daily_inventory AS (
+      SELECT
+        d.date,
+        COUNT(DISTINCT l.id)::int as active_listings
+      FROM dates d
+      LEFT JOIN listings l ON l.source = ${source}
+        AND l.first_seen::date <= d.date
+        AND (l.is_active = 1 OR l.last_seen::date >= d.date)
+      GROUP BY d.date
+    ),
+    daily_new AS (
+      SELECT
+        first_seen::date as date,
+        COUNT(*)::int as new_listings
+      FROM listings
+      WHERE source = ${source}
+        AND first_seen::timestamp >= NOW() - INTERVAL '30 days'
+      GROUP BY first_seen::date
+    ),
+    daily_lets AS (
+      SELECT
+        last_seen::date as date,
+        COUNT(*)::int as lets
+      FROM listings
+      WHERE source = ${source}
+        AND is_active = 0
+        AND last_seen::timestamp >= NOW() - INTERVAL '30 days'
+      GROUP BY last_seen::date
+    ),
+    daily_reductions AS (
+      SELECT
+        ph.recorded_at::date as date,
+        COUNT(DISTINCT ph.listing_id)::int as price_reductions
+      FROM price_history ph
+      JOIN listings l ON l.id = ph.listing_id
+      WHERE l.source = ${source}
+        AND ph.recorded_at::timestamp >= NOW() - INTERVAL '30 days'
+        AND EXISTS (
+          SELECT 1 FROM price_history ph2
+          WHERE ph2.listing_id = ph.listing_id
+            AND ph2.recorded_at < ph.recorded_at
+            AND ph2.price_pcm > ph.price_pcm
+        )
+      GROUP BY ph.recorded_at::date
+    )
+    SELECT
+      di.date::text,
+      di.active_listings,
+      COALESCE(dn.new_listings, 0)::int as new_listings,
+      COALESCE(dl.lets, 0)::int as lets,
+      COALESCE(dr.price_reductions, 0)::int as price_reductions,
+      SUM(COALESCE(dl.lets, 0)) OVER (ORDER BY di.date)::int as cumulative_lets
+    FROM daily_inventory di
+    LEFT JOIN daily_new dn ON dn.date = di.date
+    LEFT JOIN daily_lets dl ON dl.date = di.date
+    LEFT JOIN daily_reductions dr ON dr.date = di.date
+    ORDER BY di.date ASC
+  `;
+  return rows;
+}
+
+export interface AgencyPriceEvent {
+  date: string;
+  address: string;
+  old_price: number;
+  new_price: number;
+  change_pct: number;
+  bedrooms: number;
+  postcode: string;
+}
+
+export async function getAgencyPriceHistory(source: string, limit: number = 50): Promise<AgencyPriceEvent[]> {
+  const { rows } = await sql<AgencyPriceEvent>`
+    WITH price_changes AS (
+      SELECT
+        ph.listing_id,
+        ph.price_pcm as new_price,
+        LAG(ph.price_pcm) OVER (PARTITION BY ph.listing_id ORDER BY ph.recorded_at) as old_price,
+        ph.recorded_at
+      FROM price_history ph
+      JOIN listings l ON l.id = ph.listing_id
+      WHERE l.source = ${source}
+    )
+    SELECT
+      pc.recorded_at::date::text as date,
+      l.address,
+      pc.old_price::int,
+      pc.new_price::int,
+      ROUND(((pc.new_price - pc.old_price)::numeric / pc.old_price::numeric * 100), 1)::float as change_pct,
+      l.bedrooms::int,
+      l.postcode
+    FROM price_changes pc
+    JOIN listings l ON l.id = pc.listing_id
+    WHERE pc.old_price IS NOT NULL
+      AND pc.old_price != pc.new_price
+    ORDER BY pc.recorded_at DESC
+    LIMIT ${limit}
+  `;
+  return rows;
+}
+
+// Note: Agency comparison feature will be implemented in Phase 2
+// Requires proper handling of array parameters with Vercel Postgres
