@@ -270,6 +270,13 @@ class SQLitePipeline:
     MIN_PRICE_CHANGE_HOURS = 1  # Minimum hours between price changes
     FINGERPRINT_PRICE_TOLERANCE = 0.20  # 20% price tolerance for fingerprint matching
 
+    # Price oscillation filter thresholds (Issue: weekly/monthly conversion noise)
+    # A change must exceed BOTH thresholds to be recorded as a real price change
+    # This filters out noise like £4914 <-> £4940 (0.5%, £26) while preserving
+    # real changes like £3000 -> £2850 (5%, £150)
+    MIN_PRICE_CHANGE_ABS = 50  # Minimum absolute change in £
+    MIN_PRICE_CHANGE_PCT = 0.02  # Minimum percentage change (2%)
+
     def __init__(self):
         self.conn = None
         self.cursor = None
@@ -557,16 +564,26 @@ class SQLitePipeline:
                 new_price = adapter.get('price_pcm')
 
                 # Detect price change (only if both prices are non-null)
-                # CRITICAL: Require minimum time delta to prevent same-session false positives
+                # CRITICAL: Multiple safeguards to prevent false positives:
+                # 1. Check if change exceeds noise thresholds (filters oscillations)
+                # 2. Check if enough time has passed since last record
                 if old_price and new_price and old_price != new_price:
-                    # Check if enough time has passed since last price record
-                    if self._can_record_price_change(listing_id, now):
+                    # First: Check if change is significant (not just noise/oscillation)
+                    if not self._is_significant_price_change(old_price, new_price):
+                        self.stats['price_changes_noise'] = self.stats.get('price_changes_noise', 0) + 1
+                    # Second: Check if enough time has passed since last price record
+                    elif not self._can_record_price_change(listing_id, now):
+                        self.stats['price_changes_skipped'] = self.stats.get('price_changes_skipped', 0) + 1
+                        logger.debug(f"[PIPELINE:SQLite] Price change skipped (too recent): {property_id}")
+                    else:
+                        # Both checks passed - record the change
                         self._log_price_change(listing_id, new_price, now)
                         change_count = (change_count or 0) + 1
                         self.stats['price_changes'] += 1
-                    else:
-                        self.stats['price_changes_skipped'] = self.stats.get('price_changes_skipped', 0) + 1
-                        logger.debug(f"[PIPELINE:SQLite] Price change skipped (too recent): {property_id}")
+                        logger.info(
+                            f"[PIPELINE:SQLite] Price change recorded: {property_id} "
+                            f"£{old_price} -> £{new_price} ({(new_price-old_price)/old_price:+.1%})"
+                        )
 
                 # Update record, preserving first_seen
                 # If matched by fingerprint, also update property_id to the new one
@@ -624,6 +641,35 @@ class SQLitePipeline:
                         break
 
         return item
+
+    def _is_significant_price_change(self, old_price, new_price):
+        """Check if price change exceeds noise thresholds.
+
+        Filters out oscillation noise from weekly/monthly conversion differences
+        (e.g., £4914 <-> £4940 caused by different conversion factors).
+
+        A change must exceed BOTH thresholds to be considered significant:
+        - Absolute change >= MIN_PRICE_CHANGE_ABS (£50)
+        - Percentage change >= MIN_PRICE_CHANGE_PCT (2%)
+
+        Returns True if the change is significant enough to record.
+        """
+        if not old_price or not new_price:
+            return True  # Can't calculate, allow the change
+
+        abs_change = abs(new_price - old_price)
+        pct_change = abs_change / old_price
+
+        is_significant = (abs_change >= self.MIN_PRICE_CHANGE_ABS and
+                          pct_change >= self.MIN_PRICE_CHANGE_PCT)
+
+        if not is_significant:
+            logger.debug(
+                f"[PIPELINE:SQLite] Price change filtered as noise: "
+                f"£{old_price} -> £{new_price} (£{abs_change}, {pct_change:.1%})"
+            )
+
+        return is_significant
 
     def _can_record_price_change(self, listing_id, now):
         """Check if enough time has passed since last price record.
@@ -875,6 +921,8 @@ class SQLitePipeline:
             logger.info(f"  Inserted: {self.stats['inserted']}")
             logger.info(f"  Updated: {self.stats['updated']}")
             logger.info(f"  Price changes logged: {self.stats['price_changes']}")
+            logger.info(f"  Price changes filtered (noise): {self.stats.get('price_changes_noise', 0)}")
+            logger.info(f"  Price changes skipped (too recent): {self.stats.get('price_changes_skipped', 0)}")
             logger.info(f"  Price history entries: {price_history_count}")
             logger.info(f"  Errors: {self.stats['errors']}")
             logger.info(f"  Batches: {self.batch_count + 1}")

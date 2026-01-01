@@ -32,6 +32,11 @@ class PostgresPipeline:
     MIN_PRICE_CHANGE_HOURS = 1
     FINGERPRINT_PRICE_TOLERANCE = 0.20
 
+    # Price oscillation filter thresholds (Issue: weekly/monthly conversion noise)
+    # A change must exceed BOTH thresholds to be recorded as a real price change
+    MIN_PRICE_CHANGE_ABS = 50  # Minimum absolute change in £
+    MIN_PRICE_CHANGE_PCT = 0.02  # Minimum percentage change (2%)
+
     def __init__(self):
         self.conn = None
         self.cursor = None
@@ -202,11 +207,18 @@ class PostgresPipeline:
                 listing_id, old_price, first_seen, change_count, _ = existing
                 new_price = adapter.get('price_pcm')
 
-                # Price change detection
+                # Price change detection with noise filtering
                 if old_price and new_price and old_price != new_price:
-                    self._log_price_change(listing_id, new_price, now)
-                    change_count = (change_count or 0) + 1
-                    self.stats['price_changes'] += 1
+                    if self._is_significant_price_change(old_price, new_price):
+                        self._log_price_change(listing_id, new_price, now)
+                        change_count = (change_count or 0) + 1
+                        self.stats['price_changes'] += 1
+                        logger.info(
+                            f"[PIPELINE:Postgres] Price change recorded: {property_id} "
+                            f"£{old_price} -> £{new_price} ({(new_price-old_price)/old_price:+.1%})"
+                        )
+                    else:
+                        self.stats['price_changes_noise'] = self.stats.get('price_changes_noise', 0) + 1
 
                 new_property_id = property_id if matched_by_fingerprint else None
                 self._update_listing(adapter, listing_id, first_seen, now, change_count or 0, new_property_id)
@@ -225,6 +237,29 @@ class PostgresPipeline:
             logger.error(f"[PIPELINE:Postgres] Error for {property_id}: {e}")
 
         return item
+
+    def _is_significant_price_change(self, old_price, new_price):
+        """Check if price change exceeds noise thresholds.
+
+        Filters out oscillation noise from weekly/monthly conversion differences.
+        A change must exceed BOTH thresholds to be considered significant.
+        """
+        if not old_price or not new_price:
+            return True
+
+        abs_change = abs(new_price - old_price)
+        pct_change = abs_change / old_price
+
+        is_significant = (abs_change >= self.MIN_PRICE_CHANGE_ABS and
+                          pct_change >= self.MIN_PRICE_CHANGE_PCT)
+
+        if not is_significant:
+            logger.debug(
+                f"[PIPELINE:Postgres] Price change filtered as noise: "
+                f"£{old_price} -> £{new_price} (£{abs_change}, {pct_change:.1%})"
+            )
+
+        return is_significant
 
     def _log_price_change(self, listing_id, price_pcm, recorded_at):
         """Log price to history table."""
@@ -388,6 +423,7 @@ class PostgresPipeline:
             logger.info(f"  Inserted: {self.stats['inserted']}")
             logger.info(f"  Updated: {self.stats['updated']}")
             logger.info(f"  Price changes: {self.stats['price_changes']}")
+            logger.info(f"  Price changes filtered (noise): {self.stats.get('price_changes_noise', 0)}")
             logger.info(f"  Errors: {self.stats['errors']}")
             logger.info(f"  Duration: {elapsed:.1f}s")
 
