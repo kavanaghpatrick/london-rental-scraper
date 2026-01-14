@@ -282,7 +282,7 @@ def engineer_features_v15(df):
         df[col] = amenity_df[col].values
 
     df['amenity_score'] = df[AMENITY_FEATURES].sum(axis=1)
-    df['luxury_amenity_score'] = df[['has_pool', 'has_porter', 'has_gym', 'has_ac']].sum(axis=1)
+    df['premium_amenity_count'] = df[['has_pool', 'has_porter', 'has_gym', 'has_ac']].sum(axis=1)
     df['has_outdoor_space'] = ((df['has_balcony'] == 1) | (df['has_terrace'] == 1) |
                                (df['has_garden'] == 1) | (df['has_roof_terrace'] == 1)).astype(int)
     print(f"  Amenity score: mean={df['amenity_score'].mean():.2f}")
@@ -437,7 +437,7 @@ def get_feature_columns(df):
         'is_premium_agent', 'premium_agent_size', 'source_quality',
 
         # Amenity features
-        'amenity_score', 'luxury_amenity_score', 'has_outdoor_space',
+        'amenity_score', 'premium_amenity_count', 'has_outdoor_space',
         'amenity_x_central', 'outdoor_x_prime',
 
         # Let type
