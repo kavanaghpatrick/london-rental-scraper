@@ -399,60 +399,92 @@ export default async function NegotiationReport() {
           </div>
         </div>
 
-        {/* Comparable Properties */}
+        {/* Supporting Comparable Properties */}
         <div className="bg-white rounded-xl shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold border-b pb-2 mb-4 text-slate-800">
-            Comparable Properties ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft, 2-bed, Prime Central)
-          </h2>
+          {(() => {
+            // Fair value £/sqft range (model fair value ± 15%)
+            const fairPpsf = amenityAdjustedFair / PROPERTY.size_sqft;
+            const upperBoundPpsf = amenityAdjusted75th / PROPERTY.size_sqft;
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-500 text-left border-b">
-                  <th className="pb-2">#</th>
-                  <th className="pb-2">Address</th>
-                  <th className="pb-2">Area</th>
-                  <th className="pb-2 text-right">Size</th>
-                  <th className="pb-2 text-right">Rent/month</th>
-                  <th className="pb-2 text-right">£/sqft</th>
-                  <th className="pb-2 text-right">vs Asking</th>
-                  <th className="pb-2">Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparables.slice(0, 25).map((comp, idx) => {
-                  const isLower = comp.ppsf < LANDLORD_PPSF;
-                  const diff = comp.ppsf - LANDLORD_PPSF;
-                  return (
-                    <tr key={idx} className={isLower ? 'bg-green-50' : 'bg-red-50'}>
-                      <td className="py-2 text-gray-400 text-xs">{idx + 1}</td>
-                      <td className="py-2">
-                        <a href={comp.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                          {comp.address?.slice(0, 30)}{(comp.address?.length || 0) > 30 ? '...' : ''}
-                        </a>
-                      </td>
-                      <td className="py-2">{comp.district}</td>
-                      <td className="py-2 text-right">{comp.size_sqft.toLocaleString()}</td>
-                      <td className="py-2 text-right">{formatCurrency(comp.price_pcm)}</td>
-                      <td className="py-2 text-right font-semibold">£{comp.ppsf.toFixed(2)}</td>
-                      <td className="py-2 text-right">
-                        <span className={isLower ? 'text-green-700' : 'text-red-600'}>
-                          {diff >= 0 ? '+' : ''}£{diff.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="py-2 text-xs">{comp.source}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+            // Filter to properties WITHIN or BELOW fair value range (supporting evidence)
+            const supportingComps = comparables
+              .filter(c => c.ppsf <= upperBoundPpsf * 1.05) // Within 5% of 75th percentile fair value
+              .sort((a, b) => b.ppsf - a.ppsf); // Highest £/sqft first (strongest comps near top)
 
-          {comparables.length > 25 && (
-            <p className="text-xs text-gray-500 mt-2">
-              Showing top 25 of {comparables.length} comparables. Full list available on request.
-            </p>
-          )}
+            return (
+              <>
+                <h2 className="text-lg font-semibold border-b pb-2 mb-4 text-slate-800">
+                  Supporting Comparables - Within Fair Value Range
+                </h2>
+                <div className="bg-green-50 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-green-800">
+                    <strong>Fair Value Range:</strong> £{fairPpsf.toFixed(2)} - £{upperBoundPpsf.toFixed(2)}/sqft
+                    ({formatCurrency(amenityAdjustedFair)} - {formatCurrency(amenityAdjusted75th)}/month for {PROPERTY.size_sqft} sqft)
+                  </p>
+                  <p className="text-sm text-green-700 mt-1">
+                    <strong>{supportingComps.length}</strong> of {comparables.length} similar properties support this fair value range.
+                  </p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-500 text-left border-b">
+                        <th className="pb-2">#</th>
+                        <th className="pb-2">Address</th>
+                        <th className="pb-2">Area</th>
+                        <th className="pb-2 text-right">Size</th>
+                        <th className="pb-2 text-right">Rent/month</th>
+                        <th className="pb-2 text-right">£/sqft</th>
+                        <th className="pb-2 text-right">vs Fair Value</th>
+                        <th className="pb-2">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {supportingComps.slice(0, 20).map((comp, idx) => {
+                        const diffFromFair = comp.ppsf - fairPpsf;
+                        const pctFromFair = (comp.ppsf / fairPpsf - 1) * 100;
+                        return (
+                          <tr key={idx} className="bg-green-50 hover:bg-green-100">
+                            <td className="py-2 text-gray-400 text-xs">{idx + 1}</td>
+                            <td className="py-2">
+                              <a href={comp.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                {comp.address?.slice(0, 35)}{(comp.address?.length || 0) > 35 ? '...' : ''}
+                              </a>
+                            </td>
+                            <td className="py-2">{comp.district}</td>
+                            <td className="py-2 text-right">{comp.size_sqft.toLocaleString()}</td>
+                            <td className="py-2 text-right font-semibold">{formatCurrency(comp.price_pcm)}</td>
+                            <td className="py-2 text-right font-semibold">£{comp.ppsf.toFixed(2)}</td>
+                            <td className="py-2 text-right">
+                              <span className={pctFromFair <= 0 ? 'text-green-700' : 'text-amber-600'}>
+                                {pctFromFair >= 0 ? '+' : ''}{pctFromFair.toFixed(0)}%
+                              </span>
+                            </td>
+                            <td className="py-2 text-xs">{comp.source}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {supportingComps.length > 20 && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Showing top 20 of {supportingComps.length} supporting comparables.
+                  </p>
+                )}
+
+                <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                  <p className="text-sm text-amber-800">
+                    <strong>Key Point:</strong> The landlord's asking price of {formatCurrency(LANDLORD_PRICE)} (£{LANDLORD_PPSF.toFixed(2)}/sqft)
+                    is <strong>£{(LANDLORD_PPSF - upperBoundPpsf).toFixed(2)}/sqft higher</strong> than even the 75th percentile
+                    of similar properties in Prime Central London.
+                  </p>
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* Charts */}
