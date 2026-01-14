@@ -8,17 +8,32 @@ Usage:
     cd scrapy_project
     scrapy crawl rightmove -o output/listings.json
     scrapy crawl rightmove -a areas=Belgravia,Chelsea -a max_pages=5
-    scrapy crawl rightmove -a fetch_details=true  # Also fetch sqft from detail pages
+    scrapy crawl rightmove -a fetch_details=true   # Fetch sqft from detail pages
+    scrapy crawl rightmove -a fetch_floorplans=true  # Enable inline OCR
+
+When fetch_floorplans=true, downloads floorplan images and runs OCR to extract:
+- size_sqft (if not found in page)
+- floor_count, property_levels (single_floor, duplex, etc.)
+- has_basement, has_ground, has_first_floor, etc.
+Requires pytesseract: pip install pytesseract; brew install tesseract
 """
 
 import scrapy
 import json
 import re
 import time
+import requests
 from datetime import datetime
 from urllib.parse import urljoin
 from property_scraper.items import PropertyItem
 from property_scraper.utils.url_validation import validate_floorplan_url
+
+# OCR support for inline floorplan extraction
+try:
+    from property_scraper.utils.floorplan_extractor import FloorplanExtractor
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
 
 
 class RightmoveSpider(scrapy.Spider):
@@ -62,6 +77,12 @@ class RightmoveSpider(scrapy.Spider):
         if self.fetch_floorplans:
             self.fetch_details = True  # Need detail page for floorplans
 
+        # Initialize floorplan OCR extractor
+        if self.fetch_floorplans and OCR_AVAILABLE:
+            self.floorplan_extractor = FloorplanExtractor()
+        else:
+            self.floorplan_extractor = None
+
         # Enhanced stats tracking
         self.stats = {
             'total': 0,
@@ -74,6 +95,7 @@ class RightmoveSpider(scrapy.Spider):
             'bytes_downloaded': 0,
             'sqft_found': 0,
             'floorplans_found': 0,
+            'floorplans_ocr_success': 0,
             'details_fetched': 0,
             'start_time': time.time(),
         }
@@ -85,6 +107,9 @@ class RightmoveSpider(scrapy.Spider):
         self.logger.info(f"[CONFIG] Max pages per area: {self.max_pages or 'unlimited'}")
         self.logger.info(f"[CONFIG] Fetch details: {self.fetch_details}")
         self.logger.info(f"[CONFIG] Fetch floorplans: {self.fetch_floorplans}")
+        self.logger.info(f"[CONFIG] Inline OCR: {self.floorplan_extractor is not None}")
+        if self.fetch_floorplans and not OCR_AVAILABLE:
+            self.logger.warning("[CONFIG] OCR requested but pytesseract not available!")
         if self.max_pages:
             self.logger.info(f"[CONFIG] Estimated max listings: ~{len(self.areas) * self.max_pages * 24}")
         else:
@@ -487,6 +512,21 @@ class RightmoveSpider(scrapy.Spider):
                 self.stats['floorplans_found'] += 1
                 self.logger.debug(f"[FLOORPLAN] {prop_id}: {floorplan_url[:60]}...")
 
+        # Run inline OCR on floorplan if we have one and didn't find sqft yet
+        if self.floorplan_extractor and item.get('floorplan_url') and not sqft:
+            ocr_result = self._extract_floorplan_ocr(item['floorplan_url'])
+            if ocr_result:
+                if ocr_result.get('size_sqft'):
+                    sqft = ocr_result['size_sqft']
+                    self.logger.debug(f"[OCR] {prop_id}: extracted {sqft} sqft from floorplan")
+                # Copy floor data fields
+                for field in ['floor_count', 'property_levels', 'has_basement',
+                              'has_lower_ground', 'has_ground', 'has_mezzanine',
+                              'has_first_floor', 'has_second_floor', 'has_third_floor',
+                              'has_fourth_plus', 'has_roof_terrace']:
+                    if ocr_result.get(field):
+                        item[field] = ocr_result[field]
+
         # Update item with enriched data
         if sqft and 100 < sqft < 50000:  # Sanity check
             item['size_sqft'] = sqft
@@ -512,6 +552,59 @@ class RightmoveSpider(scrapy.Spider):
             )
 
         yield PropertyItem(**item)
+
+    def _extract_floorplan_ocr(self, floorplan_url: str) -> dict | None:
+        """Download floorplan and run OCR to extract floor data and sqft."""
+        if not self.floorplan_extractor or not floorplan_url:
+            return None
+
+        try:
+            # Download floorplan image
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                'Accept': 'image/*,*/*;q=0.8',
+            }
+
+            img_response = requests.get(floorplan_url, headers=headers, timeout=15)
+
+            if img_response.status_code != 200 or len(img_response.content) < 1000:
+                return None
+
+            # Run OCR
+            floorplan_data = self.floorplan_extractor.extract_from_bytes(img_response.content)
+
+            if not floorplan_data:
+                return None
+
+            result = {}
+
+            # Extract sqft
+            if floorplan_data.total_sqft and floorplan_data.total_sqft > 100:
+                result['size_sqft'] = floorplan_data.total_sqft
+
+            # Extract floor data
+            if floorplan_data.floor_data:
+                fd = floorplan_data.floor_data
+                result['has_basement'] = fd.has_basement
+                result['has_lower_ground'] = fd.has_lower_ground
+                result['has_ground'] = fd.has_ground
+                result['has_mezzanine'] = fd.has_mezzanine
+                result['has_first_floor'] = fd.has_first_floor
+                result['has_second_floor'] = fd.has_second_floor
+                result['has_third_floor'] = fd.has_third_floor
+                result['has_fourth_plus'] = fd.has_fourth_plus
+                result['has_roof_terrace'] = fd.has_roof_terrace
+                result['floor_count'] = fd.floor_count
+                result['property_levels'] = fd.property_levels
+
+            if result:
+                self.stats['floorplans_ocr_success'] += 1
+
+            return result if result else None
+
+        except Exception as e:
+            self.logger.debug(f"[OCR] Error processing {floorplan_url[:50]}: {e}")
+            return None
 
     def _extract_floorplan_url(self, property_data: dict, response_text: str = None) -> str | None:
         """Extract floorplan URL from Rightmove property data.
@@ -588,6 +681,13 @@ class RightmoveSpider(scrapy.Spider):
             sqft_pct = (self.stats['sqft_found'] / self.stats['details_fetched'] * 100)
             self.logger.info(f"[SUMMARY] Details fetched: {self.stats['details_fetched']}")
             self.logger.info(f"[SUMMARY] Sqft found: {self.stats['sqft_found']} ({sqft_pct:.1f}%)")
+
+        # Report floorplan/OCR stats if enabled
+        if self.fetch_floorplans and self.stats['floorplans_found'] > 0:
+            floorplan_pct = (self.stats['floorplans_found'] / self.stats['details_fetched'] * 100) if self.stats['details_fetched'] else 0
+            ocr_pct = (self.stats['floorplans_ocr_success'] / self.stats['floorplans_found'] * 100) if self.stats['floorplans_found'] else 0
+            self.logger.info(f"[SUMMARY] Floorplans found: {self.stats['floorplans_found']} ({floorplan_pct:.1f}%)")
+            self.logger.info(f"[SUMMARY] OCR success: {self.stats['floorplans_ocr_success']} ({ocr_pct:.1f}%)")
 
         # Request stats
         self.logger.info("")

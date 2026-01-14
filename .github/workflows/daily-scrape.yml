@@ -51,6 +51,12 @@ jobs:
           playwright install chromium
           playwright install-deps chromium
 
+      - name: Install tesseract OCR (for inline floorplan OCR)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+          pip install pytesseract pillow
+
       - name: Check Postgres connection
         run: |
           python3 << 'EOF'
@@ -105,17 +111,12 @@ jobs:
           ITEMS=$(grep -oP 'Total: \K[\d,]+' scrape_output.txt | tail -1 || echo "0")
           echo "items_scraped=$ITEMS" >> $GITHUB_OUTPUT
 
-      - name: Run OCR enrichment on floorplans
+      - name: Run OCR enrichment on backlog floorplans
         run: |
-          # Install tesseract OCR
-          sudo apt-get update
-          sudo apt-get install -y tesseract-ocr
-
-          # Install Python OCR dependencies
-          pip install pytesseract pillow
-
-          # Run OCR enrichment (processes floorplans for floor data)
-          echo "Running OCR enrichment on floorplans..."
+          # OCR enrichment for listings that weren't processed during scraping
+          # (e.g., older listings, failed inline OCR, CDN blocks)
+          # Tesseract is already installed from earlier step
+          echo "Running OCR enrichment on backlog floorplans..."
           python scripts/ocr_enrich.py --workers 2 --limit 500 2>&1 | tee ocr_output.txt || true
 
           # Show summary

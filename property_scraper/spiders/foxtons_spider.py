@@ -7,14 +7,29 @@ Foxtons returns up to 100 properties per page.
 Usage:
     scrapy crawl foxtons -o output/foxtons.json
     scrapy crawl foxtons -a areas=Kensington,Chelsea -a max_pages=5
+    scrapy crawl foxtons -a fetch_floorplans=true  # Enable inline OCR
+
+When fetch_floorplans=true, downloads floorplan images and runs OCR to extract:
+- size_sqft (if not already available)
+- floor_count, property_levels (single_floor, duplex, etc.)
+- has_basement, has_ground, has_first_floor, etc.
+Requires pytesseract: pip install pytesseract; brew install tesseract
 """
 
 import scrapy
 import json
 import re
 import time
+import requests
 from datetime import datetime
 from property_scraper.items import PropertyItem
+
+# OCR support for inline floorplan extraction
+try:
+    from property_scraper.utils.floorplan_extractor import FloorplanExtractor
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
 
 
 class FoxtonsSpider(scrapy.Spider):
@@ -46,7 +61,7 @@ class FoxtonsSpider(scrapy.Spider):
         'Marylebone': 'marylebone',
     }
 
-    def __init__(self, areas=None, max_pages=None, *args, **kwargs):
+    def __init__(self, areas=None, max_pages=None, fetch_floorplans=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         if areas:
@@ -64,6 +79,13 @@ class FoxtonsSpider(scrapy.Spider):
                 self.logger.warning(f"[CONFIG] Invalid max_pages '{max_pages}', using unlimited")
                 self.max_pages = None
 
+        # Inline OCR for floorplans
+        self.fetch_floorplans = str(fetch_floorplans).lower() in ('true', '1', 'yes')
+        if self.fetch_floorplans and OCR_AVAILABLE:
+            self.floorplan_extractor = FloorplanExtractor()
+        else:
+            self.floorplan_extractor = None
+
         # Stats tracking
         self.stats = {
             'total': 0,
@@ -73,6 +95,7 @@ class FoxtonsSpider(scrapy.Spider):
             'requests_made': 0,
             'sqft_found': 0,
             'floorplans_found': 0,
+            'floorplans_ocr_success': 0,
         }
 
         self.logger.info("=" * 70)
@@ -80,7 +103,75 @@ class FoxtonsSpider(scrapy.Spider):
         self.logger.info("=" * 70)
         self.logger.info(f"[CONFIG] Areas: {', '.join(self.areas)}")
         self.logger.info(f"[CONFIG] Max pages per area: {self.max_pages or 'unlimited'}")
+        self.logger.info(f"[CONFIG] Fetch floorplans (inline OCR): {self.fetch_floorplans}")
+        if self.fetch_floorplans and not OCR_AVAILABLE:
+            self.logger.warning("[CONFIG] OCR requested but pytesseract not available!")
         self.logger.info("=" * 70)
+
+    def _extract_floorplan_ocr(self, floorplan_url, response):
+        """Download floorplan and run OCR to extract floor data.
+
+        Uses the response's cookies/session for authenticated CDN access.
+        """
+        if not self.floorplan_extractor or not floorplan_url:
+            return None
+
+        try:
+            # Use cookies from the scrapy response for CDN auth
+            cookies = {c.name: c.value for c in response.headers.getlist('Set-Cookie')} if response else {}
+
+            # Download floorplan image
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                'Referer': 'https://www.foxtons.co.uk/',
+                'Accept': 'image/*,*/*;q=0.8',
+            }
+
+            img_response = requests.get(floorplan_url, headers=headers, cookies=cookies, timeout=15)
+
+            if img_response.status_code != 200 or len(img_response.content) < 1000:
+                return None
+
+            # Check for XML error response (Access Denied)
+            if img_response.content[:5] == b'<?xml':
+                self.logger.debug(f"[OCR] CDN access denied for {floorplan_url[:50]}")
+                return None
+
+            # Run OCR
+            floorplan_data = self.floorplan_extractor.extract_from_bytes(img_response.content)
+
+            if not floorplan_data:
+                return None
+
+            result = {}
+
+            # Extract sqft
+            if floorplan_data.total_sqft and floorplan_data.total_sqft > 100:
+                result['size_sqft'] = floorplan_data.total_sqft
+
+            # Extract floor data
+            if floorplan_data.floor_data:
+                fd = floorplan_data.floor_data
+                result['has_basement'] = fd.has_basement
+                result['has_lower_ground'] = fd.has_lower_ground
+                result['has_ground'] = fd.has_ground
+                result['has_mezzanine'] = fd.has_mezzanine
+                result['has_first_floor'] = fd.has_first_floor
+                result['has_second_floor'] = fd.has_second_floor
+                result['has_third_floor'] = fd.has_third_floor
+                result['has_fourth_plus'] = fd.has_fourth_plus
+                result['has_roof_terrace'] = fd.has_roof_terrace
+                result['floor_count'] = fd.floor_count
+                result['property_levels'] = fd.property_levels
+
+            if result:
+                self.stats['floorplans_ocr_success'] += 1
+
+            return result if result else None
+
+        except Exception as e:
+            self.logger.debug(f"[OCR] Error processing {floorplan_url[:50]}: {e}")
+            return None
 
     def start_requests(self):
         """Generate initial requests for all target areas."""
@@ -159,7 +250,7 @@ class FoxtonsSpider(scrapy.Spider):
         # Parse each property
         parsed_count = 0
         for prop in properties:
-            item = self.parse_property(prop, area)
+            item = self.parse_property(prop, area, response)
             if item:
                 parsed_count += 1
                 self.stats['total'] += 1
@@ -225,7 +316,7 @@ class FoxtonsSpider(scrapy.Spider):
             reason = "max pages reached" if self.max_pages and page >= self.max_pages else "no more results"
             self.logger.info(f"[COMPLETE] {area}: Stopped at page {page} ({reason})")
 
-    def parse_property(self, prop: dict, area: str) -> PropertyItem:
+    def parse_property(self, prop: dict, area: str, response=None) -> PropertyItem:
         """Parse a single property from Foxtons data."""
         item = PropertyItem()
 
@@ -315,6 +406,21 @@ class FoxtonsSpider(scrapy.Spider):
             item['floorplan_url'] = floorplan_url
             self.stats['floorplans_found'] += 1
 
+            # Run inline OCR if enabled and sqft not already found
+            if self.fetch_floorplans and not item.get('size_sqft'):
+                ocr_result = self._extract_floorplan_ocr(floorplan_url, response)
+                if ocr_result:
+                    if ocr_result.get('size_sqft') and not item.get('size_sqft'):
+                        item['size_sqft'] = ocr_result['size_sqft']
+                        self.stats['sqft_found'] += 1
+                    # Copy floor data fields
+                    for field in ['floor_count', 'property_levels', 'has_basement',
+                                  'has_lower_ground', 'has_ground', 'has_mezzanine',
+                                  'has_first_floor', 'has_second_floor', 'has_third_floor',
+                                  'has_fourth_plus', 'has_roof_terrace']:
+                        if ocr_result.get(field):
+                            item[field] = ocr_result[field]
+
         # Agent info
         item['agent_name'] = prop.get('officeName', 'Foxtons')
         item['agent_phone'] = ''  # Not available in search results
@@ -373,6 +479,9 @@ class FoxtonsSpider(scrapy.Spider):
         self.logger.info(f"[SUMMARY] Total listings: {self.stats['total']}")
         self.logger.info(f"[SUMMARY] With sqft: {self.stats['sqft_found']} ({sqft_pct:.0f}%)")
         self.logger.info(f"[SUMMARY] With floorplan: {self.stats['floorplans_found']} ({floorplan_pct:.0f}%)")
+        if self.fetch_floorplans:
+            ocr_success_pct = (self.stats['floorplans_ocr_success'] / self.stats['floorplans_found'] * 100) if self.stats['floorplans_found'] else 0
+            self.logger.info(f"[SUMMARY] OCR success: {self.stats['floorplans_ocr_success']} ({ocr_success_pct:.0f}%)")
         self.logger.info(f"[SUMMARY] Requests made: {self.stats['requests_made']}")
 
         if self.stats['prices']:
