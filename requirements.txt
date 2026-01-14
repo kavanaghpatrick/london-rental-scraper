@@ -1,7 +1,9 @@
 # Scrapy Property Scraper - Dependencies
 
 # Core
-scrapy>=2.11.0
+# Pin scrapy<2.14 due to breaking change in HTTP11DownloadHandler.__init__()
+# that breaks scrapy-playwright 0.0.44 (TypeError: unexpected keyword argument 'settings')
+scrapy>=2.11.0,<2.14.0
 itemadapter>=0.8.0
 
 # JavaScript rendering (for OpenRent and other JS-heavy sites)
