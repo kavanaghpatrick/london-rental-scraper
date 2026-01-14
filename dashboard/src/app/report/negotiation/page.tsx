@@ -3,7 +3,8 @@ import ReportCharts from '../ReportCharts';
 
 // Subject property details - 4 South Eaton Place
 const PROPERTY = {
-  address: 'Flat 2, 4 South Eaton Place',
+  address: '4 South Eaton Place',  // Must match DB valuation address
+  displayAddress: 'Flat 2, 4 South Eaton Place, SW1W 9JA',
   postcode: 'SW1W',
   size_sqft: 1312,
   bedrooms: 2,
@@ -92,9 +93,9 @@ export const revalidate = 0;
 
 export default async function NegotiationReport() {
   // Get model's fair value prediction
-  let modelPrediction = 7908; // Luxury model with amenities
-  let modelVersion = 'V15-Luxury';
-  let modelR2 = 0.42; // Luxury segment R²
+  let modelPrediction = 9164; // V15 model (£8,728) + 5% AC premium
+  let modelVersion = 'V15-Optuna';
+  let modelR2 = 0.73; // Model R² = 0.7324
 
   try {
     const dbValuation = await getLatestValuation(PROPERTY.address);
@@ -200,7 +201,7 @@ export default async function NegotiationReport() {
         <div className="bg-gradient-to-r from-indigo-800 to-indigo-700 text-white rounded-xl p-6 md:p-8 mb-6">
           <div className="text-center">
             <h1 className="text-2xl md:text-3xl font-bold mb-2">Rental Negotiation Analysis</h1>
-            <p className="text-lg opacity-90">{PROPERTY.address}, London {PROPERTY.postcode}</p>
+            <p className="text-lg opacity-90">{PROPERTY.displayAddress}</p>
             <p className="text-sm opacity-75 mt-2">{PROPERTY.propertyType} | {PROPERTY.size_sqft.toLocaleString()} sqft</p>
           </div>
           <div className="mt-6 grid grid-cols-3 gap-4 text-center">
@@ -530,7 +531,7 @@ export default async function NegotiationReport() {
         {/* Footer */}
         <div className="text-center text-gray-500 text-sm py-6">
           <p>Rental Negotiation Analysis | Generated: {generatedAt}</p>
-          <p>{PROPERTY.address}, {PROPERTY.postcode} | {PROPERTY.size_sqft.toLocaleString()} sqft {PROPERTY.propertyType}</p>
+          <p>{PROPERTY.displayAddress} | {PROPERTY.size_sqft.toLocaleString()} sqft {PROPERTY.propertyType}</p>
           <p className="mt-4">
             <a href="/report/landlord-price" className="text-blue-600 hover:underline">← Basic Report</a>
             <span className="mx-4">|</span>
