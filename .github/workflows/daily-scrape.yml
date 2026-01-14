@@ -105,6 +105,25 @@ jobs:
           ITEMS=$(grep -oP 'Total: \K[\d,]+' scrape_output.txt | tail -1 || echo "0")
           echo "items_scraped=$ITEMS" >> $GITHUB_OUTPUT
 
+      - name: Run OCR enrichment on floorplans
+        run: |
+          # Install tesseract OCR
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+
+          # Install Python OCR dependencies
+          pip install pytesseract pillow
+
+          # Run OCR enrichment (processes floorplans for floor data)
+          echo "Running OCR enrichment on floorplans..."
+          python scripts/ocr_enrich.py --workers 2 --limit 500 2>&1 | tee ocr_output.txt || true
+
+          # Show summary
+          echo ""
+          echo "=== OCR Enrichment Summary ==="
+          tail -20 ocr_output.txt
+        timeout-minutes: 30
+
       - name: Mark stale listings inactive
         run: |
           python3 << 'EOF'
@@ -343,6 +362,7 @@ jobs:
           path: |
             logs/*.log
             scrape_output.txt
+            ocr_output.txt
             model_output.txt
           retention-days: 7
 

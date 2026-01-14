@@ -8,6 +8,9 @@ floor data (floor_count, property_levels, size_sqft).
 It downloads floorplan images, runs OCR via FloorplanExtractor, and
 updates the database with extracted data.
 
+Supports both SQLite (local) and Postgres (Vercel/GitHub Actions).
+Set POSTGRES_URL environment variable to use Postgres.
+
 Usage:
     python scripts/ocr_enrich.py                    # Run on all sources
     python scripts/ocr_enrich.py --source rightmove # Single source
@@ -28,6 +31,7 @@ import argparse
 import requests
 import time
 import sys
+import os
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -45,12 +49,39 @@ if not OCR_AVAILABLE:
 
 DB_PATH = Path(__file__).parent.parent / 'output' / 'rentals.db'
 
+# Database connection helpers
+def get_postgres_url():
+    """Get Postgres URL from environment."""
+    return os.environ.get('POSTGRES_URL')
+
+def get_connection():
+    """Get database connection (Postgres if available, else SQLite)."""
+    postgres_url = get_postgres_url()
+    if postgres_url:
+        import psycopg2
+        import psycopg2.extras
+        conn = psycopg2.connect(postgres_url)
+        return conn, 'postgres'
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn, 'sqlite'
+
+def get_param_placeholder(db_type):
+    """Get parameter placeholder for database type."""
+    return '%s' if db_type == 'postgres' else '?'
+
 
 def get_listings_needing_ocr(source=None, limit=None):
     """Get listings with floorplan URLs but missing floor data."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    conn, db_type = get_connection()
+    placeholder = get_param_placeholder(db_type)
+
+    if db_type == 'postgres':
+        import psycopg2.extras
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    else:
+        cursor = conn.cursor()
 
     query = '''
         SELECT
@@ -68,7 +99,7 @@ def get_listings_needing_ocr(source=None, limit=None):
 
     params = []
     if source:
-        query += ' AND source = ?'
+        query += f' AND source = {placeholder}'
         params.append(source)
 
     query += ' ORDER BY source, id'
@@ -80,7 +111,11 @@ def get_listings_needing_ocr(source=None, limit=None):
     rows = cursor.fetchall()
     conn.close()
 
-    return [dict(row) for row in rows]
+    # Convert to list of dicts
+    if db_type == 'postgres':
+        return [dict(row) for row in rows]
+    else:
+        return [dict(row) for row in rows]
 
 
 def download_image(url, timeout=30):
@@ -173,8 +208,9 @@ def update_database(results, dry_run=False):
     if dry_run:
         return 0
 
-    conn = sqlite3.connect(DB_PATH)
+    conn, db_type = get_connection()
     cursor = conn.cursor()
+    placeholder = get_param_placeholder(db_type)
     updated = 0
 
     for r in results:
@@ -185,15 +221,15 @@ def update_database(results, dry_run=False):
         params = []
 
         if r.get('sqft'):
-            updates.append('size_sqft = ?')
+            updates.append(f'size_sqft = {placeholder}')
             params.append(r['sqft'])
 
         if r.get('floor_count'):
-            updates.append('floor_count = ?')
+            updates.append(f'floor_count = {placeholder}')
             params.append(r['floor_count'])
 
         if r.get('property_levels'):
-            updates.append('property_levels = ?')
+            updates.append(f'property_levels = {placeholder}')
             params.append(r['property_levels'])
 
         if r.get('floor_data'):
@@ -202,12 +238,12 @@ def update_database(results, dry_run=False):
                          'has_first_floor', 'has_second_floor', 'has_third_floor',
                          'has_fourth_plus', 'has_roof_terrace']:
                 if fd.get(flag):
-                    updates.append(f'{flag} = ?')
+                    updates.append(f'{flag} = {placeholder}')
                     params.append(fd[flag])
 
         if updates:
             params.append(r['id'])
-            query = f"UPDATE listings SET {', '.join(updates)} WHERE id = ?"
+            query = f"UPDATE listings SET {', '.join(updates)} WHERE id = {placeholder}"
             cursor.execute(query, params)
             updated += 1
 
@@ -224,10 +260,14 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Preview without updating DB')
     args = parser.parse_args()
 
+    # Check database type
+    db_type = 'postgres' if get_postgres_url() else 'sqlite'
+
     print("=" * 70)
     print("OCR ENRICHMENT - FLOORPLAN DATA EXTRACTION")
     print("=" * 70)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Database: {db_type.upper()}")
     if args.source:
         print(f"Source: {args.source}")
     if args.limit:
