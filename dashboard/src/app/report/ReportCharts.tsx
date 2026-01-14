@@ -90,22 +90,32 @@ export default function ReportCharts({
     isSubject: d.district === subjectDistrict || d.district.startsWith(subjectDistrict.slice(0, 3)),
   }));
 
-  // Sort ALL comparables by £/sqft (ascending - cheapest first)
-  const sortedByPpsf = [...comparables].sort((a, b) => a.ppsf - b.ppsf);
+  // Get balanced comparables: properties both below AND above asking price
+  // This gives a fair view of the market centered around the subject property
+  const belowAskingComps = [...comparables]
+    .filter(c => c.ppsf < subjectPpsf)
+    .sort((a, b) => b.ppsf - a.ppsf) // Highest £/sqft first (closest to asking)
+    .slice(0, 10);
 
-  // Show up to 20 properties in bar chart for better visualization
-  const topComparables = sortedByPpsf
-    .slice(0, 20)
-    .map(c => ({
-      address: c.address?.slice(0, 22) + (c.address?.length > 22 ? '...' : ''),
-      fullAddress: c.address,
-      district: c.district,
-      price: c.price_pcm,
-      ppsf: c.ppsf,
-      size: c.size_sqft,
-      url: c.url,
-      isLower: c.ppsf < subjectPpsf,
-    }));
+  const aboveAskingComps = [...comparables]
+    .filter(c => c.ppsf >= subjectPpsf)
+    .sort((a, b) => a.ppsf - b.ppsf) // Lowest £/sqft first (closest to asking)
+    .slice(0, 10);
+
+  // Combine and sort by £/sqft for display
+  const balancedComparables = [...belowAskingComps, ...aboveAskingComps]
+    .sort((a, b) => a.ppsf - b.ppsf);
+
+  const topComparables = balancedComparables.map(c => ({
+    address: c.address?.slice(0, 22) + (c.address?.length > 22 ? '...' : ''),
+    fullAddress: c.address,
+    district: c.district,
+    price: c.price_pcm,
+    ppsf: c.ppsf,
+    size: c.size_sqft,
+    url: c.url,
+    isLower: c.ppsf < subjectPpsf,
+  }));
 
   // Scatter data - ALL comparables
   const scatterData = comparables.map(c => ({
@@ -133,10 +143,11 @@ export default function ReportCharts({
       {/* Chart 1: Comparables by £/sqft - THE KEY CHART */}
       <div>
         <h3 className="text-sm font-semibold text-gray-700 mb-1">
-          Top 20 Comparable Properties by £/sqft
+          Comparable Properties by £/sqft (Balanced View)
         </h3>
         <p className="text-xs text-gray-500 mb-3">
-          Prime Central London properties sorted by £/sqft (lowest first). Green = below asking, Red = above asking.
+          Balanced sample: {belowAskingComps.length} below + {aboveAskingComps.length} at/above asking price (£{subjectPpsf.toFixed(2)}/sqft).
+          Green = below asking, Red = above asking.
         </p>
         <ResponsiveContainer width="100%" height={500}>
           <BarChart data={topComparables} layout="vertical">
