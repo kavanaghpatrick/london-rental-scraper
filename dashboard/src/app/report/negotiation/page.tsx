@@ -92,19 +92,27 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function NegotiationReport() {
-  // Get model's fair value prediction
-  let modelPrediction = 9164; // V15 model (£8,728) + 5% AC premium
+  // Get model's fair value prediction - NO manual adjustments needed
+  // Model V15 already captures: size, location, amenities (AC, lift, balcony, etc.),
+  // floor data (duplex), property type, agent quality, and all interactions
+  let modelPrediction = 8728; // Fallback if DB fails
+  let modelRangeLow = 6895;
+  let modelRangeHigh = 10561;
   let modelVersion = 'V15-Optuna';
   let modelR2 = 0.73; // Model R² = 0.7324
+  let modelMape = 21.0;
 
   try {
     const dbValuation = await getLatestValuation(PROPERTY.address);
     if (dbValuation) {
-      // Use luxury-adjusted prediction
-      modelPrediction = Math.round(dbValuation.predicted_pcm * 1.05); // AC premium
+      modelPrediction = dbValuation.predicted_pcm;
+      modelRangeLow = dbValuation.range_low;
+      modelRangeHigh = dbValuation.range_high;
+      if (dbValuation.model_r2) modelR2 = dbValuation.model_r2;
+      if (dbValuation.model_mape) modelMape = dbValuation.model_mape;
     }
   } catch {
-    // Use fallback
+    // Use fallback values
   }
 
   const modelPpsf = modelPrediction / PROPERTY.size_sqft;
@@ -177,14 +185,16 @@ export default async function NegotiationReport() {
   const landlordPercentile = getPercentile(ppsfValues, LANDLORD_PPSF);
   const lowerCount = comparables.filter(c => c.ppsf < LANDLORD_PPSF).length;
 
-  // Fair value calculations
-  const fairValueMedian = Math.round(medianPpsf * PROPERTY.size_sqft);
-  const fairValue75th = Math.round(p75Ppsf * PROPERTY.size_sqft);
+  // Fair value from market comparables (for reference)
+  const marketMedian = Math.round(medianPpsf * PROPERTY.size_sqft);
+  const market75th = Math.round(p75Ppsf * PROPERTY.size_sqft);
 
-  // Amenity-adjusted fair value (considering what we HAVE)
-  const amenityPremium = 0.12; // ~12% for AC + lift + outdoor space + period features
-  const amenityAdjustedFair = Math.round(fairValueMedian * (1 + amenityPremium));
-  const amenityAdjusted75th = Math.round(fairValue75th * (1 + amenityPremium * 0.5)); // Less premium at higher end
+  // Use MODEL prediction as the authoritative fair value
+  // Model already captures all amenities, floor data, location, etc.
+  const fairValue = modelPrediction;
+  const fairValueLow = modelRangeLow;
+  const fairValueHigh = modelRangeHigh;
+  const fairPpsf = modelPpsf;
 
   const generatedAt = new Date().toLocaleString('en-GB', {
     day: '2-digit',
@@ -210,11 +220,11 @@ export default async function NegotiationReport() {
               <div className="text-sm opacity-75">Landlord Asking</div>
             </div>
             <div>
-              <div className="text-3xl font-bold">{formatCurrency(amenityAdjustedFair)}</div>
-              <div className="text-sm opacity-75">Fair Value (Adjusted)</div>
+              <div className="text-3xl font-bold">{formatCurrency(fairValue)}</div>
+              <div className="text-sm opacity-75">Model Fair Value</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-amber-300">+{Math.round((LANDLORD_PRICE / amenityAdjustedFair - 1) * 100)}%</div>
+              <div className="text-3xl font-bold text-amber-300">+{Math.round((LANDLORD_PRICE / fairValue - 1) * 100)}%</div>
               <div className="text-sm opacity-75">Premium Requested</div>
             </div>
           </div>
@@ -341,21 +351,21 @@ export default async function NegotiationReport() {
               <div className="text-sm text-blue-600 font-semibold mb-1">MARKET MEDIAN</div>
               <div className="text-2xl font-bold text-blue-700">£{medianPpsf.toFixed(2)}</div>
               <div className="text-sm text-gray-600">per sqft/month</div>
-              <div className="text-lg font-semibold mt-2">{formatCurrency(fairValueMedian)}/mo</div>
+              <div className="text-lg font-semibold mt-2">{formatCurrency(marketMedian)}/mo</div>
             </div>
 
             <div className="bg-purple-50 border-2 border-purple-300 rounded-lg p-4 text-center">
-              <div className="text-sm text-purple-600 font-semibold mb-1">75TH PERCENTILE</div>
+              <div className="text-sm text-purple-600 font-semibold mb-1">MARKET 75TH</div>
               <div className="text-2xl font-bold text-purple-700">£{p75Ppsf.toFixed(2)}</div>
               <div className="text-sm text-gray-600">per sqft/month</div>
-              <div className="text-lg font-semibold mt-2">{formatCurrency(fairValue75th)}/mo</div>
+              <div className="text-lg font-semibold mt-2">{formatCurrency(market75th)}/mo</div>
             </div>
 
             <div className="bg-green-50 border-2 border-green-300 rounded-lg p-4 text-center">
-              <div className="text-sm text-green-600 font-semibold mb-1">AMENITY-ADJUSTED FAIR</div>
-              <div className="text-2xl font-bold text-green-700">£{(amenityAdjustedFair / PROPERTY.size_sqft).toFixed(2)}</div>
+              <div className="text-sm text-green-600 font-semibold mb-1">MODEL FAIR VALUE</div>
+              <div className="text-2xl font-bold text-green-700">£{fairPpsf.toFixed(2)}</div>
               <div className="text-sm text-gray-600">per sqft/month</div>
-              <div className="text-lg font-semibold mt-2">{formatCurrency(amenityAdjustedFair)}/mo</div>
+              <div className="text-lg font-semibold mt-2">{formatCurrency(fairValue)}/mo</div>
             </div>
           </div>
 
@@ -365,7 +375,7 @@ export default async function NegotiationReport() {
               at the <strong>{100 - landlordPercentile}th percentile</strong> of the market.
               {lowerCount} of {comparables.length} comparable properties ({Math.round(lowerCount/comparables.length*100)}%) have lower £/sqft rates.
               Given the property&apos;s amenities (AC, lift, outdoor space) but lack of pool/gym/porter,
-              fair value is estimated at <strong>{formatCurrency(amenityAdjustedFair)}-{formatCurrency(amenityAdjusted75th)}/month</strong>.
+              fair value is estimated at <strong>{formatCurrency(fairValue)}-{formatCurrency(fairValueHigh)}/month</strong>.
             </p>
           </div>
         </div>
@@ -377,26 +387,26 @@ export default async function NegotiationReport() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-white/10 rounded-lg p-4 text-center">
               <div className="text-sm opacity-75 mb-1">OPENING OFFER</div>
-              <div className="text-3xl font-bold">{formatCurrency(Math.round(amenityAdjustedFair * 0.95))}</div>
-              <div className="text-sm opacity-75 mt-1">£{(amenityAdjustedFair * 0.95 / PROPERTY.size_sqft).toFixed(2)}/sqft</div>
+              <div className="text-3xl font-bold">{formatCurrency(Math.round(fairValue * 0.95))}</div>
+              <div className="text-sm opacity-75 mt-1">£{(fairValue * 0.95 / PROPERTY.size_sqft).toFixed(2)}/sqft</div>
             </div>
 
             <div className="bg-white/20 rounded-lg p-4 text-center border-2 border-white/50">
               <div className="text-sm opacity-75 mb-1">TARGET</div>
-              <div className="text-3xl font-bold">{formatCurrency(Math.round((amenityAdjustedFair + amenityAdjusted75th) / 2))}</div>
-              <div className="text-sm opacity-75 mt-1">£{((amenityAdjustedFair + amenityAdjusted75th) / 2 / PROPERTY.size_sqft).toFixed(2)}/sqft</div>
+              <div className="text-3xl font-bold">{formatCurrency(Math.round((fairValue + fairValueHigh) / 2))}</div>
+              <div className="text-sm opacity-75 mt-1">£{((fairValue + fairValueHigh) / 2 / PROPERTY.size_sqft).toFixed(2)}/sqft</div>
             </div>
 
             <div className="bg-white/10 rounded-lg p-4 text-center">
               <div className="text-sm opacity-75 mb-1">WALK-AWAY MAX</div>
-              <div className="text-3xl font-bold">{formatCurrency(amenityAdjusted75th)}</div>
-              <div className="text-sm opacity-75 mt-1">£{(amenityAdjusted75th / PROPERTY.size_sqft).toFixed(2)}/sqft</div>
+              <div className="text-3xl font-bold">{formatCurrency(fairValueHigh)}</div>
+              <div className="text-sm opacity-75 mt-1">£{(fairValueHigh / PROPERTY.size_sqft).toFixed(2)}/sqft</div>
             </div>
           </div>
 
           <div className="text-center text-sm opacity-90">
-            <p>Landlord asking {formatCurrency(LANDLORD_PRICE)} is <strong>+{Math.round((LANDLORD_PRICE / ((amenityAdjustedFair + amenityAdjusted75th) / 2) - 1) * 100)}%</strong> above target.</p>
-            <p className="mt-1">Data-backed negotiation room: <strong>{formatCurrency(LANDLORD_PRICE - amenityAdjusted75th)}/month</strong> potential savings.</p>
+            <p>Landlord asking {formatCurrency(LANDLORD_PRICE)} is <strong>+{Math.round((LANDLORD_PRICE / ((fairValue + fairValueHigh) / 2) - 1) * 100)}%</strong> above target.</p>
+            <p className="mt-1">Data-backed negotiation room: <strong>{formatCurrency(LANDLORD_PRICE - fairValueHigh)}/month</strong> potential savings.</p>
           </div>
         </div>
 
@@ -404,8 +414,8 @@ export default async function NegotiationReport() {
         <div className="bg-white rounded-xl shadow p-6 mb-6">
           {(() => {
             // Fair value £/sqft range (model fair value ± 15%)
-            const fairPpsf = amenityAdjustedFair / PROPERTY.size_sqft;
-            const upperBoundPpsf = amenityAdjusted75th / PROPERTY.size_sqft;
+            const fairPpsf = fairValue / PROPERTY.size_sqft;
+            const upperBoundPpsf = fairValueHigh / PROPERTY.size_sqft;
 
             // Filter to properties WITHIN or BELOW fair value range (supporting evidence)
             const supportingComps = comparables
@@ -420,7 +430,7 @@ export default async function NegotiationReport() {
                 <div className="bg-green-50 rounded-lg p-4 mb-4">
                   <p className="text-sm text-green-800">
                     <strong>Fair Value Range:</strong> £{fairPpsf.toFixed(2)} - £{upperBoundPpsf.toFixed(2)}/sqft
-                    ({formatCurrency(amenityAdjustedFair)} - {formatCurrency(amenityAdjusted75th)}/month for {PROPERTY.size_sqft} sqft)
+                    ({formatCurrency(fairValue)} - {formatCurrency(fairValueHigh)}/month for {PROPERTY.size_sqft} sqft)
                   </p>
                   <p className="text-sm text-green-700 mt-1">
                     <strong>{supportingComps.length}</strong> of {comparables.length} similar properties support this fair value range.
@@ -512,14 +522,15 @@ export default async function NegotiationReport() {
               of subject size ({minSize.toLocaleString()}-{maxSize.toLocaleString()} sqft) with 2 bedrooms.
             </p>
             <p>
-              <strong>Luxury Model (V15):</strong> XGBoost regression trained on £6,000+/month properties only.
-              R² = {(modelR2).toFixed(2)} for luxury segment (lower than general market due to heterogeneity).
-              Key finding: Pool (+424%), Gym (+318%), and Porter (+163%) importance increases dramatically in this segment.
+              <strong>XGBoost Model (V15):</strong> Trained on {marketStats.total_listings.toLocaleString()} listings
+              with 93 features including: location (postcode, distance to center), property characteristics (size, beds, baths,
+              floor count), amenities (AC, lift, outdoor space, pool, gym, porter), and interactions.
+              R² = {(modelR2).toFixed(2)}, MAPE = {modelMape}%. Model updated daily with fresh scrape data.
             </p>
             <p>
-              <strong>Amenity Adjustment:</strong> +12% premium applied to median for verified features
-              (AC, lift, dual balconies, terrace, communal garden, period features).
-              No premium for missing ultra-luxury features (pool, gym, porter).
+              <strong>Fair Value Prediction:</strong> Model accounts for all property features automatically—no manual
+              adjustments needed. This property&apos;s specific amenities (AC, lift, balconies, terrace, period features) and
+              missing features (pool, gym, porter) are captured by the model&apos;s 93 feature inputs.
             </p>
             <p>
               <strong>Data Source:</strong> {marketStats.total_listings.toLocaleString()} active listings from

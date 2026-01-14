@@ -8,9 +8,9 @@ const SUBJECT_DEFAULTS = {
   size_sqft: 1312,
   bedrooms: 2,
   bathrooms: 2,
-  predicted_pcm: 8925,  // Fallback if no DB valuation
-  range_low: 7318,
-  range_high: 10531,
+  predicted_pcm: 8728,  // Fallback if no DB valuation (V15 model)
+  range_low: 6895,
+  range_high: 10561,
 };
 
 // SW1 area districts

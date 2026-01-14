@@ -47,11 +47,11 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function LandlordPriceReport() {
-  // Get model's fair value prediction
-  let modelPrediction = 8925;
-  let modelVersion = 'V15';
-  let modelR2 = 0.67;  // Actual V15 R² (no data leakage)
-  let modelMape = 18.0;  // Conservative estimate
+  // Get model's fair value prediction from DB (updated daily by model training)
+  let modelPrediction = 8728;  // Fallback if DB fails (V15 model)
+  let modelVersion = 'V15-Optuna';
+  let modelR2 = 0.73;  // V15 model R²
+  let modelMape = 21.0;  // V15 model MAPE
   try {
     const dbValuation = await getLatestValuation(PROPERTY.address);
     if (dbValuation) {
