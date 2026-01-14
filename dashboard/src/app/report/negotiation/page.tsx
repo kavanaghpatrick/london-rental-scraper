@@ -54,6 +54,28 @@ const LUXURY_FEATURE_IMPORTANCE = [
 
 // SW1 area districts
 const SW1_DISTRICTS = new Set(['SW1A', 'SW1E', 'SW1H', 'SW1P', 'SW1V', 'SW1W', 'SW1X', 'SW1Y']);
+const PRIME_ADJACENT = new Set(['SW3', 'SW7', 'W1', 'W8', 'NW1', 'NW3', 'NW8']);
+
+function isSW1District(district: string): boolean {
+  if (!district) return false;
+  if (SW1_DISTRICTS.has(district)) return true;
+  if (district === 'SW1') return true;
+  if (district.startsWith('SW1') && district.length === 4 && /[A-Z]/.test(district[3])) return true;
+  return false;
+}
+
+function getTier(district: string, subjectDistrict: string): { num: number; label: string } {
+  if (!district) return { num: 4, label: 'Tier 4: Broader Market' };
+  if (district === subjectDistrict) return { num: 1, label: 'Tier 1: Same District' };
+  if (isSW1District(subjectDistrict) && isSW1District(district)) {
+    return { num: 2, label: 'Tier 2: SW1 Area' };
+  }
+  const areaCode = district.match(/^([A-Z]+\d+)/)?.[1] || district;
+  if (PRIME_ADJACENT.has(areaCode) || PRIME_ADJACENT.has(district)) {
+    return { num: 3, label: 'Tier 3: Prime Central' };
+  }
+  return { num: 4, label: 'Tier 4: Broader Market' };
+}
 
 function formatCurrency(value: number): string {
   return `£${value.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -116,6 +138,12 @@ export default async function NegotiationReport() {
       </main>
     );
   }
+
+  // Add tier info to comparables
+  const comparablesWithTier = comparables.map(comp => ({
+    ...comp,
+    tier: getTier(comp.district, PROPERTY.postcode),
+  }));
 
   // Calculate statistics
   const minSize = Math.floor(PROPERTY.size_sqft * (1 - SIZE_RANGE));
@@ -433,7 +461,7 @@ export default async function NegotiationReport() {
           <ReportCharts
             ppsfDistribution={ppsfDistribution}
             ppsfByDistrict={ppsfByDistrict}
-            comparables={comparables}
+            comparables={comparablesWithTier}
             subjectPpsf={LANDLORD_PPSF}
             subjectDistrict={PROPERTY.postcode}
             subjectPrice={Math.round(LANDLORD_PRICE)}

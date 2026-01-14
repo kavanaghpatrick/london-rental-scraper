@@ -85,8 +85,8 @@ class ChestertonsSpider(scrapy.Spider):
 
     # Prime London areas we want
     TARGET_POSTCODES = [
-        'SW1', 'SW3', 'SW5', 'SW7', 'SW10',  # Chelsea, South Ken, Knightsbridge
-        'W8', 'W11', 'W2',  # Kensington, Notting Hill
+        'SW1', 'SW3', 'SW5', 'SW6', 'SW7', 'SW10',  # Chelsea, South Ken, Knightsbridge, Fulham
+        'W1', 'W8', 'W11', 'W2',  # Mayfair, Kensington, Notting Hill
         'NW1', 'NW3', 'NW8',  # St John's Wood, Hampstead
     ]
 

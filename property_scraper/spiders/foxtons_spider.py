@@ -23,10 +23,11 @@ class FoxtonsSpider(scrapy.Spider):
     name = 'foxtons'
     allowed_domains = ['foxtons.co.uk']
 
-    # Areas matching Rightmove format (Title-Case)
+    # Areas from central registry - full Prime Central London coverage
     DEFAULT_AREAS = [
         'Belgravia', 'Chelsea', 'Kensington', 'South-Kensington',
-        'Knightsbridge', 'Notting-Hill'
+        'Knightsbridge', 'Notting-Hill', 'Earls-Court', 'Fulham',
+        'Hampstead', 'St-Johns-Wood', 'Mayfair', 'Marylebone'
     ]
 
     # Map display names to URL slugs
@@ -37,6 +38,12 @@ class FoxtonsSpider(scrapy.Spider):
         'South-Kensington': 'south-kensington',
         'Knightsbridge': 'knightsbridge',
         'Notting-Hill': 'notting-hill',
+        'Earls-Court': 'earls-court',
+        'Fulham': 'fulham',
+        'Hampstead': 'hampstead',
+        'St-Johns-Wood': 'st-johns-wood',
+        'Mayfair': 'mayfair',
+        'Marylebone': 'marylebone',
     }
 
     def __init__(self, areas=None, max_pages=None, *args, **kwargs):

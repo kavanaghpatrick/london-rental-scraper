@@ -90,7 +90,7 @@ class SavillsSpider(scrapy.Spider):
 
     # Prime London areas we want
     TARGET_POSTCODES = [
-        'SW1', 'SW3', 'SW5', 'SW7', 'SW10',  # Chelsea, South Ken, Knightsbridge
+        'SW1', 'SW3', 'SW5', 'SW6', 'SW7', 'SW10',  # Chelsea, South Ken, Knightsbridge, Fulham
         'W8', 'W11', 'W2', 'W1',  # Kensington, Notting Hill, Mayfair
         'NW1', 'NW3', 'NW8',  # St John's Wood, Hampstead
     ]

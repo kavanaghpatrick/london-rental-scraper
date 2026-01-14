@@ -28,9 +28,11 @@ class RightmoveSpider(scrapy.Spider):
     allowed_domains = ['rightmove.co.uk']
 
     # Default areas to scrape
+    # Full Prime Central London coverage - matches registry.py
     DEFAULT_AREAS = [
         'Belgravia', 'Chelsea', 'Kensington', 'South-Kensington',
-        'Knightsbridge', 'Notting-Hill'
+        'Knightsbridge', 'Notting-Hill', 'Earls-Court', 'Fulham',
+        'Hampstead', 'St-Johns-Wood', 'Mayfair', 'Marylebone'
     ]
 
     def __init__(self, areas=None, max_pages=None, fetch_details=True, fetch_floorplans=False, *args, **kwargs):
