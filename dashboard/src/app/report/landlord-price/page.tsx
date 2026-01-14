@@ -11,7 +11,7 @@ const PROPERTY = {
 };
 
 // Landlord's asking price
-const LANDLORD_PRICE = 10394.62;
+const LANDLORD_PRICE = 10914;
 const LANDLORD_PPSF = LANDLORD_PRICE / PROPERTY.size_sqft;
 
 // SW1 area districts
