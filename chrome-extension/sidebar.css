@@ -156,3 +156,29 @@
   border-radius: 4px;
   opacity: 0.8;
 }
+
+/* Not analyzed state */
+#rent-fair-value .rfv-not-analyzed {
+  text-align: center;
+  padding: 20px 10px;
+  background: #374151;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+#rent-fair-value .rfv-not-analyzed-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+#rent-fair-value .rfv-not-analyzed-text {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+#rent-fair-value .rfv-not-analyzed-subtext {
+  font-size: 11px;
+  opacity: 0.6;
+  line-height: 1.4;
+}

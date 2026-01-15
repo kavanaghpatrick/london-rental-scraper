@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Rent Fair Value",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ML-powered fair rent estimates for London properties",
   "icons": {
     "16": "icons/icon16.png",
@@ -11,14 +11,13 @@
   "content_scripts": [
     {
       "matches": ["https://www.rightmove.co.uk/properties/*"],
-      "js": ["vendor/tesseract.min.js", "content.js"],
+      "js": ["content.js"],
       "css": ["sidebar.css"],
       "run_at": "document_idle"
     }
   ],
   "permissions": ["activeTab"],
   "host_permissions": [
-    "https://media.rightmove.co.uk/*",
     "https://*.rightmove.co.uk/*",
     "https://raw.githubusercontent.com/*"
   ]
