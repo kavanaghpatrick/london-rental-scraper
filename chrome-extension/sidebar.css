@@ -1,0 +1,158 @@
+/* Rent Fair Value - Sidebar Styles */
+
+#rent-fair-value {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  width: 280px;
+  z-index: 99999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+#rent-fair-value .rfv-container {
+  background: #1f2937;
+  color: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+#rent-fair-value .rfv-header {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  letter-spacing: 0.5px;
+}
+
+#rent-fair-value .rfv-label {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#rent-fair-value .rfv-price {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+#rent-fair-value .rfv-range {
+  font-size: 11px;
+  opacity: 0.5;
+}
+
+#rent-fair-value .rfv-divider {
+  border: none;
+  border-top: 1px solid #374151;
+  margin: 16px 0;
+}
+
+#rent-fair-value .rfv-assessment {
+  text-align: center;
+  padding: 14px;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+#rent-fair-value .rfv-assessment-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+#rent-fair-value .rfv-assessment-label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+}
+
+#rent-fair-value .rfv-footer {
+  font-size: 10px;
+  opacity: 0.4;
+  margin-top: 14px;
+  text-align: center;
+}
+
+#rent-fair-value .rfv-size-note {
+  font-size: 10px;
+  opacity: 0.5;
+  margin-top: 8px;
+  text-align: center;
+  font-style: italic;
+}
+
+/* Assessment colors */
+#rent-fair-value .rfv-overpriced {
+  background: #ef4444;
+}
+
+#rent-fair-value .rfv-fair {
+  background: #3b82f6;
+}
+
+#rent-fair-value .rfv-good-deal {
+  background: #22c55e;
+}
+
+/* Loading state */
+#rent-fair-value .rfv-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 30px 20px;
+}
+
+#rent-fair-value .rfv-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #374151;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: rfv-spin 1s linear infinite;
+}
+
+@keyframes rfv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#rent-fair-value .rfv-loading-text {
+  margin-top: 12px;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* Error state */
+#rent-fair-value .rfv-error {
+  text-align: center;
+  padding: 20px;
+}
+
+#rent-fair-value .rfv-error-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+#rent-fair-value .rfv-error-text {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* Amenities */
+#rent-fair-value .rfv-amenities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+#rent-fair-value .rfv-amenity {
+  font-size: 10px;
+  background: #374151;
+  padding: 4px 8px;
+  border-radius: 4px;
+  opacity: 0.8;
+}

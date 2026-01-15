@@ -1,0 +1,223 @@
+name: Predict Fair Value
+
+on:
+  repository_dispatch:
+    types: [predict]
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install numpy pandas xgboost
+
+      - name: Run prediction
+        id: predict
+        env:
+          PROPERTY_DATA: ${{ toJson(github.event.client_payload) }}
+        run: |
+          python3 << 'EOF'
+          import os
+          import json
+          import pickle
+          import numpy as np
+          import pandas as pd
+          import re
+
+          # Load property data from event
+          data = json.loads(os.environ['PROPERTY_DATA'])
+          print(f"Received: {json.dumps(data, indent=2)[:500]}")
+
+          # Constants
+          AMENITY_FEATURES = [
+              'has_balcony', 'has_terrace', 'has_garden', 'has_porter',
+              'has_gym', 'has_pool', 'has_parking', 'has_lift', 'has_ac',
+              'has_furnished', 'has_high_ceilings', 'has_view',
+              'has_modern', 'has_period', 'has_roof_terrace'
+          ]
+
+          PRIME_POSTCODES = ['SW1', 'SW3', 'SW7', 'SW10', 'W1', 'W8', 'W11', 'NW3', 'NW8']
+
+          TUBE_STATIONS = {
+              'South Kensington': (51.4941, -0.1738),
+              'Sloane Square': (51.4924, -0.1565),
+              'Knightsbridge': (51.5015, -0.1607),
+              'Green Park': (51.5067, -0.1428),
+              'Notting Hill Gate': (51.5094, -0.1967),
+          }
+
+          CITY_CENTER = (51.5074, -0.1278)
+
+          POSTCODE_CENTROIDS = {
+              'SW1': (51.4970, -0.1400), 'SW3': (51.4900, -0.1680),
+              'SW7': (51.4950, -0.1780), 'SW10': (51.4830, -0.1820),
+              'W1': (51.5150, -0.1450), 'W8': (51.5010, -0.1920),
+              'W11': (51.5150, -0.2050), 'NW3': (51.5550, -0.1780),
+              'NW8': (51.5330, -0.1750), 'E14': (51.5070, -0.0200),
+          }
+
+          def haversine(lat1, lon1, lat2, lon2):
+              R = 6371
+              lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+              dlat, dlon = lat2 - lat1, lon2 - lon1
+              a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
+              return R * 2 * np.arcsin(np.sqrt(a))
+
+          def parse_amenities(text):
+              amenities = {f: 0 for f in AMENITY_FEATURES}
+              if not text:
+                  return amenities
+              text = text.lower()
+              amenities['has_balcony'] = int('balcony' in text)
+              amenities['has_terrace'] = int('terrace' in text and 'roof terrace' not in text)
+              amenities['has_roof_terrace'] = int('roof terrace' in text)
+              amenities['has_garden'] = int('garden' in text)
+              amenities['has_porter'] = int('porter' in text or 'concierge' in text)
+              amenities['has_gym'] = int('gym' in text)
+              amenities['has_pool'] = int('pool' in text)
+              amenities['has_parking'] = int('parking' in text)
+              amenities['has_lift'] = int('lift' in text or 'elevator' in text)
+              amenities['has_ac'] = int('air con' in text or 'a/c' in text)
+              amenities['has_high_ceilings'] = int('high ceiling' in text)
+              amenities['has_view'] = int('view' in text)
+              amenities['has_modern'] = int('modern' in text)
+              amenities['has_period'] = int('period' in text or 'victorian' in text)
+              amenities['has_furnished'] = int('furnished' in text and 'unfurnished' not in text)
+              return amenities
+
+          # Load model
+          with open('output/rental_model_v15.pkl', 'rb') as f:
+              model = pickle.load(f)
+          with open('output/rental_model_v15_features.pkl', 'rb') as f:
+              feature_cols = pickle.load(f)
+
+          # Load size lookup
+          with open('chrome-extension/api/size_lookup.json') as f:
+              size_lookup = json.load(f)
+
+          # Extract input
+          beds = data.get('bedrooms', 1) or 1
+          baths = data.get('bathrooms', 1) or 1
+          size_sqft = data.get('size_sqft')
+          postcode = data.get('postcode', 'SW3 1AA')
+          description = data.get('description', '')
+          asking_price = data.get('asking_price', 0)
+
+          postcode_district = postcode.split()[0] if postcode else 'SW3'
+
+          # Estimate size if missing
+          size_source = 'provided'
+          if not size_sqft:
+              key = f"{postcode_district}_{beds}"
+              size_sqft = size_lookup.get(key, beds * 400)
+              size_source = 'estimated'
+
+          # Get coordinates
+          lat, lon = POSTCODE_CENTROIDS.get(postcode_district, CITY_CENTER)
+
+          # Parse amenities
+          amenities = parse_amenities(description)
+
+          # Calculate distances
+          tube_dist = min(haversine(lat, lon, s[0], s[1]) for s in TUBE_STATIONS.values())
+          center_dist = haversine(lat, lon, CITY_CENTER[0], CITY_CENTER[1])
+
+          # Build feature dict
+          row = {
+              'bedrooms': beds, 'bathrooms': baths, 'size_sqft': size_sqft,
+              'size_per_bed': size_sqft / max(beds, 0.5),
+              'bath_ratio': baths / max(beds, 0.5),
+              'bed_bath_interaction': beds * baths,
+              'log_sqft': np.log1p(size_sqft),
+              'sqrt_sqft': np.sqrt(size_sqft),
+              'size_squared': size_sqft ** 2 / 100000,
+              'beds_squared': beds ** 2,
+              'size_bin': 2.0,
+              'tube_distance_km': tube_dist,
+              'log_tube_distance': np.log1p(tube_dist),
+              'center_distance_km': center_dist,
+              'log_center_distance': np.log1p(center_dist),
+              'center_distance_inv': 1 / (1 + center_dist),
+              'is_prime_postcode': int(any(postcode_district.startswith(p) for p in PRIME_POSTCODES)),
+              'postcode_freq': 0.05,
+              'postcode_area_freq': 0.1,
+              'floor_count': 1, 'is_multi_floor': 0, 'floor_size_interaction': size_sqft/1000,
+              'has_basement': 0, 'has_ground': 0, 'has_first_floor': 0,
+              'has_second_floor': 0, 'has_third_floor': 0, 'has_fourth_plus': 0,
+              'is_premium_agent': 0, 'premium_agent_size': 0, 'source_quality': 1,
+              'is_short_let': 0, 'is_long_let': 1,
+              'short_let_x_central': 0, 'short_let_size': 0,
+              'property_type_num': 1,
+              **amenities,
+          }
+
+          row['size_x_central'] = size_sqft * row['center_distance_inv'] / 100
+          row['size_x_prime'] = size_sqft * row['is_prime_postcode'] / 1000
+          row['beds_x_central'] = beds * row['center_distance_inv']
+          row['amenity_score'] = sum(amenities.values())
+          row['premium_amenity_count'] = sum([amenities['has_pool'], amenities['has_porter'], amenities['has_gym'], amenities['has_ac']])
+          row['has_outdoor_space'] = int(amenities['has_balcony'] or amenities['has_terrace'] or amenities['has_garden'] or amenities['has_roof_terrace'])
+          row['amenity_x_central'] = row['amenity_score'] * row['center_distance_inv']
+          row['outdoor_x_prime'] = row['has_outdoor_space'] * row['is_prime_postcode']
+
+          # One-hot columns
+          for col in feature_cols:
+              if col.startswith('type_') or col.startswith('pc_'):
+                  row[col] = 0
+
+          df = pd.DataFrame([row])
+          for col in feature_cols:
+              if col not in df.columns:
+                  df[col] = 0
+
+          # Predict
+          X = df[feature_cols]
+          pred_log = model.predict(X)[0]
+          fair_value = int(np.expm1(pred_log))
+
+          # Calculate assessment
+          if asking_price > 0:
+              premium_pct = round((asking_price / fair_value - 1) * 100, 1)
+              assessment = 'overpriced' if premium_pct > 15 else 'good_deal' if premium_pct < -10 else 'fair'
+          else:
+              premium_pct = 0
+              assessment = 'unknown'
+
+          result = {
+              'asking_price': asking_price,
+              'fair_value': fair_value,
+              'range_low': int(fair_value * 0.79),
+              'range_high': int(fair_value * 1.21),
+              'premium_pct': premium_pct,
+              'assessment': assessment,
+              'size_sqft': size_sqft,
+              'size_source': size_source,
+              'amenities_detected': [k.replace('has_', '') for k, v in amenities.items() if v],
+          }
+
+          print(f"\nResult: {json.dumps(result, indent=2)}")
+
+          # Save result
+          with open('prediction_result.json', 'w') as f:
+              json.dump(result, f)
+          EOF
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: prediction
+          path: prediction_result.json
+          retention-days: 1
+
+      - name: Output result URL
+        run: |
+          echo "Prediction complete! Result saved as artifact."
