@@ -188,12 +188,127 @@ jobs:
               json.dump(predictions, f, separators=(',', ':'))
 
           print(f"Saved to chrome-extension/api/predictions.json ({Path('chrome-extension/api/predictions.json').stat().st_size / 1024:.1f} KB)")
+
+          # ============================================
+          # Generate lookup table for cache misses
+          # ============================================
+          print("\nGenerating lookup table for uncached properties...")
+
+          # All London postcode districts we cover
+          POSTCODE_DISTRICTS = [
+              'SW1', 'SW3', 'SW5', 'SW6', 'SW7', 'SW10', 'SW11', 'SW15', 'SW18', 'SW19',
+              'W1', 'W2', 'W4', 'W6', 'W8', 'W9', 'W10', 'W11', 'W12', 'W14',
+              'NW1', 'NW3', 'NW5', 'NW6', 'NW8', 'NW10',
+              'N1', 'N4', 'N5', 'N6', 'N7', 'N8', 'N10', 'N16', 'N19',
+              'E1', 'E2', 'E3', 'E8', 'E9', 'E14', 'E15', 'E16', 'E17',
+              'SE1', 'SE3', 'SE4', 'SE5', 'SE10', 'SE11', 'SE13', 'SE15', 'SE16', 'SE21', 'SE22', 'SE23',
+              'EC1', 'EC2', 'EC4', 'WC1', 'WC2',
+          ]
+          BEDS_RANGE = [0, 1, 2, 3, 4, 5]
+          SQFT_BUCKETS = [300, 400, 500, 600, 700, 800, 900, 1000, 1200, 1500, 2000, 2500, 3000]
+
+          # Extended postcode centroids
+          EXTENDED_CENTROIDS = {
+              'SW1': (51.4970, -0.1400), 'SW3': (51.4900, -0.1680), 'SW5': (51.4920, -0.1900),
+              'SW6': (51.4750, -0.2050), 'SW7': (51.4950, -0.1780), 'SW10': (51.4830, -0.1820),
+              'SW11': (51.4640, -0.1700), 'SW15': (51.4570, -0.2160), 'SW18': (51.4500, -0.1900),
+              'SW19': (51.4220, -0.1870),
+              'W1': (51.5150, -0.1450), 'W2': (51.5150, -0.1800), 'W4': (51.4900, -0.2650),
+              'W6': (51.4930, -0.2250), 'W8': (51.5010, -0.1920), 'W9': (51.5250, -0.1900),
+              'W10': (51.5240, -0.2100), 'W11': (51.5150, -0.2050), 'W12': (51.5080, -0.2380),
+              'W14': (51.4950, -0.2100),
+              'NW1': (51.5350, -0.1500), 'NW3': (51.5550, -0.1780), 'NW5': (51.5550, -0.1400),
+              'NW6': (51.5450, -0.1950), 'NW8': (51.5330, -0.1750), 'NW10': (51.5400, -0.2400),
+              'N1': (51.5400, -0.1000), 'N4': (51.5700, -0.1050), 'N5': (51.5550, -0.0950),
+              'N6': (51.5750, -0.1450), 'N7': (51.5550, -0.1200), 'N8': (51.5850, -0.1150),
+              'N10': (51.5950, -0.1400), 'N16': (51.5600, -0.0750), 'N19': (51.5700, -0.1350),
+              'E1': (51.5150, -0.0600), 'E2': (51.5300, -0.0550), 'E3': (51.5300, -0.0250),
+              'E8': (51.5450, -0.0550), 'E9': (51.5500, -0.0400), 'E14': (51.5070, -0.0200),
+              'E15': (51.5400, -0.0050), 'E16': (51.5100, 0.0200), 'E17': (51.5850, -0.0200),
+              'SE1': (51.5000, -0.0900), 'SE3': (51.4700, 0.0100), 'SE4': (51.4600, -0.0400),
+              'SE5': (51.4750, -0.0850), 'SE10': (51.4850, 0.0050), 'SE11': (51.4900, -0.1050),
+              'SE13': (51.4550, -0.0150), 'SE15': (51.4700, -0.0550), 'SE16': (51.4950, -0.0450),
+              'SE21': (51.4400, -0.0850), 'SE22': (51.4550, -0.0700), 'SE23': (51.4400, -0.0500),
+              'EC1': (51.5250, -0.1000), 'EC2': (51.5200, -0.0850), 'EC4': (51.5130, -0.1000),
+              'WC1': (51.5230, -0.1200), 'WC2': (51.5120, -0.1230),
+          }
+
+          lookup = {}
+          for pc in POSTCODE_DISTRICTS:
+              lat, lon = EXTENDED_CENTROIDS.get(pc, CITY_CENTER)
+              tube_dist = min(haversine(lat, lon, s[0], s[1]) for s in TUBE_STATIONS.values())
+              center_dist = haversine(lat, lon, CITY_CENTER[0], CITY_CENTER[1])
+              center_inv = 1 / (1 + center_dist)
+              is_prime = int(any(pc.startswith(p) for p in PRIME_POSTCODES))
+
+              for beds in BEDS_RANGE:
+                  for sqft in SQFT_BUCKETS:
+                      baths = max(1, beds)  # Assume 1 bath per bed, min 1
+
+                      feat = {
+                          'bedrooms': beds, 'bathrooms': baths, 'size_sqft': sqft,
+                          'size_per_bed': sqft / max(beds, 0.5),
+                          'bath_ratio': baths / max(beds, 0.5),
+                          'bed_bath_interaction': beds * baths,
+                          'log_sqft': np.log1p(sqft),
+                          'sqrt_sqft': np.sqrt(sqft),
+                          'size_squared': sqft ** 2 / 100000,
+                          'beds_squared': beds ** 2,
+                          'size_bin': 2.0,
+                          'tube_distance_km': tube_dist,
+                          'log_tube_distance': np.log1p(tube_dist),
+                          'center_distance_km': center_dist,
+                          'log_center_distance': np.log1p(center_dist),
+                          'center_distance_inv': center_inv,
+                          'is_prime_postcode': is_prime,
+                          'postcode_freq': 0.05, 'postcode_area_freq': 0.1,
+                          'size_x_central': sqft * center_inv / 100,
+                          'size_x_prime': sqft * is_prime / 1000,
+                          'beds_x_central': beds * center_inv,
+                          'floor_count': 1, 'is_multi_floor': 0,
+                          'floor_size_interaction': sqft/1000,
+                          'has_basement': 0, 'has_ground': 0, 'has_first_floor': 0,
+                          'has_second_floor': 0, 'has_third_floor': 0, 'has_fourth_plus': 0,
+                          'is_premium_agent': 0, 'premium_agent_size': 0, 'source_quality': 1,
+                          'amenity_score': 0,
+                          'premium_amenity_count': 0,
+                          'has_outdoor_space': 0,
+                          'amenity_x_central': 0,
+                          'outdoor_x_prime': 0,
+                          'is_short_let': 0, 'is_long_let': 1,
+                          'short_let_x_central': 0, 'short_let_size': 0,
+                          'property_type_num': 1,
+                          'has_balcony': 0, 'has_terrace': 0, 'has_garden': 0,
+                          'has_porter': 0, 'has_gym': 0, 'has_pool': 0,
+                          'has_parking': 0, 'has_lift': 0, 'has_ac': 0,
+                          'has_high_ceilings': 0, 'has_view': 0, 'has_modern': 0,
+                          'has_period': 0, 'has_furnished': 0, 'has_roof_terrace': 0,
+                      }
+
+                      for col in feature_cols:
+                          if col.startswith('type_') or col.startswith('pc_'):
+                              feat[col] = 0
+
+                      X = pd.DataFrame([feat])[feature_cols]
+                      pred_log = model.predict(X)[0]
+                      fair_value = int(np.expm1(pred_log))
+
+                      # Key: "PC_beds_sqft" -> fair_value
+                      key = f"{pc}_{beds}_{sqft}"
+                      lookup[key] = fair_value
+
+          print(f"Generated {len(lookup)} lookup entries")
+
+          with open('chrome-extension/api/lookup.json', 'w') as f:
+              json.dump(lookup, f, separators=(',', ':'))
+
+          print(f"Saved to chrome-extension/api/lookup.json ({Path('chrome-extension/api/lookup.json').stat().st_size / 1024:.1f} KB)")
           SCRIPT
 
       - name: Commit predictions
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add chrome-extension/api/predictions.json
+          git add chrome-extension/api/predictions.json chrome-extension/api/lookup.json
           git diff --staged --quiet || git commit -m "Update predictions cache [skip ci]"
           git push

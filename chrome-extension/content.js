@@ -14,15 +14,20 @@ console.log('[RFV] Script loaded!');
   const CONFIG = {
     // Predictions cache hosted on GitHub (updated daily)
     PREDICTIONS_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/predictions.json',
+    // Model-based lookup table for cache misses (postcode_beds_sqft -> fair_value)
+    LOOKUP_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/lookup.json',
     OCR_TIMEOUT: 60000,  // 60s max for OCR
+    // Sqft buckets used in lookup table
+    SQFT_BUCKETS: [300, 400, 500, 600, 700, 800, 900, 1000, 1200, 1500, 2000, 2500, 3000],
   };
 
   // Prevent duplicate execution
   if (window.__rentFairValueLoaded) return;
   window.__rentFairValueLoaded = true;
 
-  // Predictions cache (loaded once)
+  // Caches (loaded once)
   let predictionsCache = null;
+  let lookupCache = null;
 
   // Main execution
   init();
@@ -125,9 +130,8 @@ console.log('[RFV] Script loaded!');
 
   async function calculateLocalEstimate(propertyData, askingPrice) {
     // Extract fields
-    const beds = propertyData.bedrooms || 1;
-    const baths = propertyData.bathrooms || 1;
-    const outcode = propertyData.address?.outcode || 'SW3';
+    const beds = Math.min(propertyData.bedrooms || 1, 5);  // Cap at 5 for lookup
+    const outcode = extractPostcodeDistrict(propertyData);
 
     // Get sqft from page or estimate
     let sizeSqft = extractSqftFromSizings(propertyData.sizings);
@@ -146,19 +150,13 @@ console.log('[RFV] Script loaded!');
     }
 
     if (!sizeSqft) {
-      // Estimate from beds (simple heuristic)
-      sizeSqft = estimateSize(outcode, beds);
+      // Estimate from beds using typical sizes
+      sizeSqft = estimateSizeFromBeds(beds);
       sizeSource = 'estimated';
     }
 
-    // Simple fair value estimate (regression-based heuristic)
-    // Based on model coefficients: ~£4.5/sqft base + location premium
-    const isPrime = ['SW1', 'SW3', 'SW7', 'SW10', 'W1', 'W8', 'W11', 'NW3', 'NW8'].some(p => outcode.startsWith(p));
-    const basePPSF = isPrime ? 5.5 : 4.0;
-    const bedsBonus = beds * 200;
-    const bathsBonus = (baths - 1) * 150;
-
-    const fairValue = Math.round(sizeSqft * basePPSF + bedsBonus + bathsBonus);
+    // Use model-based lookup table for fair value
+    const fairValue = await lookupFairValue(outcode, beds, sizeSqft);
     const premiumPct = Math.round((askingPrice / fairValue - 1) * 100 * 10) / 10;
 
     return {
@@ -174,14 +172,81 @@ console.log('[RFV] Script loaded!');
     };
   }
 
-  function estimateSize(postcode, beds) {
-    // Simple size estimation by beds and area
-    const baseSizes = { 0: 350, 1: 500, 2: 750, 3: 1000, 4: 1300, 5: 1600 };
-    const base = baseSizes[Math.min(beds, 5)] || 500;
+  function extractPostcodeDistrict(propertyData) {
+    // Try to get postcode district (e.g., "SW3" from "SW3 4TX")
+    const address = propertyData.address?.displayAddress || '';
+    const outcode = propertyData.address?.outcode;
 
-    // Prime areas tend to have smaller sqft per bed
-    const isPrime = ['SW1', 'SW3', 'SW7', 'W1', 'W8'].some(p => postcode.startsWith(p));
-    return isPrime ? Math.round(base * 0.9) : base;
+    if (outcode) return outcode;
+
+    // Try to extract from address
+    const match = address.match(/\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b/i);
+    return match ? match[1].toUpperCase() : 'SW3';  // Default to SW3
+  }
+
+  function estimateSizeFromBeds(beds) {
+    // Typical sizes by bedroom count
+    const baseSizes = { 0: 350, 1: 500, 2: 750, 3: 1000, 4: 1300, 5: 1600 };
+    return baseSizes[Math.min(beds, 5)] || 500;
+  }
+
+  function findClosestSqftBucket(sqft) {
+    // Find the closest sqft bucket from the lookup table
+    let closest = CONFIG.SQFT_BUCKETS[0];
+    let minDiff = Math.abs(sqft - closest);
+
+    for (const bucket of CONFIG.SQFT_BUCKETS) {
+      const diff = Math.abs(sqft - bucket);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = bucket;
+      }
+    }
+    return closest;
+  }
+
+  async function lookupFairValue(postcode, beds, sqft) {
+    // Load lookup table if not loaded
+    if (!lookupCache) {
+      try {
+        const response = await fetch(CONFIG.LOOKUP_URL);
+        if (response.ok) {
+          lookupCache = await response.json();
+          console.log('[RFV] Loaded lookup table:', Object.keys(lookupCache).length, 'entries');
+        }
+      } catch (e) {
+        console.error('[RFV] Failed to load lookup table:', e);
+      }
+    }
+
+    // Find closest sqft bucket
+    const sqftBucket = findClosestSqftBucket(sqft);
+
+    // Look up fair value: "PC_beds_sqft" -> fair_value
+    const key = `${postcode}_${beds}_${sqftBucket}`;
+    let fairValue = lookupCache?.[key];
+
+    if (fairValue) {
+      console.log(`[RFV] Lookup hit: ${key} -> £${fairValue}`);
+      // Interpolate if actual sqft differs from bucket
+      if (sqft !== sqftBucket) {
+        // Simple linear interpolation based on sqft ratio
+        fairValue = Math.round(fairValue * (sqft / sqftBucket));
+      }
+      return fairValue;
+    }
+
+    // Fallback: try without postcode-specific lookup (use SW3 as default)
+    const fallbackKey = `SW3_${beds}_${sqftBucket}`;
+    fairValue = lookupCache?.[fallbackKey];
+    if (fairValue) {
+      console.log(`[RFV] Lookup fallback: ${fallbackKey} -> £${fairValue}`);
+      return Math.round(fairValue * (sqft / sqftBucket));
+    }
+
+    // Ultimate fallback: simple calculation (should rarely happen)
+    console.log('[RFV] Lookup miss, using fallback calculation');
+    return Math.round(sqft * 4.5 + beds * 200);
   }
 
   // ============================================
