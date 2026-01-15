@@ -3,8 +3,12 @@
  * Shows ML-powered fair rent estimates on Rightmove listings
  */
 
+console.log('[RFV] Script loaded!');
+
 (function() {
   'use strict';
+
+  console.log('[RFV] IIFE starting...');
 
   // Configuration
   const CONFIG = {
@@ -185,23 +189,75 @@
   // ============================================
 
   function extractPropertyData() {
-    const script = document.getElementById('__NEXT_DATA__');
-    if (!script) return null;
-
-    try {
-      const nextData = JSON.parse(script.textContent);
-      const propertyData = nextData?.props?.pageProps?.propertyData;
-
-      if (!propertyData) {
-        console.log('[RFV] No propertyData in __NEXT_DATA__');
-        return null;
+    // Strategy 1: Try __NEXT_DATA__ (used on some pages)
+    const nextDataScript = document.getElementById('__NEXT_DATA__');
+    if (nextDataScript) {
+      try {
+        const nextData = JSON.parse(nextDataScript.textContent);
+        const propertyData = nextData?.props?.pageProps?.propertyData;
+        if (propertyData) {
+          console.log('[RFV] Found propertyData via __NEXT_DATA__');
+          return propertyData;
+        }
+      } catch (e) {
+        console.log('[RFV] __NEXT_DATA__ parse failed:', e.message);
       }
-
-      return propertyData;
-    } catch (e) {
-      console.error('[RFV] Failed to parse __NEXT_DATA__:', e);
-      return null;
     }
+
+    // Strategy 2: Try window.PAGE_MODEL (Rightmove's current format for detail pages)
+    const scripts = document.querySelectorAll('script');
+    for (const script of scripts) {
+      const text = script.textContent || '';
+      const match = text.match(/window\.PAGE_MODEL\s*=\s*/);
+      if (match) {
+        try {
+          const start = match.index + match[0].length;
+          // Find matching closing brace
+          let braceCount = 0;
+          let i = start;
+          while (i < text.length) {
+            if (text[i] === '{') braceCount++;
+            else if (text[i] === '}') {
+              braceCount--;
+              if (braceCount === 0) break;
+            }
+            i++;
+          }
+          const jsonStr = text.slice(start, i + 1);
+          const data = JSON.parse(jsonStr);
+          const propertyData = data.propertyData;
+          if (propertyData) {
+            console.log('[RFV] Found propertyData via PAGE_MODEL');
+            return propertyData;
+          }
+        } catch (e) {
+          console.log('[RFV] PAGE_MODEL parse failed:', e.message);
+        }
+      }
+    }
+
+    // Strategy 3: Check for inline JSON with propertyData
+    for (const script of scripts) {
+      const text = script.textContent || '';
+      if (text.includes('"propertyData"') && text.includes('"bedrooms"')) {
+        try {
+          // Try to find JSON object containing propertyData
+          const jsonMatch = text.match(/\{[^{}]*"propertyData"[^]*\}/);
+          if (jsonMatch) {
+            const data = JSON.parse(jsonMatch[0]);
+            if (data.propertyData) {
+              console.log('[RFV] Found propertyData via inline JSON');
+              return data.propertyData;
+            }
+          }
+        } catch (e) {
+          // Continue to next script
+        }
+      }
+    }
+
+    console.log('[RFV] No property data found after trying all strategies');
+    return null;
   }
 
   function extractSqftFromSizings(sizings) {
