@@ -126,8 +126,25 @@ def get_listings_needing_ocr(source=None, limit=None):
         return [dict(row) for row in rows]
 
 
+def transform_url(url):
+    """Transform proxied URLs to direct CDN URLs for better access."""
+    from urllib.parse import urlparse, parse_qs, unquote
+
+    # Chestertons _next/image proxy -> direct homeflow-assets URL
+    if '_next/image' in url and 'chestertons.co.uk' in url:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        if 'url' in params:
+            return unquote(params['url'][0])
+
+    return url
+
+
 def download_image(url, timeout=10):
     """Download image from URL with short timeout to skip slow CDNs."""
+    # Transform proxied URLs to direct URLs
+    url = transform_url(url)
+
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         'Accept': 'image/*,*/*;q=0.8',
@@ -137,7 +154,7 @@ def download_image(url, timeout=10):
         if response.status_code == 200:
             return response.content
         # Log non-200 responses (but not every one - too noisy)
-        if response.status_code != 403:  # 403s are common for Chestertons
+        if response.status_code != 403:  # 403s are common for some CDNs
             log(f"  [WARN] Download returned {response.status_code} for {url[:60]}...")
     except requests.exceptions.Timeout:
         pass  # Expected for slow CDNs - don't log every one
@@ -148,7 +165,47 @@ def download_image(url, timeout=10):
     return None
 
 
-def process_listing(listing, extractor):
+# Global Playwright browser instance for CDN-blocked sources
+_playwright_browser = None
+_playwright_context = None
+
+def get_playwright_browser():
+    """Get or create a Playwright browser instance."""
+    global _playwright_browser, _playwright_context
+    if _playwright_browser is None:
+        from playwright.sync_api import sync_playwright
+        pw = sync_playwright().start()
+        _playwright_browser = pw.chromium.launch(headless=True)
+        _playwright_context = _playwright_browser.new_context()
+    return _playwright_context
+
+def close_playwright_browser():
+    """Close the Playwright browser."""
+    global _playwright_browser, _playwright_context
+    if _playwright_context:
+        _playwright_context.close()
+        _playwright_context = None
+    if _playwright_browser:
+        _playwright_browser.close()
+        _playwright_browser = None
+
+def download_image_playwright(url, timeout=15000):
+    """Download image using Playwright browser (bypasses CDN blocks)."""
+    try:
+        context = get_playwright_browser()
+        page = context.new_page()
+        response = page.goto(url, timeout=timeout, wait_until='load')
+        if response and response.ok:
+            content = response.body()
+            page.close()
+            return content
+        page.close()
+    except Exception as e:
+        log(f"  [WARN] Playwright download error: {str(e)[:50]}")
+    return None
+
+
+def process_listing(listing, extractor, use_playwright=False):
     """Process a single listing - download floorplan and run OCR."""
     result = {
         'id': listing['id'],
@@ -164,7 +221,15 @@ def process_listing(listing, extractor):
 
     try:
         # Download image
-        image_bytes = download_image(listing['floorplan_url'])
+        source = listing['source']
+        url = transform_url(listing['floorplan_url'])  # Transform proxied URLs first
+
+        # Foxtons CDN blocks GitHub Actions IPs - use Playwright
+        # Chestertons works with HTTP after URL transformation (direct CDN URL)
+        if use_playwright or source == 'foxtons':
+            image_bytes = download_image_playwright(url)
+        else:
+            image_bytes = download_image(url)
         if not image_bytes or len(image_bytes) < 1000:
             result['error'] = 'download_failed'
             return result
@@ -316,53 +381,73 @@ def main():
     extractor = FloorplanExtractor()
     log("FloorplanExtractor ready.")
 
+    # Split listings by whether they need Playwright (CDN-blocked sources)
+    # Foxtons CDN blocks GitHub Actions IPs - needs Playwright
+    # Chestertons works with HTTP after URL transformation
+    playwright_sources = {'foxtons'}
+    playwright_listings = [l for l in listings if l['source'] in playwright_sources]
+    regular_listings = [l for l in listings if l['source'] not in playwright_sources]
+
+    if playwright_listings:
+        log(f"Note: {len(playwright_listings)} Foxtons listings will use Playwright (CDN workaround)")
+
     # Process with thread pool
     results = []
     start_time = time.time()
     timeouts = 0
 
-    log(f"Starting OCR processing with {args.workers} workers...")
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(process_listing, l, extractor): l for l in listings}
+    # Process regular sources with ThreadPoolExecutor
+    if regular_listings:
+        log(f"Processing {len(regular_listings)} regular listings with {args.workers} workers...")
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = {executor.submit(process_listing, l, extractor, False): l for l in regular_listings}
 
-        completed = 0
-        successful = 0
-        for future in as_completed(futures):
-            completed += 1
-            listing = futures[future]
+            completed = 0
+            successful = 0
+            for future in as_completed(futures):
+                completed += 1
+                listing = futures[future]
+                try:
+                    result = future.result(timeout=args.timeout)
+                    results.append(result)
+                    if result['success']:
+                        successful += 1
+                except TimeoutError:
+                    timeouts += 1
+                    results.append({'id': listing['id'], 'property_id': listing['property_id'],
+                                    'source': listing['source'], 'success': False, 'error': 'timeout'})
+                except Exception as e:
+                    results.append({'id': listing['id'], 'property_id': listing['property_id'],
+                                    'source': listing['source'], 'success': False, 'error': str(e)[:100]})
 
+                if completed % 10 == 0:
+                    elapsed = time.time() - start_time
+                    rate = completed / elapsed if elapsed > 0 else 0
+                    log(f"Progress (regular): {completed}/{len(regular_listings)} ({successful} success) | {rate:.1f}/sec")
+
+    # Process Playwright sources sequentially (not thread-safe)
+    if playwright_listings:
+        log(f"Processing {len(playwright_listings)} Playwright listings sequentially...")
+        pw_start = time.time()
+        pw_success = 0
+        for i, listing in enumerate(playwright_listings):
             try:
-                # Add timeout to prevent indefinite hangs on bad images
-                result = future.result(timeout=args.timeout)
+                result = process_listing(listing, extractor, use_playwright=True)
                 results.append(result)
-
                 if result['success']:
-                    successful += 1
-            except TimeoutError:
-                timeouts += 1
-                log(f"  [TIMEOUT] Listing {listing['property_id']} exceeded {args.timeout}s - skipping")
-                results.append({
-                    'id': listing['id'],
-                    'property_id': listing['property_id'],
-                    'source': listing['source'],
-                    'success': False,
-                    'error': 'timeout',
-                })
+                    pw_success += 1
             except Exception as e:
-                log(f"  [ERROR] Listing {listing['property_id']}: {str(e)[:50]}")
-                results.append({
-                    'id': listing['id'],
-                    'property_id': listing['property_id'],
-                    'source': listing['source'],
-                    'success': False,
-                    'error': str(e)[:100],
-                })
+                results.append({'id': listing['id'], 'property_id': listing['property_id'],
+                                'source': listing['source'], 'success': False, 'error': str(e)[:100]})
 
-            # Progress every 10 items (more frequent for visibility)
-            if completed % 10 == 0 or completed == len(listings):
-                elapsed = time.time() - start_time
-                rate = completed / elapsed if elapsed > 0 else 0
-                log(f"Progress: {completed}/{len(listings)} ({successful} success, {timeouts} timeout) | {rate:.1f}/sec")
+            if (i + 1) % 10 == 0:
+                elapsed = time.time() - pw_start
+                rate = (i + 1) / elapsed if elapsed > 0 else 0
+                log(f"Progress (Playwright): {i+1}/{len(playwright_listings)} ({pw_success} success) | {rate:.1f}/sec")
+
+        # Cleanup Playwright
+        close_playwright_browser()
+        log("Playwright browser closed.")
 
     # Summary
     elapsed = time.time() - start_time
