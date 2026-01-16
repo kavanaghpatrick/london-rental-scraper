@@ -1180,7 +1180,6 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
         AND bedrooms BETWEEN ${bedrooms - 1} AND ${bedrooms + 1}
         AND price_pcm BETWEEN ${Math.floor(pricePcm * 0.5)} AND ${Math.ceil(pricePcm * 2.0)}
         AND price_pcm > 0
-        ${excludeId ? sql`AND property_id != ${excludeId}` : sql``}
     )
     SELECT *
     FROM scored
@@ -1189,12 +1188,15 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
     LIMIT 15
   `;
 
+  // Filter out excluded property if specified
+  const filteredRows = excludeId ? rows.filter(r => r.property_id !== excludeId) : rows;
+
   // Calculate stats
-  const peerCount = rows.length;
-  const avgPrice = peerCount > 0 ? Math.round(rows.reduce((sum, r) => sum + r.price_pcm, 0) / peerCount) : 0;
-  const ppsfValues = rows.filter(r => r.ppsf !== null).map(r => r.ppsf as number);
+  const peerCount = filteredRows.length;
+  const avgPrice = peerCount > 0 ? Math.round(filteredRows.reduce((sum, r) => sum + r.price_pcm, 0) / peerCount) : 0;
+  const ppsfValues = filteredRows.filter(r => r.ppsf !== null).map(r => r.ppsf as number);
   const avgPpsf = ppsfValues.length > 0 ? Math.round(ppsfValues.reduce((sum, v) => sum + v, 0) / ppsfValues.length * 100) / 100 : null;
-  const prices = rows.map(r => r.price_pcm);
+  const prices = filteredRows.map(r => r.price_pcm);
   const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
   const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
 
@@ -1203,7 +1205,7 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
   const yourPercentile = peerCount > 0 ? Math.round((belowCount / peerCount) * 100) : 50;
 
   return {
-    peers: rows,
+    peers: filteredRows,
     stats: {
       peer_count: peerCount,
       avg_price: avgPrice,
