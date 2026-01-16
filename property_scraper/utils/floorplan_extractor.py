@@ -339,8 +339,8 @@ class FloorplanExtractor:
 
         data.raw_text = full_text
 
-        # Extract total area from header regions
-        sqft, sqm = self._extract_total_area(img)
+        # Extract total area - pass pre-extracted text to avoid duplicate OCR
+        sqft, sqm = self._extract_total_area(img, full_text)
         data.total_sqft = sqft
         data.total_sqm = sqm
 
@@ -370,25 +370,31 @@ class FloorplanExtractor:
 
         return data
 
-    def _extract_total_area(self, img: Image.Image) -> Tuple[Optional[int], Optional[int]]:
+    def _extract_total_area(self, img: Image.Image, pre_extracted_text: Optional[str] = None) -> Tuple[Optional[int], Optional[int]]:
         """
         Extract total sqft/sqm using hierarchical approach:
         1. Explicit 'Total Gross Internal' / 'Total Area' patterns (highest priority)
         2. Any 'Total ... sq ft' pattern
         3. Largest sqft value found (heuristic fallback)
+
+        Args:
+            img: PIL Image
+            pre_extracted_text: Optional pre-extracted OCR text to avoid duplicate OCR
         """
         # Use preprocessed image for better OCR
         processed_img = self._preprocess_image(img)
         width, height = processed_img.size
 
-        # Get full text once
-        full_text = pytesseract.image_to_string(processed_img)
-
-        # Also try original image if processed yields little text
-        if len(full_text.strip()) < 50:
-            original_text = pytesseract.image_to_string(img)
-            if len(original_text.strip()) > len(full_text.strip()):
-                full_text = original_text
+        # Use pre-extracted text if provided, otherwise run OCR (for standalone calls)
+        if pre_extracted_text:
+            full_text = pre_extracted_text
+        else:
+            full_text = pytesseract.image_to_string(processed_img)
+            # Also try original image if processed yields little text
+            if len(full_text.strip()) < 50:
+                original_text = pytesseract.image_to_string(img)
+                if len(original_text.strip()) > len(full_text.strip()):
+                    full_text = original_text
 
         # Patterns
         sqft_pattern = r'(\d[\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft|Sq\s*Ft|square\s*feet)'

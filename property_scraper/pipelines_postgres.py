@@ -41,6 +41,7 @@ class PostgresPipeline:
         self.conn = None
         self.cursor = None
         self.pending_items = []
+        self.pending_count = 0  # Track items since last commit
         self.stats = {
             'inserted': 0,
             'updated': 0,
@@ -229,10 +230,15 @@ class PostgresPipeline:
                     self._log_price_change(listing_id, adapter.get('price_pcm'), now)
                 self.stats['inserted'] += 1
 
-            self.conn.commit()
+            # Batch commit for better performance (don't commit every item)
+            self.pending_count += 1
+            if self.pending_count >= self.BATCH_SIZE:
+                self.conn.commit()
+                self.pending_count = 0
 
         except Exception as e:
             self.conn.rollback()
+            self.pending_count = 0  # Reset counter on rollback
             self.stats['errors'] += 1
             logger.error(f"[PIPELINE:Postgres] Error for {property_id}: {e}")
 
@@ -413,6 +419,11 @@ class PostgresPipeline:
             return
 
         try:
+            # Commit any remaining pending items
+            if self.pending_count > 0:
+                self.conn.commit()
+                self.pending_count = 0
+
             elapsed = time.time() - self.start_time if self.start_time else 0
 
             self.cursor.execute('SELECT COUNT(*) FROM listings')
