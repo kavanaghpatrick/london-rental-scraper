@@ -59,14 +59,18 @@ export async function GET(request: NextRequest) {
     // Validate optional sqft if provided
     let sqftNum: number | undefined;
     if (sqft) {
-      sqftNum = parseInt(sqft, 10);
-      if (isNaN(sqftNum) || sqftNum < 0) {
-        sqftNum = undefined; // Ignore invalid sqft
+      const parsed = parseInt(sqft, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        sqftNum = parsed;
       }
     }
 
-    // Extract postcode district (SW3, W8, NW1, etc.)
-    const postcodeDistrict = postcode.split(' ')[0].toUpperCase();
+    // Extract postcode district using regex (handles "SW3 4AJ" and "SW34AJ" formats)
+    // Matches "SW1A" from "SW1A 1AA", "W1" from "W1 4BB", "EC1" from "EC1A1BB"
+    const postcodeMatch = postcode.match(/^([A-Z]{1,2}[0-9][0-9A-Z]?)/i);
+    const postcodeDistrict = postcodeMatch
+      ? postcodeMatch[1].toUpperCase()
+      : postcode.split(' ')[0].toUpperCase();
 
     const result = await getSimilarListings({
       postcodeDistrict,

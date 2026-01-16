@@ -1131,8 +1131,9 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
   const { postcodeDistrict, bedrooms, pricePcm, sizeSqft, propertyType, excludeId } = params;
 
   // Pre-calculate all numeric values as integers to avoid PostgreSQL type errors
-  const safeBedrooms = Math.max(0, Math.round(bedrooms) || 0);
-  const safePricePcm = Math.max(1, Math.round(pricePcm) || 1);
+  // Use nullish coalescing (??) to handle 0 as valid value
+  const safeBedrooms = Math.max(0, Math.round(bedrooms) ?? 0);
+  const safePricePcm = Math.max(1, Math.round(pricePcm) ?? 1);
   const safeSizeSqft = sizeSqft ? Math.round(sizeSqft) : 0;
 
   // Bedroom range
@@ -1146,13 +1147,16 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
   const maxSqftWide = Math.ceil(maxSqft * 1.2);
 
   // Price ranges (all as integers)
-  const minPrice = Math.floor(safePricePcm * 0.5);
-  const maxPrice = Math.ceil(safePricePcm * 2.0);
+  const priceRangeMin = Math.floor(safePricePcm * 0.5);
+  const priceRangeMax = Math.ceil(safePricePcm * 2.0);
   const priceTolerance15 = Math.round(safePricePcm * 0.15);
   const priceTolerance30 = Math.round(safePricePcm * 0.30);
 
   // Safe property type (empty string if not provided)
-  const safePropertyType = propertyType || '';
+  const safePropertyType = propertyType ?? '';
+
+  // Safe excludeId - use impossible value if not provided to keep SQL simple
+  const safeExcludeId = excludeId ?? '__NO_MATCH__';
 
   // Query for similar listings with similarity scoring
   const { rows } = await sql<SimilarListing>`
@@ -1198,8 +1202,9 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
       WHERE is_active = 1
         AND SPLIT_PART(postcode, ' ', 1) = ${postcodeDistrict}
         AND bedrooms BETWEEN ${minBedrooms} AND ${maxBedrooms}
-        AND price_pcm BETWEEN ${minPrice} AND ${maxPrice}
+        AND price_pcm BETWEEN ${priceRangeMin} AND ${priceRangeMax}
         AND price_pcm > 0
+        AND property_id != ${safeExcludeId}
     )
     SELECT *
     FROM scored
@@ -1208,15 +1213,17 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
     LIMIT 15
   `;
 
-  // Filter out excluded property if specified
-  const filteredRows = excludeId ? rows.filter(r => r.property_id !== excludeId) : rows;
+  // Calculate stats directly from rows (excludeId already filtered in SQL)
+  const peerCount = rows.length;
+  const avgPrice = peerCount > 0 ? Math.round(rows.reduce((sum, r) => sum + r.price_pcm, 0) / peerCount) : 0;
 
-  // Calculate stats
-  const peerCount = filteredRows.length;
-  const avgPrice = peerCount > 0 ? Math.round(filteredRows.reduce((sum, r) => sum + r.price_pcm, 0) / peerCount) : 0;
-  const ppsfValues = filteredRows.filter(r => r.ppsf !== null).map(r => r.ppsf as number);
+  // Type-safe filter for null ppsf values
+  const ppsfValues = rows
+    .map(r => r.ppsf)
+    .filter((v): v is number => v !== null);
   const avgPpsf = ppsfValues.length > 0 ? Math.round(ppsfValues.reduce((sum, v) => sum + v, 0) / ppsfValues.length * 100) / 100 : null;
-  const prices = filteredRows.map(r => r.price_pcm);
+
+  const prices = rows.map(r => r.price_pcm);
   const statsMinPrice = prices.length > 0 ? Math.min(...prices) : 0;
   const statsMaxPrice = prices.length > 0 ? Math.max(...prices) : 0;
 
@@ -1225,7 +1232,7 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
   const yourPercentile = peerCount > 0 ? Math.round((belowCount / peerCount) * 100) : 50;
 
   return {
-    peers: filteredRows,
+    peers: rows,
     stats: {
       peer_count: peerCount,
       avg_price: avgPrice,
