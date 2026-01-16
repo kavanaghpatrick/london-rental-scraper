@@ -15,13 +15,10 @@ chrome-extension/
 │   ├── icon16.png
 │   ├── icon48.png
 │   └── icon128.png
-├── api/                # Vercel serverless API
-│   ├── valuate.py      # Main API endpoint
-│   ├── requirements.txt
-│   ├── size_lookup.json
-│   ├── rental_model_v15.pkl
-│   └── rental_model_v15_features.pkl
-└── vercel.json         # Vercel configuration
+└── api/                # Client-side model files
+    ├── model.json      # XGBoost V20 model (JSON format)
+    ├── features.json   # Feature column names
+    └── predictions.json # Pre-computed predictions cache
 ```
 
 ## Local Testing
@@ -33,18 +30,7 @@ chrome-extension/
 3. Click "Load unpacked"
 4. Select this `chrome-extension` directory
 
-### 2. Test API Locally (optional)
-
-```bash
-cd api
-pip install -r requirements.txt
-python -c "
-from valuate import handler
-# Test the handler directly
-"
-```
-
-### 3. Test on Rightmove
+### 2. Test on Rightmove
 
 1. Go to any Rightmove listing: https://www.rightmove.co.uk/properties/
 2. The extension should show a sidebar with:
@@ -53,29 +39,6 @@ from valuate import handler
    - Premium/discount percentage
 
 ## Deployment
-
-### Deploy API to Vercel
-
-```bash
-cd chrome-extension
-vercel --prod
-```
-
-Set environment variable:
-```bash
-vercel env add RFV_API_KEY
-# Enter: rfv-mvp-key-2024
-```
-
-### Update Extension API URL
-
-Edit `content.js` and update:
-```javascript
-const CONFIG = {
-  API_URL: 'https://your-vercel-app.vercel.app/api/valuate',
-  // ...
-};
-```
 
 ### Publish to Chrome Web Store
 
@@ -88,32 +51,19 @@ const CONFIG = {
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Chrome Extension                         │
+│                 Chrome Extension (Client-Side)               │
 │  1. Extract propertyData from __NEXT_DATA__ JSON            │
 │  2. Try to get sqft from page JSON                          │
 │  3. If no sqft, OCR floorplan with Tesseract.js             │
-│  4. Send data to API                                         │
-│  5. Display fair value in sidebar                           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     Vercel API (/api/valuate)               │
-│  1. Parse amenities from description                        │
-│  2. Estimate sqft if not provided (beds × postcode)         │
-│  3. Engineer all 93 features                                │
-│  4. Run XGBoost V15 model                                   │
-│  5. Return fair value estimate                              │
+│  4. Engineer 143 features (xgboost.js)                      │
+│  5. Run XGBoost V20 model locally (model.json)              │
+│  6. Display fair value in sidebar                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+All processing happens client-side - no API calls required.
+
 ## Configuration
-
-### API Key
-
-MVP uses hardcoded API key. For production:
-- Store in `chrome.storage.sync`
-- Or implement OAuth flow
 
 ### OCR Timeout
 
