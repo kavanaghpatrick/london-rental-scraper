@@ -117,7 +117,9 @@ jobs:
           # (e.g., older listings, failed inline OCR, CDN blocks)
           # Tesseract is already installed from earlier step
           echo "Running OCR enrichment on backlog floorplans..."
-          python scripts/ocr_enrich.py --workers 2 --limit 500 2>&1 | tee ocr_output.txt || true
+          # --timeout 60: Skip listings that take >60s (prevents Tesseract hangs)
+          # --limit 200: Process fewer listings to fit within 30min timeout
+          python scripts/ocr_enrich.py --workers 2 --limit 200 --timeout 60 2>&1 | tee ocr_output.txt || true
 
           # Show summary
           echo ""
@@ -307,18 +309,38 @@ jobs:
           conn.close()
           EOF
 
-      - name: Train price prediction model (V15)
+      - name: Train price prediction model (V20)
         run: |
           pip install xgboost scikit-learn optuna pandas numpy
           # Full training for scheduled runs, quick mode for manual tests
           if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "Running FULL model training (Optuna optimization)..."
-            python rental_price_models_v15.py 2>&1 | tee model_output.txt
+            python rental_price_models_v20.py --export 2>&1 | tee model_output.txt
           else
             echo "Running QUICK model training (skip Optuna)..."
-            python rental_price_models_v15.py --quick 2>&1 | tee model_output.txt
+            python rental_price_models_v20.py --quick --export 2>&1 | tee model_output.txt
           fi
         timeout-minutes: 30
+
+      - name: Commit updated model files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Add the exported model files
+          git add chrome-extension/api/model.json
+          git add chrome-extension/api/features.json
+          git add output/rental_model_v20.pkl
+          git add output/rental_model_v20_features.pkl
+
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No model changes to commit"
+          else
+            git commit -m "Auto-update V20 model $(date +%Y-%m-%d) [skip ci]"
+            git push
+            echo "✅ Model files committed and pushed"
+          fi
 
       - name: Show model results
         run: |

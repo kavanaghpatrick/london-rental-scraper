@@ -32,9 +32,17 @@ import requests
 import time
 import sys
 import os
+import signal
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from datetime import datetime
+
+# Force unbuffered output for CI/CD environments
+sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, 'reconfigure') else None
+
+def log(msg):
+    """Print with immediate flush for CI/CD visibility."""
+    print(msg, flush=True)
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -42,8 +50,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from property_scraper.utils.floorplan_extractor import FloorplanExtractor, OCR_AVAILABLE
 
 if not OCR_AVAILABLE:
-    print("ERROR: pytesseract not available. Install with: pip install pytesseract")
-    print("Also ensure tesseract is installed: brew install tesseract")
+    log("ERROR: pytesseract not available. Install with: pip install pytesseract")
+    log("Also ensure tesseract is installed: brew install tesseract")
     sys.exit(1)
 
 
@@ -128,8 +136,12 @@ def download_image(url, timeout=30):
         response = requests.get(url, headers=headers, timeout=timeout)
         if response.status_code == 200:
             return response.content
+        # Log non-200 responses
+        log(f"  [WARN] Download returned {response.status_code} for {url[:80]}...")
+    except requests.exceptions.Timeout:
+        log(f"  [WARN] Download timeout for {url[:80]}...")
     except Exception as e:
-        pass
+        log(f"  [WARN] Download error: {str(e)[:50]} for {url[:80]}...")
     return None
 
 
@@ -258,31 +270,34 @@ def main():
     parser.add_argument('--limit', '-l', type=int, help='Max listings to process')
     parser.add_argument('--workers', '-w', type=int, default=4, help='Concurrent workers')
     parser.add_argument('--dry-run', action='store_true', help='Preview without updating DB')
+    parser.add_argument('--timeout', '-t', type=int, default=120, help='Timeout per listing (seconds)')
     args = parser.parse_args()
 
     # Check database type
     db_type = 'postgres' if get_postgres_url() else 'sqlite'
 
-    print("=" * 70)
-    print("OCR ENRICHMENT - FLOORPLAN DATA EXTRACTION")
-    print("=" * 70)
-    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Database: {db_type.upper()}")
+    log("=" * 70)
+    log("OCR ENRICHMENT - FLOORPLAN DATA EXTRACTION")
+    log("=" * 70)
+    log(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log(f"Database: {db_type.upper()}")
     if args.source:
-        print(f"Source: {args.source}")
+        log(f"Source: {args.source}")
     if args.limit:
-        print(f"Limit: {args.limit}")
-    print(f"Workers: {args.workers}")
+        log(f"Limit: {args.limit}")
+    log(f"Workers: {args.workers}")
+    log(f"Timeout per listing: {args.timeout}s")
     if args.dry_run:
-        print("Mode: DRY RUN (no database updates)")
-    print()
+        log("Mode: DRY RUN (no database updates)")
+    log("")
 
     # Get listings
+    log("Querying database for listings needing OCR...")
     listings = get_listings_needing_ocr(args.source, args.limit)
-    print(f"Found {len(listings)} listings needing OCR")
+    log(f"Found {len(listings)} listings needing OCR")
 
     if not listings:
-        print("Nothing to process!")
+        log("Nothing to process!")
         return
 
     # Show breakdown by source
@@ -290,16 +305,20 @@ def main():
     for l in listings:
         by_source[l['source']] = by_source.get(l['source'], 0) + 1
     for source, count in sorted(by_source.items(), key=lambda x: -x[1]):
-        print(f"  {source}: {count}")
-    print()
+        log(f"  {source}: {count}")
+    log("")
 
     # Initialize extractor
+    log("Initializing FloorplanExtractor...")
     extractor = FloorplanExtractor()
+    log("FloorplanExtractor ready.")
 
     # Process with thread pool
     results = []
     start_time = time.time()
+    timeouts = 0
 
+    log(f"Starting OCR processing with {args.workers} workers...")
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {executor.submit(process_listing, l, extractor): l for l in listings}
 
@@ -307,55 +326,81 @@ def main():
         successful = 0
         for future in as_completed(futures):
             completed += 1
-            result = future.result()
-            results.append(result)
+            listing = futures[future]
 
-            if result['success']:
-                successful += 1
+            try:
+                # Add timeout to prevent indefinite hangs on bad images
+                result = future.result(timeout=args.timeout)
+                results.append(result)
 
-            if completed % 50 == 0 or completed == len(listings):
+                if result['success']:
+                    successful += 1
+            except TimeoutError:
+                timeouts += 1
+                log(f"  [TIMEOUT] Listing {listing['property_id']} exceeded {args.timeout}s - skipping")
+                results.append({
+                    'id': listing['id'],
+                    'property_id': listing['property_id'],
+                    'source': listing['source'],
+                    'success': False,
+                    'error': 'timeout',
+                })
+            except Exception as e:
+                log(f"  [ERROR] Listing {listing['property_id']}: {str(e)[:50]}")
+                results.append({
+                    'id': listing['id'],
+                    'property_id': listing['property_id'],
+                    'source': listing['source'],
+                    'success': False,
+                    'error': str(e)[:100],
+                })
+
+            # Progress every 10 items (more frequent for visibility)
+            if completed % 10 == 0 or completed == len(listings):
                 elapsed = time.time() - start_time
                 rate = completed / elapsed if elapsed > 0 else 0
-                print(f"Progress: {completed}/{len(listings)} ({successful} success) | {rate:.1f}/sec")
+                log(f"Progress: {completed}/{len(listings)} ({successful} success, {timeouts} timeout) | {rate:.1f}/sec")
 
     # Summary
     elapsed = time.time() - start_time
-    print()
-    print("=" * 70)
-    print("RESULTS")
-    print("=" * 70)
-    print(f"Total processed: {len(results)}")
-    print(f"Successful OCR: {sum(1 for r in results if r['success'])}")
-    print(f"Downloaded failed: {sum(1 for r in results if r.get('error') == 'download_failed')}")
-    print(f"OCR failed: {sum(1 for r in results if r.get('error') == 'ocr_failed')}")
-    print(f"Other errors: {sum(1 for r in results if r.get('error') and r['error'] not in ['download_failed', 'ocr_failed'])}")
-    print()
+    log("")
+    log("=" * 70)
+    log("RESULTS")
+    log("=" * 70)
+    log(f"Total processed: {len(results)}")
+    log(f"Successful OCR: {sum(1 for r in results if r['success'])}")
+    log(f"Download failed: {sum(1 for r in results if r.get('error') == 'download_failed')}")
+    log(f"OCR failed: {sum(1 for r in results if r.get('error') == 'ocr_failed')}")
+    log(f"Timeouts: {sum(1 for r in results if r.get('error') == 'timeout')}")
+    log(f"Other errors: {sum(1 for r in results if r.get('error') and r['error'] not in ['download_failed', 'ocr_failed', 'timeout'])}")
+    log("")
 
     # Count extractions
     sqft_extracted = sum(1 for r in results if r.get('sqft'))
     floor_count_extracted = sum(1 for r in results if r.get('floor_count'))
     levels_extracted = sum(1 for r in results if r.get('property_levels'))
 
-    print(f"Sqft extracted: {sqft_extracted}")
-    print(f"Floor count extracted: {floor_count_extracted}")
-    print(f"Property levels extracted: {levels_extracted}")
-    print()
+    log(f"Sqft extracted: {sqft_extracted}")
+    log(f"Floor count extracted: {floor_count_extracted}")
+    log(f"Property levels extracted: {levels_extracted}")
+    log("")
 
     # Show sample results
-    print("Sample extractions:")
+    log("Sample extractions:")
     for r in results[:5]:
         if r['success']:
-            print(f"  {r['property_id']}: sqft={r.get('sqft')}, floors={r.get('floor_count')}, levels={r.get('property_levels')}")
-    print()
+            log(f"  {r['property_id']}: sqft={r.get('sqft')}, floors={r.get('floor_count')}, levels={r.get('property_levels')}")
+    log("")
 
     # Update database
     if not args.dry_run:
+        log("Updating database...")
         updated = update_database(results)
-        print(f"Database updated: {updated} records")
+        log(f"Database updated: {updated} records")
     else:
-        print("DRY RUN - no database updates made")
+        log("DRY RUN - no database updates made")
 
-    print(f"\nDuration: {elapsed:.1f}s")
+    log(f"\nDuration: {elapsed:.1f}s")
 
 
 if __name__ == '__main__':
