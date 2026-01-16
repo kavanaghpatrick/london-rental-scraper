@@ -114,18 +114,21 @@ jobs:
       - name: Run OCR enrichment on backlog floorplans
         run: |
           # OCR enrichment for listings that weren't processed during scraping
-          # (e.g., older listings, failed inline OCR, CDN blocks)
-          # Tesseract is already installed from earlier step
+          # Only process sources whose CDNs work from GitHub Actions:
+          # - Chestertons: Always returns 403 (blocked)
+          # - Foxtons: Extremely slow (rate limited), takes 30s/image vs 0.6s locally
+          # - Rightmove/Savills/KnightFrank: Work normally
           echo "Running OCR enrichment on backlog floorplans..."
-          # --timeout 60: Skip listings that take >60s (prevents Tesseract hangs)
-          # --limit 200: Process fewer listings to fit within 30min timeout
-          python scripts/ocr_enrich.py --workers 2 --limit 200 --timeout 60 2>&1 | tee ocr_output.txt || true
 
-          # Show summary
+          # Process each working source separately (skip foxtons/chestertons - blocked/slow)
+          for source in rightmove savills knightfrank; do
+            echo "Processing $source..."
+            python scripts/ocr_enrich.py --source $source --workers 2 --limit 100 --timeout 60 2>&1 || true
+          done
+
           echo ""
-          echo "=== OCR Enrichment Summary ==="
-          tail -20 ocr_output.txt
-        timeout-minutes: 30
+          echo "=== OCR Enrichment Complete ==="
+        timeout-minutes: 20
 
       - name: Mark stale listings inactive
         run: |

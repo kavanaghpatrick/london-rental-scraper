@@ -126,8 +126,8 @@ def get_listings_needing_ocr(source=None, limit=None):
         return [dict(row) for row in rows]
 
 
-def download_image(url, timeout=30):
-    """Download image from URL."""
+def download_image(url, timeout=10):
+    """Download image from URL with short timeout to skip slow CDNs."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
         'Accept': 'image/*,*/*;q=0.8',
@@ -136,12 +136,15 @@ def download_image(url, timeout=30):
         response = requests.get(url, headers=headers, timeout=timeout)
         if response.status_code == 200:
             return response.content
-        # Log non-200 responses
-        log(f"  [WARN] Download returned {response.status_code} for {url[:80]}...")
+        # Log non-200 responses (but not every one - too noisy)
+        if response.status_code != 403:  # 403s are common for Chestertons
+            log(f"  [WARN] Download returned {response.status_code} for {url[:60]}...")
     except requests.exceptions.Timeout:
-        log(f"  [WARN] Download timeout for {url[:80]}...")
+        pass  # Expected for slow CDNs - don't log every one
+    except requests.exceptions.ConnectionError:
+        pass  # CDN blocking - expected
     except Exception as e:
-        log(f"  [WARN] Download error: {str(e)[:50]} for {url[:80]}...")
+        log(f"  [WARN] Download error: {str(e)[:50]}")
     return None
 
 
