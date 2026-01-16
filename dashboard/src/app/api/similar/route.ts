@@ -33,19 +33,46 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Parse and validate numeric params
+    const bedsNum = parseInt(beds, 10);
+    const priceNum = parseInt(price, 10);
+
+    if (isNaN(bedsNum) || bedsNum < 0) {
+      return NextResponse.json(
+        { error: 'Invalid beds parameter: must be a non-negative integer' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    if (isNaN(priceNum) || priceNum <= 0) {
+      return NextResponse.json(
+        { error: 'Invalid price parameter: must be a positive integer' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     // Optional params
     const sqft = searchParams.get('sqft');
     const type = searchParams.get('type');
     const excludeId = searchParams.get('exclude');
+
+    // Validate optional sqft if provided
+    let sqftNum: number | undefined;
+    if (sqft) {
+      sqftNum = parseInt(sqft, 10);
+      if (isNaN(sqftNum) || sqftNum < 0) {
+        sqftNum = undefined; // Ignore invalid sqft
+      }
+    }
 
     // Extract postcode district (SW3, W8, NW1, etc.)
     const postcodeDistrict = postcode.split(' ')[0].toUpperCase();
 
     const result = await getSimilarListings({
       postcodeDistrict,
-      bedrooms: parseInt(beds, 10),
-      pricePcm: parseInt(price, 10),
-      sizeSqft: sqft ? parseInt(sqft, 10) : undefined,
+      bedrooms: bedsNum,
+      pricePcm: priceNum,
+      sizeSqft: sqftNum,
       propertyType: type || undefined,
       excludeId: excludeId || undefined,
     });

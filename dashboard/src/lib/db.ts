@@ -1130,9 +1130,29 @@ export interface SimilarListingsParams {
 export async function getSimilarListings(params: SimilarListingsParams): Promise<SimilarListingsResult> {
   const { postcodeDistrict, bedrooms, pricePcm, sizeSqft, propertyType, excludeId } = params;
 
-  // Calculate size ranges for similarity scoring
-  const minSqft = sizeSqft ? Math.floor(sizeSqft * 0.7) : 0;
-  const maxSqft = sizeSqft ? Math.ceil(sizeSqft * 1.3) : 99999;
+  // Pre-calculate all numeric values as integers to avoid PostgreSQL type errors
+  const safeBedrooms = Math.max(0, Math.round(bedrooms) || 0);
+  const safePricePcm = Math.max(1, Math.round(pricePcm) || 1);
+  const safeSizeSqft = sizeSqft ? Math.round(sizeSqft) : 0;
+
+  // Bedroom range
+  const minBedrooms = Math.max(0, safeBedrooms - 1);
+  const maxBedrooms = safeBedrooms + 1;
+
+  // Size ranges for similarity scoring (all as integers)
+  const minSqft = safeSizeSqft > 0 ? Math.floor(safeSizeSqft * 0.7) : 0;
+  const maxSqft = safeSizeSqft > 0 ? Math.ceil(safeSizeSqft * 1.3) : 99999;
+  const minSqftWide = Math.floor(minSqft * 0.8);
+  const maxSqftWide = Math.ceil(maxSqft * 1.2);
+
+  // Price ranges (all as integers)
+  const minPrice = Math.floor(safePricePcm * 0.5);
+  const maxPrice = Math.ceil(safePricePcm * 2.0);
+  const priceTolerance15 = Math.round(safePricePcm * 0.15);
+  const priceTolerance30 = Math.round(safePricePcm * 0.30);
+
+  // Safe property type (empty string if not provided)
+  const safePropertyType = propertyType || '';
 
   // Query for similar listings with similarity scoring
   const { rows } = await sql<SimilarListing>`
@@ -1152,22 +1172,22 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
         -- Similarity scoring (0-1 scale)
         (
           -- Bedroom match (30%)
-          CASE WHEN bedrooms = ${bedrooms} THEN 0.30
-               WHEN ABS(bedrooms - ${bedrooms}) = 1 THEN 0.15
+          CASE WHEN bedrooms = ${safeBedrooms} THEN 0.30
+               WHEN ABS(bedrooms - ${safeBedrooms}) = 1 THEN 0.15
                ELSE 0 END +
           -- Size match (25%) - only if we have sqft data
-          CASE WHEN ${sizeSqft || 0} > 0 AND size_sqft > 0 THEN
+          CASE WHEN ${safeSizeSqft} > 0 AND size_sqft > 0 THEN
             CASE WHEN size_sqft BETWEEN ${minSqft} AND ${maxSqft} THEN 0.25
-                 WHEN size_sqft BETWEEN ${minSqft * 0.8} AND ${maxSqft * 1.2} THEN 0.10
+                 WHEN size_sqft BETWEEN ${minSqftWide} AND ${maxSqftWide} THEN 0.10
                  ELSE 0 END
           ELSE 0.15 END +  -- Give partial credit if no sqft to compare
           -- Price match (25%)
-          CASE WHEN ABS(price_pcm - ${pricePcm}) <= ${pricePcm} * 0.15 THEN 0.25
-               WHEN ABS(price_pcm - ${pricePcm}) <= ${pricePcm} * 0.30 THEN 0.15
+          CASE WHEN ABS(price_pcm - ${safePricePcm}) <= ${priceTolerance15} THEN 0.25
+               WHEN ABS(price_pcm - ${safePricePcm}) <= ${priceTolerance30} THEN 0.15
                ELSE 0.05 END +
           -- Property type match (10%)
-          CASE WHEN ${propertyType || ''} != '' AND LOWER(property_type) = LOWER(${propertyType || ''}) THEN 0.10
-               WHEN ${propertyType || ''} = '' THEN 0.05
+          CASE WHEN ${safePropertyType} != '' AND LOWER(property_type) = LOWER(${safePropertyType}) THEN 0.10
+               WHEN ${safePropertyType} = '' THEN 0.05
                ELSE 0 END +
           -- Source quality bonus (10%)
           CASE WHEN source IN ('savills', 'knightfrank') THEN 0.10
@@ -1177,14 +1197,14 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
       FROM listings
       WHERE is_active = 1
         AND SPLIT_PART(postcode, ' ', 1) = ${postcodeDistrict}
-        AND bedrooms BETWEEN ${bedrooms - 1} AND ${bedrooms + 1}
-        AND price_pcm BETWEEN ${Math.floor(pricePcm * 0.5)} AND ${Math.ceil(pricePcm * 2.0)}
+        AND bedrooms BETWEEN ${minBedrooms} AND ${maxBedrooms}
+        AND price_pcm BETWEEN ${minPrice} AND ${maxPrice}
         AND price_pcm > 0
     )
     SELECT *
     FROM scored
     WHERE similarity_score > 0.3
-    ORDER BY similarity_score DESC, ABS(price_pcm - ${pricePcm}) ASC
+    ORDER BY similarity_score DESC, ABS(price_pcm - ${safePricePcm}) ASC
     LIMIT 15
   `;
 
