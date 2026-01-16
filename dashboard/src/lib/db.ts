@@ -1217,11 +1217,11 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
   const ppsfValues = filteredRows.filter(r => r.ppsf !== null).map(r => r.ppsf as number);
   const avgPpsf = ppsfValues.length > 0 ? Math.round(ppsfValues.reduce((sum, v) => sum + v, 0) / ppsfValues.length * 100) / 100 : null;
   const prices = filteredRows.map(r => r.price_pcm);
-  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
-  const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+  const statsMinPrice = prices.length > 0 ? Math.min(...prices) : 0;
+  const statsMaxPrice = prices.length > 0 ? Math.max(...prices) : 0;
 
   // Calculate percentile (what % of peers are priced below this property)
-  const belowCount = prices.filter(p => p < pricePcm).length;
+  const belowCount = prices.filter(p => p < safePricePcm).length;
   const yourPercentile = peerCount > 0 ? Math.round((belowCount / peerCount) * 100) : 50;
 
   return {
@@ -1230,8 +1230,8 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
       peer_count: peerCount,
       avg_price: avgPrice,
       avg_ppsf: avgPpsf,
-      min_price: minPrice,
-      max_price: maxPrice,
+      min_price: statsMinPrice,
+      max_price: statsMaxPrice,
       your_percentile: yourPercentile,
     },
   };
