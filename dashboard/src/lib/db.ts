@@ -1088,3 +1088,129 @@ export async function getAgencyPriceHistory(source: string, limit: number = 50):
 
 // Note: Agency comparison feature will be implemented in Phase 2
 // Requires proper handling of array parameters with Vercel Postgres
+
+// ============ Similar Listings (Chrome Extension) ============
+
+export interface SimilarListing {
+  id: number;
+  source: string;
+  property_id: string;
+  address: string;
+  postcode: string;
+  url: string;
+  price_pcm: number;
+  size_sqft: number | null;
+  bedrooms: number;
+  property_type: string | null;
+  ppsf: number | null;
+  similarity_score: number;
+}
+
+export interface SimilarListingsResult {
+  peers: SimilarListing[];
+  stats: {
+    peer_count: number;
+    avg_price: number;
+    avg_ppsf: number | null;
+    min_price: number;
+    max_price: number;
+    your_percentile: number;
+  };
+}
+
+export interface SimilarListingsParams {
+  postcodeDistrict: string;
+  bedrooms: number;
+  pricePcm: number;
+  sizeSqft?: number;
+  propertyType?: string;
+  excludeId?: string;
+}
+
+export async function getSimilarListings(params: SimilarListingsParams): Promise<SimilarListingsResult> {
+  const { postcodeDistrict, bedrooms, pricePcm, sizeSqft, propertyType, excludeId } = params;
+
+  // Calculate size ranges for similarity scoring
+  const minSqft = sizeSqft ? Math.floor(sizeSqft * 0.7) : 0;
+  const maxSqft = sizeSqft ? Math.ceil(sizeSqft * 1.3) : 99999;
+
+  // Query for similar listings with similarity scoring
+  const { rows } = await sql<SimilarListing>`
+    WITH scored AS (
+      SELECT
+        id,
+        source,
+        property_id,
+        address,
+        postcode,
+        url,
+        price_pcm::int as price_pcm,
+        size_sqft::int as size_sqft,
+        bedrooms::int as bedrooms,
+        property_type,
+        CASE WHEN size_sqft > 0 THEN ROUND((price_pcm::numeric / size_sqft::numeric), 2)::float ELSE NULL END as ppsf,
+        -- Similarity scoring (0-1 scale)
+        (
+          -- Bedroom match (30%)
+          CASE WHEN bedrooms = ${bedrooms} THEN 0.30
+               WHEN ABS(bedrooms - ${bedrooms}) = 1 THEN 0.15
+               ELSE 0 END +
+          -- Size match (25%) - only if we have sqft data
+          CASE WHEN ${sizeSqft || 0} > 0 AND size_sqft > 0 THEN
+            CASE WHEN size_sqft BETWEEN ${minSqft} AND ${maxSqft} THEN 0.25
+                 WHEN size_sqft BETWEEN ${minSqft * 0.8} AND ${maxSqft * 1.2} THEN 0.10
+                 ELSE 0 END
+          ELSE 0.15 END +  -- Give partial credit if no sqft to compare
+          -- Price match (25%)
+          CASE WHEN ABS(price_pcm - ${pricePcm}) <= ${pricePcm} * 0.15 THEN 0.25
+               WHEN ABS(price_pcm - ${pricePcm}) <= ${pricePcm} * 0.30 THEN 0.15
+               ELSE 0.05 END +
+          -- Property type match (10%)
+          CASE WHEN ${propertyType || ''} != '' AND LOWER(property_type) = LOWER(${propertyType || ''}) THEN 0.10
+               WHEN ${propertyType || ''} = '' THEN 0.05
+               ELSE 0 END +
+          -- Source quality bonus (10%)
+          CASE WHEN source IN ('savills', 'knightfrank') THEN 0.10
+               WHEN source IN ('chestertons', 'foxtons') THEN 0.07
+               ELSE 0.05 END
+        )::float as similarity_score
+      FROM listings
+      WHERE is_active = 1
+        AND SPLIT_PART(postcode, ' ', 1) = ${postcodeDistrict}
+        AND bedrooms BETWEEN ${bedrooms - 1} AND ${bedrooms + 1}
+        AND price_pcm BETWEEN ${Math.floor(pricePcm * 0.5)} AND ${Math.ceil(pricePcm * 2.0)}
+        AND price_pcm > 0
+        ${excludeId ? sql`AND property_id != ${excludeId}` : sql``}
+    )
+    SELECT *
+    FROM scored
+    WHERE similarity_score > 0.3
+    ORDER BY similarity_score DESC, ABS(price_pcm - ${pricePcm}) ASC
+    LIMIT 15
+  `;
+
+  // Calculate stats
+  const peerCount = rows.length;
+  const avgPrice = peerCount > 0 ? Math.round(rows.reduce((sum, r) => sum + r.price_pcm, 0) / peerCount) : 0;
+  const ppsfValues = rows.filter(r => r.ppsf !== null).map(r => r.ppsf as number);
+  const avgPpsf = ppsfValues.length > 0 ? Math.round(ppsfValues.reduce((sum, v) => sum + v, 0) / ppsfValues.length * 100) / 100 : null;
+  const prices = rows.map(r => r.price_pcm);
+  const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+
+  // Calculate percentile (what % of peers are priced below this property)
+  const belowCount = prices.filter(p => p < pricePcm).length;
+  const yourPercentile = peerCount > 0 ? Math.round((belowCount / peerCount) * 100) : 50;
+
+  return {
+    peers: rows,
+    stats: {
+      peer_count: peerCount,
+      avg_price: avgPrice,
+      avg_ppsf: avgPpsf,
+      min_price: minPrice,
+      max_price: maxPrice,
+      your_percentile: yourPercentile,
+    },
+  };
+}
