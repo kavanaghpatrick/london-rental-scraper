@@ -7,12 +7,27 @@
  * 1. Detect which site we're on
  * 2. Extract property data using site-specific logic
  * 3. Run XGBoost model locally (OCR floorplan if available)
+ *
+ * DISCLAIMER: This extension provides automated estimates for informational
+ * purposes only. Estimates are NOT professional valuations and should not
+ * be relied upon for financial decisions. See privacy policy for data handling.
  */
-
-console.log('[RFV] Script loaded!');
 
 (function() {
   'use strict';
+
+  // Set to false for production builds to reduce console noise
+  const DEBUG = true;
+
+  // Debug logging helper - only logs when DEBUG is true
+  function log(...args) {
+    if (DEBUG) log('', ...args);
+  }
+  function logError(...args) {
+    logError('', ...args); // Always log errors
+  }
+
+  log('Script loaded!');
 
   const CONFIG = {
     PREDICTIONS_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/predictions.json',
@@ -40,7 +55,7 @@ console.log('[RFV] Script loaded!');
   }
 
   const currentSite = detectSite();
-  console.log('[RFV] Detected site:', currentSite);
+  log(' Detected site:', currentSite);
 
   // Prevent duplicate execution
   if (window.__rentFairValueLoaded) return;
@@ -61,13 +76,19 @@ console.log('[RFV] Script loaded!');
   // ============================================
   // SPA NAVIGATION DETECTION
   // ============================================
-  // These sites are SPAs - detect URL changes and re-run
+  // Property listing sites (Rightmove, Chestertons, etc.) are Single Page Applications
+  // that don't trigger full page reloads when navigating between listings.
+  // This requires intercepting History API calls to detect navigation and re-run
+  // the valuation for the new property. This is a standard SPA detection technique
+  // used by many Chrome extensions and does not modify page behavior beyond
+  // triggering our own URL change handler.
 
   function setupNavigationDetection() {
     // 1. Listen for popstate (back/forward navigation)
     window.addEventListener('popstate', handleUrlChange);
 
-    // 2. Override pushState and replaceState to detect programmatic navigation
+    // 2. Wrap pushState and replaceState to detect programmatic navigation
+    // This is necessary because SPAs use these methods to change URLs without page reload
     const originalPushState = history.pushState;
     const originalReplaceState = history.replaceState;
 
@@ -88,19 +109,19 @@ console.log('[RFV] Script loaded!');
       }
     }, 1000);
 
-    console.log('[RFV] SPA navigation detection enabled');
+    log(' SPA navigation detection enabled');
   }
 
   function handleUrlChange() {
     const newUrl = window.location.href;
     if (newUrl === lastUrl) return;
 
-    console.log('[RFV] URL changed:', lastUrl, '->', newUrl);
+    log(' URL changed:', lastUrl, '->', newUrl);
     lastUrl = newUrl;
 
     // Check if this is a property detail page (not search results)
     if (!isPropertyPage(newUrl)) {
-      console.log('[RFV] Not a property page, skipping');
+      log(' Not a property page, skipping');
       removeExisting(); // Remove sidebar on non-property pages
       return;
     }
@@ -108,7 +129,7 @@ console.log('[RFV] Script loaded!');
     // Debounce: wait for page content to update
     setTimeout(() => {
       if (!isRunning) {
-        console.log('[RFV] Re-running for new property...');
+        log(' Re-running for new property...');
         init();
       }
     }, 1500);
@@ -136,7 +157,7 @@ console.log('[RFV] Script loaded!');
   async function init() {
     // Prevent concurrent runs
     if (isRunning) {
-      console.log('[RFV] Already running, skipping');
+      log(' Already running, skipping');
       return;
     }
     isRunning = true;
@@ -148,20 +169,20 @@ console.log('[RFV] Script loaded!');
       // 1. Extract property data from page
       const propertyData = extractPropertyData();
       if (!propertyData) {
-        console.log('[RFV] No property data found');
+        log(' No property data found');
         isRunning = false;
         return;
       }
 
       const propertyId = extractPropertyId();
-      console.log('[RFV] Property ID:', propertyId);
+      log(' Property ID:', propertyId);
 
       // 2. Check if short-term let - show warning instead of valuation
       const letType = extractLetType(propertyData);
-      console.log('[RFV] Let type:', letType);
+      log(' Let type:', letType);
 
       if (letType === 'short') {
-        console.log('[RFV] Short-term let detected - showing warning');
+        log(' Short-term let detected - showing warning');
         injectShortLetWarning(propertyData.prices?.primaryPrice);
         isRunning = false;
         return;
@@ -181,7 +202,7 @@ console.log('[RFV] Script loaded!');
       // 4. Try cache first (instant) - DISABLED FOR TESTING v0.6.0 fixes
       // const cached = await getCachedPrediction(propertyId);
       // if (cached) {
-      //   console.log('[RFV] Cache hit!');
+      //   log(' Cache hit!');
       //   displayResult({
       //     asking_price: askingPrice,
       //     fair_value: cached.fv,
@@ -193,10 +214,10 @@ console.log('[RFV] Script loaded!');
       //   }, 'cached');
       //   return;
       // }
-      console.log('[RFV] Cache disabled - running live prediction');
+      log(' Cache disabled - running live prediction');
 
       // 5. Not cached - run full analysis
-      console.log('[RFV] Cache miss, running local model...');
+      log(' Cache miss, running local model...');
       injectLoadingState('Analyzing property...');
 
       const result = await analyzeProperty(propertyData, askingPrice);
@@ -204,7 +225,7 @@ console.log('[RFV] Script loaded!');
 
       isRunning = false;
     } catch (error) {
-      console.error('[RFV] Error:', error);
+      logError(' Error:', error);
       injectError('Something went wrong');
       isRunning = false;
     }
@@ -233,31 +254,31 @@ console.log('[RFV] Script loaded!');
     // ALWAYS run OCR if floorplan available - we need it for floor extraction even if sqft is known
     // For SPA sites (Chestertons, Savills), click the floorplan tab first and retry if needed
     let floorplanUrl = getFloorplanUrl(propertyData);
-    console.log('[RFV] Initial floorplan URL:', floorplanUrl || 'NOT FOUND');
+    log(' Initial floorplan URL:', floorplanUrl || 'NOT FOUND');
 
     // For agent sites, floorplans may be in a tab that needs clicking
     if (!floorplanUrl && (currentSite === SITES.CHESTERTONS || currentSite === SITES.SAVILLS)) {
-      console.log('[RFV] Trying to click floorplan tab...');
+      log(' Trying to click floorplan tab...');
       injectLoadingState('Looking for floorplan...');
 
       // Try to click the floorplan tab
       const clicked = await clickFloorplanTab();
       if (clicked) {
-        console.log('[RFV] Clicked floorplan tab, waiting for content...');
+        log(' Clicked floorplan tab, waiting for content...');
         // Wait for lazy content to load
         await new Promise(r => setTimeout(r, 2500));
         // Re-extract property data to get floorplan
         const updatedData = extractPropertyData();
         floorplanUrl = getFloorplanUrl(updatedData || propertyData);
-        console.log('[RFV] After tab click, floorplan URL:', floorplanUrl || 'STILL NOT FOUND');
+        log(' After tab click, floorplan URL:', floorplanUrl || 'STILL NOT FOUND');
       }
 
       // Retry: wait a bit more and try again (content might still be loading)
       if (!floorplanUrl) {
-        console.log('[RFV] Retrying floorplan search after delay...');
+        log(' Retrying floorplan search after delay...');
         await new Promise(r => setTimeout(r, 2000));
         floorplanUrl = getFloorplanUrl(extractPropertyData() || propertyData);
-        console.log('[RFV] Retry result:', floorplanUrl || 'NOT FOUND');
+        log(' Retry result:', floorplanUrl || 'NOT FOUND');
       }
     }
 
@@ -270,9 +291,9 @@ console.log('[RFV] Script loaded!');
         sizeSqft = ocrResult.sqft;
         sizeSource = 'ocr';
       }
-      console.log('[RFV] OCR result: sqft=' + (ocrResult.sqft || 'none') + ', text length=' + ocrText.length);
+      log(' OCR result: sqft=' + (ocrResult.sqft || 'none') + ', text length=' + ocrText.length);
     } else {
-      console.log('[RFV] No floorplan found in property data');
+      log(' No floorplan found in property data');
     }
 
     if (!sizeSqft) {
@@ -349,7 +370,7 @@ console.log('[RFV] Script loaded!');
       case SITES.SAVILLS:
         return extractPropertyDataSavills();
       default:
-        console.log('[RFV] Unknown site, trying Rightmove extraction');
+        log(' Unknown site, trying Rightmove extraction');
         return extractPropertyDataRightmove();
     }
   }
@@ -366,7 +387,7 @@ console.log('[RFV] Script loaded!');
         const data = JSON.parse(nextDataScript.textContent);
         const propertyData = data?.props?.pageProps?.propertyData;
         if (propertyData) {
-          console.log('[RFV] Found via __NEXT_DATA__');
+          log(' Found via __NEXT_DATA__');
           return propertyData;
         }
       } catch (e) {}
@@ -387,14 +408,14 @@ console.log('[RFV] Script loaded!');
           }
           const data = JSON.parse(text.slice(start, i + 1));
           if (data.propertyData) {
-            console.log('[RFV] Found via PAGE_MODEL');
+            log(' Found via PAGE_MODEL');
             return data.propertyData;
           }
         } catch (e) {}
       }
     }
 
-    console.log('[RFV] No Rightmove property data found');
+    log(' No Rightmove property data found');
     return null;
   }
 
@@ -403,7 +424,7 @@ console.log('[RFV] Script loaded!');
   // ============================================
 
   function extractPropertyDataKnightFrank() {
-    console.log('[RFV] Extracting Knight Frank data from DOM');
+    log(' Extracting Knight Frank data from DOM');
     const data = { _source: 'knightfrank' };
 
     // Get main content text for regex extraction
@@ -423,7 +444,7 @@ console.log('[RFV] Script loaded!');
     const priceMatch = pageText.match(/£([\d,]+)\s*(?:pcm|pw|per\s*(?:calendar\s*)?month|per\s*week|monthly|weekly)?/i);
     if (priceMatch) {
       data.prices = { primaryPrice: priceMatch[0] };
-      console.log('[RFV] Knight Frank price found:', priceMatch[0]);
+      log(' Knight Frank price found:', priceMatch[0]);
     } else {
       // Fallback to DOM selector
       const priceEl = document.querySelector('.kf-pdp-hero__price, .property-price, [class*="price"]');
@@ -524,7 +545,7 @@ console.log('[RFV] Script loaded!');
     });
     if (keyFeatures.length > 0) data.keyFeatures = keyFeatures;
 
-    console.log('[RFV] Knight Frank extracted:', data);
+    log(' Knight Frank extracted:', data);
     return Object.keys(data).length > 2 ? data : null;
   }
 
@@ -533,7 +554,7 @@ console.log('[RFV] Script loaded!');
   // ============================================
 
   function extractPropertyDataChestertons() {
-    console.log('[RFV] Extracting Chestertons data from DOM');
+    log(' Extracting Chestertons data from DOM');
     const data = { _source: 'chestertons' };
 
     // Get main content text for regex extraction (like spider does)
@@ -578,7 +599,7 @@ console.log('[RFV] Script loaded!');
     if (priceMatch) {
       const priceText = priceMatch[0];
       data.prices = { primaryPrice: priceText };
-      console.log('[RFV] Chestertons price found:', priceText);
+      log(' Chestertons price found:', priceText);
     } else {
       // Fallback: try any £X,XXX pattern
       const anyPriceMatch = pageText.match(/£([\d,]+)/);
@@ -588,7 +609,7 @@ console.log('[RFV] Script loaded!');
         const context = pageText.substring(priceIndex, priceIndex + 50).toLowerCase();
         const period = context.includes('pw') || context.includes('week') ? 'pw' : 'pcm';
         data.prices = { primaryPrice: `${anyPriceMatch[0]} ${period}` };
-        console.log('[RFV] Chestertons price fallback:', data.prices.primaryPrice);
+        log(' Chestertons price fallback:', data.prices.primaryPrice);
       }
     }
 
@@ -658,7 +679,7 @@ console.log('[RFV] Script loaded!');
       data.text = { description: descEl.textContent.trim() };
     }
 
-    console.log('[RFV] Chestertons extracted:', data);
+    log(' Chestertons extracted:', data);
     return Object.keys(data).length > 2 ? data : null; // Need more than just _source and customer
   }
 
@@ -667,7 +688,7 @@ console.log('[RFV] Script loaded!');
   // ============================================
 
   function extractPropertyDataSavills() {
-    console.log('[RFV] Extracting Savills data from DOM');
+    log(' Extracting Savills data from DOM');
     const data = { _source: 'savills' };
 
     // Get main content text for regex extraction
@@ -708,7 +729,7 @@ console.log('[RFV] Script loaded!');
     const priceMatch = pageText.match(/£([\d,]+)\s*(?:pcm|pw|per\s*(?:calendar\s*)?month|per\s*week|monthly|weekly)?/i);
     if (priceMatch) {
       data.prices = { primaryPrice: priceMatch[0] };
-      console.log('[RFV] Savills price found:', priceMatch[0]);
+      log(' Savills price found:', priceMatch[0]);
     } else {
       // Fallback to DOM selector
       const priceEl = document.querySelector('.sv-property-header__price, .sv-pdp-hero__price, .property-price, [class*="price"]');
@@ -828,7 +849,7 @@ console.log('[RFV] Script loaded!');
     });
     if (keyFeatures.length > 0) data.keyFeatures = keyFeatures;
 
-    console.log('[RFV] Savills extracted:', data);
+    log(' Savills extracted:', data);
     return Object.keys(data).length > 1 ? data : null;
   }
 
@@ -954,7 +975,7 @@ console.log('[RFV] Script loaded!');
         const text = (tab.innerText || tab.textContent || '').toLowerCase().trim();
         // Match "Floorplans", "Floor Plans", "Floorplan", "Floor Plan"
         if ((text.includes('floor') && text.includes('plan')) || text === 'floorplan' || text === 'floorplans') {
-          console.log('[RFV] Found floorplan tab:', text);
+          log(' Found floorplan tab:', text);
           tab.click();
           return true;
         }
@@ -967,15 +988,15 @@ console.log('[RFV] Script loaded!');
         '[data-target*="floorplan" i]'
       );
       if (ariaTab) {
-        console.log('[RFV] Found floorplan tab via aria/data attribute');
+        log(' Found floorplan tab via aria/data attribute');
         ariaTab.click();
         return true;
       }
 
-      console.log('[RFV] No floorplan tab found');
+      log(' No floorplan tab found');
       return false;
     } catch (e) {
-      console.error('[RFV] Error clicking floorplan tab:', e);
+      logError(' Error clicking floorplan tab:', e);
       return false;
     }
   }
@@ -1182,14 +1203,14 @@ console.log('[RFV] Script loaded!');
   async function ocrFloorplan(url) {
     // Returns { sqft: number|null, text: string } - text is used for floor extraction
     if (typeof Tesseract === 'undefined') {
-      console.error('[RFV] Tesseract not loaded! Check vendor/tesseract.min.js');
+      logError(' Tesseract not loaded! Check vendor/tesseract.min.js');
       return { sqft: null, text: '' };
     }
-    console.log('[RFV] Tesseract available, starting OCR...');
+    log(' Tesseract available, starting OCR...');
 
     let worker = null;
     try {
-      console.log('[RFV] Running OCR on:', url);
+      log(' Running OCR on:', url);
 
       // Fetch image via background service worker to bypass CORS
       injectLoadingState('Fetching floorplan...');
@@ -1207,7 +1228,7 @@ console.log('[RFV] Script loaded!');
           }
         );
       });
-      console.log('[RFV] Image fetched via background worker, data length:', imgData.length);
+      log(' Image fetched via background worker, data length:', imgData.length);
 
       // Create worker explicitly to ensure proper cleanup (fixes memory leak)
       worker = await Tesseract.createWorker('eng', 1, {
@@ -1224,7 +1245,7 @@ console.log('[RFV] Script loaded!');
       ]);
 
       const text = result.data.text;
-      console.log('[RFV] OCR result:', text.substring(0, 200));
+      log(' OCR result:', text.substring(0, 200));
 
       // Extract sqft - try sqft patterns first
       const sqftPatterns = [
@@ -1239,7 +1260,7 @@ console.log('[RFV] Script loaded!');
         if (match) {
           const sqft = parseInt(match[1].replace(',', ''), 10);
           if (sqft >= 100 && sqft <= 15000) {
-            console.log('[RFV] Found sqft via OCR:', sqft);
+            log(' Found sqft via OCR:', sqft);
             return { sqft, text };
           }
         }
@@ -1258,23 +1279,23 @@ console.log('[RFV] Script loaded!');
           const sqm = parseInt(match[1].replace(',', ''), 10);
           if (sqm >= 10 && sqm <= 1500) {
             const sqft = Math.round(sqm * 10.764);
-            console.log('[RFV] Found sqm via OCR:', sqm, '-> sqft:', sqft);
+            log(' Found sqm via OCR:', sqm, '-> sqft:', sqft);
             return { sqft, text };
           }
         }
       }
 
-      console.log('[RFV] No size pattern found in OCR text');
+      log(' No size pattern found in OCR text');
       return { sqft: null, text };
     } catch (e) {
-      console.error('[RFV] OCR failed:', e.message);
+      logError(' OCR failed:', e.message);
       return { sqft: null, text: '' };
     } finally {
       // Always terminate worker to prevent memory leak
       if (worker) {
         try {
           await worker.terminate();
-          console.log('[RFV] Tesseract worker terminated');
+          log(' Tesseract worker terminated');
         } catch (termErr) {
           console.warn('[RFV] Worker termination failed:', termErr.message);
         }
@@ -1328,14 +1349,14 @@ console.log('[RFV] Script loaded!');
         const res = await fetch(CONFIG.PREDICTIONS_URL);
         if (res.ok) {
           predictionsCache = await res.json();
-          console.log('[RFV] Cache loaded:', Object.keys(predictionsCache).length);
+          log(' Cache loaded:', Object.keys(predictionsCache).length);
         }
       }
       // Use site-specific cache key
       const cacheKey = `${currentSite}:${propertyId}`;
       return predictionsCache?.[cacheKey] || null;
     } catch (e) {
-      console.error('[RFV] Cache load failed:', e);
+      logError(' Cache load failed:', e);
       return null;
     }
   }
@@ -1350,10 +1371,10 @@ console.log('[RFV] Script loaded!');
       const res = await fetch(CONFIG.SIMILAR_URL);
       if (res.ok) {
         similarListingsCache = await res.json();
-        console.log('[RFV] Similar listings loaded:', Object.keys(similarListingsCache).length);
+        log(' Similar listings loaded:', Object.keys(similarListingsCache).length);
       }
     } catch (e) {
-      console.error('[RFV] Similar listings load failed:', e);
+      logError(' Similar listings load failed:', e);
     }
     return similarListingsCache || {};
   }
@@ -1365,7 +1386,7 @@ console.log('[RFV] Script loaded!');
      */
     const listings = await loadSimilarListings();
     if (!listings || Object.keys(listings).length === 0) {
-      console.log('[RFV] No similar listings available');
+      log(' No similar listings available');
       return [];
     }
 
@@ -1588,7 +1609,7 @@ console.log('[RFV] Script loaded!');
           }
         }
       }).catch(err => {
-        console.log('[RFV] Similar properties error:', err);
+        log(' Similar properties error:', err);
       });
     }
   }

@@ -33,7 +33,7 @@
     "https://*.chestertons.co.uk/*",
     "https://*.homeflow-assets.co.uk/*",
     "https://*.savills.com/*",
-    "https://raw.githubusercontent.com/*",
+    "https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/*",
     "https://dashboard-fawn-nu-59.vercel.app/*"
   ],
   "web_accessible_resources": [
@@ -49,7 +49,12 @@
     },
     {
       "resources": ["compare.html", "compare.js", "compare.css"],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "https://www.rightmove.co.uk/*",
+        "https://www.knightfrank.co.uk/*",
+        "https://www.chestertons.co.uk/*",
+        "https://search.savills.com/*"
+      ]
     }
   ]
 }
