@@ -1,10 +1,12 @@
 /**
  * Rent Fair Value - Chrome Extension
- * Shows ML-powered fair rent estimates on Rightmove listings
+ * Shows ML-powered fair rent estimates on London rental listings
+ * Supports: Rightmove, Knight Frank, Chestertons, Savills
  *
  * Flow:
- * 1. Check predictions cache (instant if found)
- * 2. If not cached: extract data from page, OCR floorplan, run XGBoost model locally
+ * 1. Detect which site we're on
+ * 2. Extract property data using site-specific logic
+ * 3. Run XGBoost model locally (OCR floorplan if available)
  */
 
 console.log('[RFV] Script loaded!');
@@ -20,6 +22,26 @@ console.log('[RFV] Script loaded!');
     OCR_TIMEOUT: 60000,
   };
 
+  // Site detection
+  const SITES = {
+    RIGHTMOVE: 'rightmove',
+    KNIGHTFRANK: 'knightfrank',
+    CHESTERTONS: 'chestertons',
+    SAVILLS: 'savills',
+  };
+
+  function detectSite() {
+    const hostname = window.location.hostname;
+    if (hostname.includes('rightmove.co.uk')) return SITES.RIGHTMOVE;
+    if (hostname.includes('knightfrank.co.uk')) return SITES.KNIGHTFRANK;
+    if (hostname.includes('chestertons.co.uk')) return SITES.CHESTERTONS;
+    if (hostname.includes('savills.com')) return SITES.SAVILLS;
+    return null;
+  }
+
+  const currentSite = detectSite();
+  console.log('[RFV] Detected site:', currentSite);
+
   // Prevent duplicate execution
   if (window.__rentFairValueLoaded) return;
   window.__rentFairValueLoaded = true;
@@ -29,15 +51,105 @@ console.log('[RFV] Script loaded!');
   let similarListingsCache = null;
   let xgbPredictor = null;
 
+  // Track current URL for SPA navigation detection
+  let lastUrl = window.location.href;
+  let isRunning = false;
+
   // Main execution
   init();
 
+  // ============================================
+  // SPA NAVIGATION DETECTION
+  // ============================================
+  // These sites are SPAs - detect URL changes and re-run
+
+  function setupNavigationDetection() {
+    // 1. Listen for popstate (back/forward navigation)
+    window.addEventListener('popstate', handleUrlChange);
+
+    // 2. Override pushState and replaceState to detect programmatic navigation
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+
+    history.pushState = function(...args) {
+      originalPushState.apply(this, args);
+      handleUrlChange();
+    };
+
+    history.replaceState = function(...args) {
+      originalReplaceState.apply(this, args);
+      handleUrlChange();
+    };
+
+    // 3. Fallback: Poll for URL changes (catches edge cases)
+    setInterval(() => {
+      if (window.location.href !== lastUrl) {
+        handleUrlChange();
+      }
+    }, 1000);
+
+    console.log('[RFV] SPA navigation detection enabled');
+  }
+
+  function handleUrlChange() {
+    const newUrl = window.location.href;
+    if (newUrl === lastUrl) return;
+
+    console.log('[RFV] URL changed:', lastUrl, '->', newUrl);
+    lastUrl = newUrl;
+
+    // Check if this is a property detail page (not search results)
+    if (!isPropertyPage(newUrl)) {
+      console.log('[RFV] Not a property page, skipping');
+      removeExisting(); // Remove sidebar on non-property pages
+      return;
+    }
+
+    // Debounce: wait for page content to update
+    setTimeout(() => {
+      if (!isRunning) {
+        console.log('[RFV] Re-running for new property...');
+        init();
+      }
+    }, 1500);
+  }
+
+  function isPropertyPage(url) {
+    // Check if URL matches property detail page patterns
+    switch (currentSite) {
+      case SITES.RIGHTMOVE:
+        return /\/properties\/\d+/.test(url);
+      case SITES.KNIGHTFRANK:
+        return /\/properties\//.test(url) && !/\/search/.test(url);
+      case SITES.CHESTERTONS:
+        return /\/properties\/\d+\/lettings\//.test(url);
+      case SITES.SAVILLS:
+        return /\/property-detail\//.test(url);
+      default:
+        return false;
+    }
+  }
+
+  // Start navigation detection
+  setupNavigationDetection();
+
   async function init() {
+    // Prevent concurrent runs
+    if (isRunning) {
+      console.log('[RFV] Already running, skipping');
+      return;
+    }
+    isRunning = true;
+
     try {
+      // Remove any existing sidebar before starting fresh
+      removeExisting();
+
       // 1. Extract property data from page
       const propertyData = extractPropertyData();
       if (!propertyData) {
         console.log('[RFV] No property data found');
+        isRunning = false;
         return;
       }
 
@@ -51,6 +163,7 @@ console.log('[RFV] Script loaded!');
       if (letType === 'short') {
         console.log('[RFV] Short-term let detected - showing warning');
         injectShortLetWarning(propertyData.prices?.primaryPrice);
+        isRunning = false;
         return;
       }
 
@@ -61,6 +174,7 @@ console.log('[RFV] Script loaded!');
       const askingPrice = parsePrice(propertyData.prices?.primaryPrice);
       if (!askingPrice) {
         injectError('Could not parse price');
+        isRunning = false;
         return;
       }
 
@@ -88,9 +202,11 @@ console.log('[RFV] Script loaded!');
       const result = await analyzeProperty(propertyData, askingPrice);
       displayResult(result, result.size_source);
 
+      isRunning = false;
     } catch (error) {
       console.error('[RFV] Error:', error);
       injectError('Something went wrong');
+      isRunning = false;
     }
   }
 
@@ -115,8 +231,36 @@ console.log('[RFV] Script loaded!');
     let ocrText = ''; // Store raw OCR text for floor extraction
 
     // ALWAYS run OCR if floorplan available - we need it for floor extraction even if sqft is known
-    const floorplanUrl = getFloorplanUrl(propertyData);
-    console.log('[RFV] Floorplan URL:', floorplanUrl || 'NOT FOUND');
+    // For SPA sites (Chestertons, Savills), click the floorplan tab first and retry if needed
+    let floorplanUrl = getFloorplanUrl(propertyData);
+    console.log('[RFV] Initial floorplan URL:', floorplanUrl || 'NOT FOUND');
+
+    // For agent sites, floorplans may be in a tab that needs clicking
+    if (!floorplanUrl && (currentSite === SITES.CHESTERTONS || currentSite === SITES.SAVILLS)) {
+      console.log('[RFV] Trying to click floorplan tab...');
+      injectLoadingState('Looking for floorplan...');
+
+      // Try to click the floorplan tab
+      const clicked = await clickFloorplanTab();
+      if (clicked) {
+        console.log('[RFV] Clicked floorplan tab, waiting for content...');
+        // Wait for lazy content to load
+        await new Promise(r => setTimeout(r, 2500));
+        // Re-extract property data to get floorplan
+        const updatedData = extractPropertyData();
+        floorplanUrl = getFloorplanUrl(updatedData || propertyData);
+        console.log('[RFV] After tab click, floorplan URL:', floorplanUrl || 'STILL NOT FOUND');
+      }
+
+      // Retry: wait a bit more and try again (content might still be loading)
+      if (!floorplanUrl) {
+        console.log('[RFV] Retrying floorplan search after delay...');
+        await new Promise(r => setTimeout(r, 2000));
+        floorplanUrl = getFloorplanUrl(extractPropertyData() || propertyData);
+        console.log('[RFV] Retry result:', floorplanUrl || 'NOT FOUND');
+      }
+    }
+
     if (floorplanUrl) {
       injectLoadingState('Reading floorplan...');
       const ocrResult = await ocrFloorplan(floorplanUrl);
@@ -191,10 +335,30 @@ console.log('[RFV] Script loaded!');
   }
 
   // ============================================
-  // DATA EXTRACTION
+  // DATA EXTRACTION - Site-specific routing
   // ============================================
 
   function extractPropertyData() {
+    switch (currentSite) {
+      case SITES.RIGHTMOVE:
+        return extractPropertyDataRightmove();
+      case SITES.KNIGHTFRANK:
+        return extractPropertyDataKnightFrank();
+      case SITES.CHESTERTONS:
+        return extractPropertyDataChestertons();
+      case SITES.SAVILLS:
+        return extractPropertyDataSavills();
+      default:
+        console.log('[RFV] Unknown site, trying Rightmove extraction');
+        return extractPropertyDataRightmove();
+    }
+  }
+
+  // ============================================
+  // RIGHTMOVE EXTRACTION
+  // ============================================
+
+  function extractPropertyDataRightmove() {
     // Strategy 1: __NEXT_DATA__
     const nextDataScript = document.getElementById('__NEXT_DATA__');
     if (nextDataScript) {
@@ -230,13 +394,471 @@ console.log('[RFV] Script loaded!');
       }
     }
 
-    console.log('[RFV] No property data found');
+    console.log('[RFV] No Rightmove property data found');
     return null;
   }
 
+  // ============================================
+  // KNIGHT FRANK EXTRACTION
+  // ============================================
+
+  function extractPropertyDataKnightFrank() {
+    console.log('[RFV] Extracting Knight Frank data from DOM');
+    const data = { _source: 'knightfrank' };
+
+    // Get main content text for regex extraction
+    const mainContent = document.querySelector('main, [role="main"], .property-details, article') || document.body;
+    const pageText = mainContent.innerText || '';
+
+    // Address - from page title or h1
+    const titleEl = document.querySelector('h1.kf-pdp-hero__title, h1[class*="title"], .property-address h1, h1');
+    if (titleEl) {
+      data.address = { displayAddress: titleEl.textContent.trim() };
+    } else {
+      const pageTitle = document.title.replace(/\s*\|.*$/, '').trim();
+      data.address = { displayAddress: pageTitle };
+    }
+
+    // Price - use regex on page text (more reliable)
+    const priceMatch = pageText.match(/£([\d,]+)\s*(?:pcm|pw|per\s*(?:calendar\s*)?month|per\s*week|monthly|weekly)?/i);
+    if (priceMatch) {
+      data.prices = { primaryPrice: priceMatch[0] };
+      console.log('[RFV] Knight Frank price found:', priceMatch[0]);
+    } else {
+      // Fallback to DOM selector
+      const priceEl = document.querySelector('.kf-pdp-hero__price, .property-price, [class*="price"]');
+      if (priceEl) {
+        data.prices = { primaryPrice: priceEl.textContent.trim() };
+      }
+    }
+
+    // Bedrooms/Bathrooms - regex on page text
+    const bedsMatch = pageText.match(/(\d+)\s*(?:bed(?:room)?s?)/i);
+    if (bedsMatch) {
+      data.bedrooms = parseInt(bedsMatch[1], 10);
+    }
+    const bathsMatch = pageText.match(/(\d+)\s*(?:bath(?:room)?s?)/i);
+    if (bathsMatch) {
+      data.bathrooms = parseInt(bathsMatch[1], 10);
+    }
+    const receptionsMatch = pageText.match(/(\d+)\s*(?:reception)/i);
+    if (receptionsMatch) {
+      data.receptions = parseInt(receptionsMatch[1], 10);
+    }
+
+    // Size in sqft - search in main content only
+    const sizeMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i);
+    if (sizeMatch) {
+      const sqft = parseInt(sizeMatch[1].replace(/,/g, ''), 10);
+      if (sqft >= 100 && sqft <= 50000) {
+        data.sizings = [{ minimumSize: sqft, unit: 'sqft' }];
+      }
+    }
+
+    // Postcode from address - FIXED split bug
+    if (data.address?.displayAddress) {
+      const pcMatch = data.address.displayAddress.match(/([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})/i);
+      if (pcMatch) {
+        const parts = pcMatch[1].split(/\s+/);
+        data.address.outcode = parts[0] || '';
+        data.address.incode = parts[1] || '';
+      }
+    }
+
+    // Property type from page text
+    const textLower = pageText.toLowerCase();
+    if (textLower.includes('penthouse')) data.propertyType = 'penthouse';
+    else if (textLower.includes('studio')) data.propertyType = 'studio';
+    else if (textLower.includes('house')) data.propertyType = 'house';
+    else if (textLower.includes('maisonette')) data.propertyType = 'maisonette';
+    else if (textLower.includes('apartment')) data.propertyType = 'apartment';
+    else data.propertyType = 'flat';
+
+    // Agent name
+    data.customer = { companyName: 'Knight Frank' };
+
+    // Floorplan URL - Knight Frank CDN (content.knightfrank.com)
+    // Spider checks: 1) anchor tags with "Floorplan" text, 2) images, 3) data-src for lazy loading
+
+    // 1. Check anchor tags first (spider pattern)
+    const floorplanLinks = document.querySelectorAll('a[href*="floorplan"], a[href*="Floorplan"]');
+    for (const link of floorplanLinks) {
+      const href = link.href;
+      if (href && (href.includes('.jpg') || href.includes('.png') || href.includes('.jpeg') || href.includes('content.knightfrank.com'))) {
+        data.floorplans = [{ url: href }];
+        break;
+      }
+    }
+
+    // 2. Check images with src or data-src
+    if (!data.floorplans) {
+      const floorplanImg = document.querySelector(
+        'img[src*="content.knightfrank.com"][src*="floorplan"], ' +
+        'img[data-src*="content.knightfrank.com"][data-src*="floorplan"], ' +
+        'img[src*="floorplan"], img[data-src*="floorplan"]'
+      );
+      if (floorplanImg) {
+        const url = floorplanImg.src || floorplanImg.dataset.src || floorplanImg.getAttribute('data-src');
+        if (url) data.floorplans = [{ url }];
+      }
+    }
+
+    // 3. Regex fallback on page HTML
+    if (!data.floorplans) {
+      const floorplanMatch = document.body.innerHTML.match(/https:\/\/content\.knightfrank\.com\/[^"'\s]*(?:floorplan|floor-plan)[^"'\s]*\.(?:jpg|png|jpeg)/i);
+      if (floorplanMatch) {
+        data.floorplans = [{ url: floorplanMatch[0] }];
+      }
+    }
+
+    // Description
+    const descEl = document.querySelector('.kf-pdp-description, .property-description, [class*="description"]');
+    if (descEl) {
+      data.text = { description: descEl.textContent.trim() };
+    }
+
+    // Key features
+    const keyFeatures = [];
+    document.querySelectorAll('.kf-pdp-features li, .key-feature, [class*="feature"] li').forEach(li => {
+      keyFeatures.push(li.textContent.trim());
+    });
+    if (keyFeatures.length > 0) data.keyFeatures = keyFeatures;
+
+    console.log('[RFV] Knight Frank extracted:', data);
+    return Object.keys(data).length > 2 ? data : null;
+  }
+
+  // ============================================
+  // CHESTERTONS EXTRACTION
+  // ============================================
+
+  function extractPropertyDataChestertons() {
+    console.log('[RFV] Extracting Chestertons data from DOM');
+    const data = { _source: 'chestertons' };
+
+    // Get main content text for regex extraction (like spider does)
+    const mainContent = document.querySelector('main, [role="main"], .property-details, article') || document.body;
+    const pageText = mainContent.innerText || '';
+
+    // Try to find JSON data in scripts first
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const json = JSON.parse(script.textContent);
+        if (json['@type'] === 'RealEstateListing' || json['@type'] === 'Apartment' || json['@type'] === 'House') {
+          if (json.name) data.address = { displayAddress: json.name };
+          if (json.address?.streetAddress) data.address = { displayAddress: json.address.streetAddress };
+          break;
+        }
+      } catch (e) {}
+    }
+
+    // Address from page - try h1 first (most reliable)
+    if (!data.address) {
+      const h1El = document.querySelector('h1');
+      if (h1El) {
+        data.address = { displayAddress: h1El.textContent.trim() };
+      }
+    }
+    // Fallback to specific selectors
+    if (!data.address) {
+      const addressEl = document.querySelector('.property-details__address, .property-address, [class*="address"]');
+      if (addressEl) {
+        data.address = { displayAddress: addressEl.textContent.trim() };
+      }
+    }
+    // Final fallback to title
+    if (!data.address) {
+      const pageTitle = document.title.replace(/\s*-.*$/, '').replace(/\s*\|.*$/, '').trim();
+      data.address = { displayAddress: pageTitle };
+    }
+
+    // Price - use regex on page text (like spider does) - CRITICAL FIX
+    // Look for £X,XXX pattern followed by pcm/pw/month/week
+    const priceMatch = pageText.match(/£([\d,]+)\s*(?:pcm|pw|per\s*(?:calendar\s*)?month|per\s*week|monthly|weekly)?/i);
+    if (priceMatch) {
+      const priceText = priceMatch[0];
+      data.prices = { primaryPrice: priceText };
+      console.log('[RFV] Chestertons price found:', priceText);
+    } else {
+      // Fallback: try any £X,XXX pattern
+      const anyPriceMatch = pageText.match(/£([\d,]+)/);
+      if (anyPriceMatch) {
+        // Check context for period indicator
+        const priceIndex = pageText.indexOf(anyPriceMatch[0]);
+        const context = pageText.substring(priceIndex, priceIndex + 50).toLowerCase();
+        const period = context.includes('pw') || context.includes('week') ? 'pw' : 'pcm';
+        data.prices = { primaryPrice: `${anyPriceMatch[0]} ${period}` };
+        console.log('[RFV] Chestertons price fallback:', data.prices.primaryPrice);
+      }
+    }
+
+    // Bedrooms/Bathrooms - regex on page text (more reliable than DOM selectors)
+    const bedsMatch = pageText.match(/(\d+)\s*(?:bed(?:room)?s?)/i);
+    if (bedsMatch) {
+      data.bedrooms = parseInt(bedsMatch[1], 10);
+    }
+    const bathsMatch = pageText.match(/(\d+)\s*(?:bath(?:room)?s?)/i);
+    if (bathsMatch) {
+      data.bathrooms = parseInt(bathsMatch[1], 10);
+    }
+
+    // Size - look for sqft pattern
+    const sizeMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i);
+    if (sizeMatch) {
+      const sqft = parseInt(sizeMatch[1].replace(/,/g, ''), 10);
+      if (sqft >= 100 && sqft <= 50000) { // Validate reasonable range
+        data.sizings = [{ minimumSize: sqft, unit: 'sqft' }];
+      }
+    }
+
+    // Postcode from address
+    if (data.address?.displayAddress) {
+      const pcMatch = data.address.displayAddress.match(/([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})/i);
+      if (pcMatch) {
+        const parts = pcMatch[1].split(/\s+/);
+        data.address.outcode = parts[0] || '';
+        data.address.incode = parts[1] || '';
+      }
+    }
+
+    // Agent name
+    data.customer = { companyName: 'Chestertons' };
+
+    // Property type from page text
+    const textLower = pageText.toLowerCase();
+    if (textLower.includes('penthouse')) data.propertyType = 'penthouse';
+    else if (textLower.includes('studio')) data.propertyType = 'studio';
+    else if (textLower.includes('house')) data.propertyType = 'house';
+    else if (textLower.includes('maisonette')) data.propertyType = 'maisonette';
+    else if (textLower.includes('apartment')) data.propertyType = 'apartment';
+    else data.propertyType = 'flat';
+
+    // Floorplan - Chestertons uses homeflow-assets CDN with /files/floorplan/ path
+    // CRITICAL: Match spider pattern - look for /files/floorplan/ path, not just domain
+    // Also check data-src for lazy-loaded images
+    const floorplanImg = document.querySelector(
+      'img[src*="/files/floorplan/"], img[data-src*="/files/floorplan/"], ' +
+      'img[src*="floorplan"], img[data-src*="floorplan"]'
+    );
+    if (floorplanImg) {
+      const url = floorplanImg.src || floorplanImg.dataset.src || floorplanImg.getAttribute('data-src');
+      if (url) data.floorplans = [{ url }];
+    }
+    if (!data.floorplans) {
+      // Try to find in page HTML - use spider's exact pattern
+      const floorplanMatch = document.body.innerHTML.match(/https:\/\/[^"\s]+\/files\/floorplan\/[^"\s]+/i);
+      if (floorplanMatch) {
+        data.floorplans = [{ url: floorplanMatch[0] }];
+      }
+    }
+
+    // Description - find largest text block
+    const descEl = document.querySelector('.property-description, [class*="description"], .overview, article p');
+    if (descEl) {
+      data.text = { description: descEl.textContent.trim() };
+    }
+
+    console.log('[RFV] Chestertons extracted:', data);
+    return Object.keys(data).length > 2 ? data : null; // Need more than just _source and customer
+  }
+
+  // ============================================
+  // SAVILLS EXTRACTION
+  // ============================================
+
+  function extractPropertyDataSavills() {
+    console.log('[RFV] Extracting Savills data from DOM');
+    const data = { _source: 'savills' };
+
+    // Get main content text for regex extraction
+    const mainContent = document.querySelector('main, [role="main"], .property-details, article') || document.body;
+    const pageText = mainContent.innerText || '';
+
+    // Try JSON-LD first
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const json = JSON.parse(script.textContent);
+        if (json['@type'] === 'RealEstateListing' || json['@type'] === 'Apartment') {
+          if (json.name) data.address = { displayAddress: json.name };
+          if (json.address?.streetAddress) data.address = { displayAddress: json.address.streetAddress };
+          break;
+        }
+      } catch (e) {}
+    }
+
+    // Address - try h1 first
+    if (!data.address) {
+      const h1El = document.querySelector('h1');
+      if (h1El) {
+        data.address = { displayAddress: h1El.textContent.trim() };
+      }
+    }
+    if (!data.address) {
+      const addressEl = document.querySelector('.sv-property-header__address, .property-address, [class*="address"]');
+      if (addressEl) {
+        data.address = { displayAddress: addressEl.textContent.trim() };
+      }
+    }
+    if (!data.address) {
+      const pageTitle = document.title.replace(/\s*-.*$/, '').replace(/\s*\|.*$/, '').trim();
+      data.address = { displayAddress: pageTitle };
+    }
+
+    // Price - use regex on page text (more reliable)
+    const priceMatch = pageText.match(/£([\d,]+)\s*(?:pcm|pw|per\s*(?:calendar\s*)?month|per\s*week|monthly|weekly)?/i);
+    if (priceMatch) {
+      data.prices = { primaryPrice: priceMatch[0] };
+      console.log('[RFV] Savills price found:', priceMatch[0]);
+    } else {
+      // Fallback to DOM selector
+      const priceEl = document.querySelector('.sv-property-header__price, .sv-pdp-hero__price, .property-price, [class*="price"]');
+      if (priceEl) {
+        data.prices = { primaryPrice: priceEl.textContent.trim() };
+      }
+    }
+
+    // Bedrooms/Bathrooms - regex on page text
+    const bedsMatch = pageText.match(/(\d+)\s*(?:bed(?:room)?s?)/i);
+    if (bedsMatch) {
+      data.bedrooms = parseInt(bedsMatch[1], 10);
+    }
+    const bathsMatch = pageText.match(/(\d+)\s*(?:bath(?:room)?s?)/i);
+    if (bathsMatch) {
+      data.bathrooms = parseInt(bathsMatch[1], 10);
+    }
+    const receptionsMatch = pageText.match(/(\d+)\s*(?:reception)/i);
+    if (receptionsMatch) {
+      data.receptions = parseInt(receptionsMatch[1], 10);
+    }
+
+    // Size - Savills usually has good sqft data
+    const sizeMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i);
+    if (sizeMatch) {
+      const sqft = parseInt(sizeMatch[1].replace(/,/g, ''), 10);
+      if (sqft >= 100 && sqft <= 50000) {
+        data.sizings = [{ minimumSize: sqft, unit: 'sqft' }];
+      }
+    }
+    // Also try sqm
+    if (!data.sizings) {
+      const sqmMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*m|sqm|m²)/i);
+      if (sqmMatch) {
+        const sqm = parseInt(sqmMatch[1].replace(/,/g, ''), 10);
+        if (sqm >= 10 && sqm <= 5000) {
+          data.sizings = [{ minimumSize: Math.round(sqm * 10.764), unit: 'sqft' }];
+        }
+      }
+    }
+
+    // Postcode from address - FIXED split bug
+    if (data.address?.displayAddress) {
+      const pcMatch = data.address.displayAddress.match(/([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})/i);
+      if (pcMatch) {
+        const parts = pcMatch[1].split(/\s+/);
+        data.address.outcode = parts[0] || '';
+        data.address.incode = parts[1] || '';
+      }
+    }
+
+    // Agent name
+    data.customer = { companyName: 'Savills' };
+
+    // Property type from page text (scoped to main content)
+    const textLower = pageText.toLowerCase();
+    if (textLower.includes('penthouse')) data.propertyType = 'penthouse';
+    else if (textLower.includes('studio')) data.propertyType = 'studio';
+    else if (textLower.includes('house')) data.propertyType = 'house';
+    else if (textLower.includes('maisonette')) data.propertyType = 'maisonette';
+    else if (textLower.includes('apartment')) data.propertyType = 'apartment';
+    else data.propertyType = 'flat';
+
+    // Floorplan - Savills uses CDN images
+    // Spider clicks "Plans" tab first - we can't easily do that, so check multiple selectors
+    // Also check data-src for lazy-loaded images
+
+    // 1. Check tabs container for Plans content (if already visible)
+    const plansTab = document.querySelector('[data-tab="plans"], [data-type="floorplan"], .sv-pdp-floorplan');
+    if (plansTab) {
+      const img = plansTab.querySelector('img[src], img[data-src]');
+      if (img) {
+        const url = img.src || img.dataset.src || img.getAttribute('data-src');
+        if (url) data.floorplans = [{ url }];
+      }
+    }
+
+    // 2. Check for floorplan images with src or data-src
+    if (!data.floorplans) {
+      const floorplanImg = document.querySelector(
+        'img[src*="floorplan"], img[data-src*="floorplan"], ' +
+        'img[src*="floor-plan"], img[data-src*="floor-plan"], ' +
+        'img[alt*="floorplan" i], img[alt*="floor plan" i]'
+      );
+      if (floorplanImg) {
+        const url = floorplanImg.src || floorplanImg.dataset.src || floorplanImg.getAttribute('data-src');
+        if (url) data.floorplans = [{ url }];
+      }
+    }
+
+    // 3. Check anchor tags
+    if (!data.floorplans) {
+      const floorplanLink = document.querySelector('a[href*="floorplan"], a[href*="floor-plan"]');
+      if (floorplanLink?.href) {
+        data.floorplans = [{ url: floorplanLink.href }];
+      }
+    }
+
+    // 4. Regex fallback - Savills CDN pattern
+    if (!data.floorplans) {
+      const floorplanMatch = document.body.innerHTML.match(/https:\/\/[^"'\s]*savills[^"'\s]*(?:floorplan|floor-plan|_fp)[^"'\s]*\.(?:jpg|png|jpeg)/i);
+      if (floorplanMatch) {
+        data.floorplans = [{ url: floorplanMatch[0] }];
+      }
+    }
+
+    // Description
+    const descEl = document.querySelector('.sv-property-description, .sv-pdp-description, [class*="description"]');
+    if (descEl) {
+      data.text = { description: descEl.textContent.trim() };
+    }
+
+    // Key features
+    const keyFeatures = [];
+    document.querySelectorAll('.sv-property-features li, .sv-pdp-features li, [class*="feature"] li').forEach(li => {
+      keyFeatures.push(li.textContent.trim());
+    });
+    if (keyFeatures.length > 0) data.keyFeatures = keyFeatures;
+
+    console.log('[RFV] Savills extracted:', data);
+    return Object.keys(data).length > 1 ? data : null;
+  }
+
   function extractPropertyId() {
-    const match = window.location.pathname.match(/\/properties\/(\d+)/);
-    return match ? match[1] : null;
+    const url = window.location.href;
+    const pathname = window.location.pathname;
+
+    switch (currentSite) {
+      case SITES.RIGHTMOVE: {
+        const match = pathname.match(/\/properties\/(\d+)/);
+        return match ? match[1] : null;
+      }
+      case SITES.KNIGHTFRANK: {
+        // URL like: /properties/residential/to-let/london/abc123xyz
+        const match = pathname.match(/\/properties\/.*\/([a-zA-Z0-9-]+)\/?$/);
+        return match ? match[1] : null;
+      }
+      case SITES.CHESTERTONS: {
+        // URL like: /properties/21142524/lettings/KNL220048
+        const match = pathname.match(/\/properties\/(\d+)\/lettings\/([a-zA-Z0-9]+)/);
+        return match ? `${match[1]}_${match[2]}` : null;
+      }
+      case SITES.SAVILLS: {
+        // URL like: /property-detail/abc123xyz
+        const match = pathname.match(/\/property-detail\/([a-zA-Z0-9-]+)/);
+        return match ? match[1] : null;
+      }
+      default:
+        return null;
+    }
   }
 
   function extractPostcode(data) {
@@ -249,10 +871,11 @@ console.log('[RFV] Script loaded!');
   }
 
   function extractLetType(data) {
-    // Extract let type from Rightmove propertyData
+    // Extract let type from propertyData
     // Returns 'short' for short-term lets, 'long' otherwise
+    // Works across all supported sites
 
-    // 1. Check lettings.letType field
+    // 1. Rightmove-specific: Check lettings.letType field
     if (data.lettings?.letType) {
       const letType = data.lettings.letType.toLowerCase();
       if (letType.includes('short')) return 'short';
@@ -262,6 +885,7 @@ console.log('[RFV] Script loaded!');
     if (data.channel?.toLowerCase().includes('short')) return 'short';
 
     // 3. Check description/property phrase for short let keywords
+    // Works for all sites
     const textToCheck = [
       data.text?.description || '',
       data.text?.propertyPhrase || '',
@@ -274,16 +898,86 @@ console.log('[RFV] Script loaded!');
         textToCheck.includes('short term') ||
         textToCheck.includes('short-term') ||
         textToCheck.includes('serviced apartment') ||
-        textToCheck.includes('holiday let')) {
+        textToCheck.includes('serviced accommodation') ||
+        textToCheck.includes('holiday let') ||
+        textToCheck.includes('corporate let') ||
+        textToCheck.includes('minimum 1 month') ||
+        textToCheck.includes('minimum one month') ||
+        textToCheck.includes('min 1 month')) {
       return 'short';
     }
 
-    // 4. Check URL
-    if (window.location.href.toLowerCase().includes('short')) {
+    // 4. Check site-specific let type indicators (NOT full page text - causes false positives)
+    if (currentSite === SITES.CHESTERTONS) {
+      // Chestertons uses a .bg-primary badge with "Long Let" or "Short Let" text
+      const letBadge = document.querySelector('.bg-primary, [class*="let-type"], [class*="lettings-type"]');
+      if (letBadge) {
+        const badgeText = letBadge.textContent.toLowerCase();
+        if (badgeText.includes('short')) return 'short';
+      }
+    } else if (currentSite === SITES.KNIGHTFRANK || currentSite === SITES.SAVILLS) {
+      // For other agent sites, check only listing description elements (not full page)
+      const descriptionEls = document.querySelectorAll(
+        '.property-description, [class*="description"], .kf-pdp-description, .sv-property-description'
+      );
+      for (const el of descriptionEls) {
+        const descText = el.textContent.toLowerCase();
+        if (descText.includes('short let') ||
+            descText.includes('short-term') ||
+            descText.includes('serviced apartment') ||
+            descText.includes('corporate let')) {
+          return 'short';
+        }
+      }
+    }
+
+    // 5. Check URL (but only for explicit short-let paths, not navigation)
+    const urlPath = window.location.pathname.toLowerCase();
+    if (urlPath.includes('short-let') || urlPath.includes('short_let')) {
       return 'short';
     }
 
     return 'long';
+  }
+
+  async function clickFloorplanTab() {
+    // Click the floorplan/floor plans tab to reveal lazy-loaded floorplan content
+    // This is required for Chestertons and Savills which hide floorplans in tabs
+    // Matches spider pattern: click tab with text containing "floor" + "plan"
+
+    try {
+      // Find and click tab/button with floorplan text
+      const tabSelectors = 'button, [role="tab"], a, .tab, [class*="tab"], nav a, .nav-link';
+      const tabs = document.querySelectorAll(tabSelectors);
+
+      for (const tab of tabs) {
+        const text = (tab.innerText || tab.textContent || '').toLowerCase().trim();
+        // Match "Floorplans", "Floor Plans", "Floorplan", "Floor Plan"
+        if ((text.includes('floor') && text.includes('plan')) || text === 'floorplan' || text === 'floorplans') {
+          console.log('[RFV] Found floorplan tab:', text);
+          tab.click();
+          return true;
+        }
+      }
+
+      // Also try clicking by aria-label or data attributes
+      const ariaTab = document.querySelector(
+        '[aria-label*="floorplan" i], [aria-label*="floor plan" i], ' +
+        '[data-tab*="floorplan" i], [data-tab*="floor" i], ' +
+        '[data-target*="floorplan" i]'
+      );
+      if (ariaTab) {
+        console.log('[RFV] Found floorplan tab via aria/data attribute');
+        ariaTab.click();
+        return true;
+      }
+
+      console.log('[RFV] No floorplan tab found');
+      return false;
+    } catch (e) {
+      console.error('[RFV] Error clicking floorplan tab:', e);
+      return false;
+    }
   }
 
   function extractPropertyType(data) {
@@ -299,7 +993,6 @@ console.log('[RFV] Script loaded!');
     // 3. From text/propertyPhrase
     if (data.text?.propertyPhrase) {
       const phrase = data.text.propertyPhrase.toLowerCase();
-      // Check for specific types
       if (phrase.includes('penthouse')) return 'penthouse';
       if (phrase.includes('studio')) return 'studio';
       if (phrase.includes('maisonette')) return 'maisonette';
@@ -307,11 +1000,21 @@ console.log('[RFV] Script loaded!');
       if (phrase.includes('apartment')) return 'apartment';
       if (phrase.includes('flat')) return 'flat';
     }
-    // 4. From listing update reason
+    // 4. From listing update reason (Rightmove)
     if (data.listingUpdate?.listingUpdateReason) {
       const reason = data.listingUpdate.listingUpdateReason.toLowerCase();
       if (reason.includes('penthouse')) return 'penthouse';
       if (reason.includes('studio')) return 'studio';
+    }
+    // 5. For agent sites, try page title or description
+    if (currentSite !== SITES.RIGHTMOVE) {
+      const checkText = (document.title + ' ' + (data.text?.description || '')).toLowerCase();
+      if (checkText.includes('penthouse')) return 'penthouse';
+      if (checkText.includes('studio')) return 'studio';
+      if (checkText.includes('maisonette')) return 'maisonette';
+      if (checkText.includes('house')) return 'house';
+      if (checkText.includes('mews')) return 'house';
+      if (checkText.includes('apartment')) return 'apartment';
     }
     // Default to flat
     return 'flat';
@@ -335,8 +1038,13 @@ console.log('[RFV] Script loaded!');
     if (data.lettingInformation?.agentName) {
       return data.lettingInformation.agentName;
     }
-    // Default empty
-    return '';
+    // 5. Fallback based on detected site
+    switch (currentSite) {
+      case SITES.KNIGHTFRANK: return 'Knight Frank';
+      case SITES.CHESTERTONS: return 'Chestertons';
+      case SITES.SAVILLS: return 'Savills';
+      default: return '';
+    }
   }
 
   function extractSqftFromPage(data) {
@@ -354,18 +1062,111 @@ console.log('[RFV] Script loaded!');
   }
 
   function getFloorplanUrl(data) {
-    // Check floorplans array
+    // Helper to extract best URL from img element, preferring data-src for lazy loading
+    // and avoiding placeholder/data URLs
+    function getBestImgUrl(img) {
+      if (!img) return null;
+      const dataSrc = img.dataset?.src || img.getAttribute('data-src');
+      const src = img.getAttribute('src') || img.src;
+
+      // Prefer data-src if it contains floorplan pattern (lazy-loaded actual URL)
+      if (dataSrc && (dataSrc.includes('floorplan') || dataSrc.includes('/files/'))) {
+        return dataSrc;
+      }
+
+      // Use src only if it's a real URL (not placeholder/data URI)
+      if (src && !src.startsWith('data:') && !src.includes('placeholder') && !src.includes('loading')) {
+        // Check if src has floorplan pattern
+        if (src.includes('floorplan') || src.includes('/files/')) {
+          return src;
+        }
+      }
+
+      // Fallback: return whichever exists
+      return dataSrc || (src && !src.startsWith('data:') ? src : null);
+    }
+
+    // Check floorplans array (works for all sites)
     const floorplans = data.floorplans || [];
     if (floorplans.length > 0) {
       return floorplans[0].url || floorplans[0].srcUrl;
     }
-    // Check media array
+
+    // Check media array (Rightmove)
     const media = data.media || [];
     for (const m of media) {
       if (m.type === 'floorplan' || (m.url && m.url.includes('_FLP_'))) {
         return m.url || m.srcUrl;
       }
     }
+
+    // For agent sites, try to find floorplan in DOM if not in data
+    if (currentSite !== SITES.RIGHTMOVE) {
+      // Site-specific patterns first
+      let imgSelector = '';
+      let linkSelector = '';
+
+      switch (currentSite) {
+        case SITES.CHESTERTONS:
+          // Also check for homeflow-assets domain
+          imgSelector = 'img[src*="/files/floorplan/"], img[data-src*="/files/floorplan/"], ' +
+                       'img[src*="homeflow-assets"][src*="floorplan"], img[data-src*="homeflow-assets"]';
+          break;
+        case SITES.KNIGHTFRANK:
+          imgSelector = 'img[src*="content.knightfrank.com"][src*="floorplan"], img[data-src*="content.knightfrank.com"]';
+          linkSelector = 'a[href*="floorplan"]';
+          break;
+        case SITES.SAVILLS:
+          imgSelector = '.sv-pdp-floorplan img, [data-type="floorplan"] img, [data-tab="plans"] img';
+          break;
+      }
+
+      // Check site-specific selectors first
+      if (imgSelector) {
+        const siteImg = document.querySelector(imgSelector);
+        const url = getBestImgUrl(siteImg);
+        if (url) return url;
+      }
+
+      if (linkSelector) {
+        const siteLink = document.querySelector(linkSelector);
+        if (siteLink?.href) return siteLink.href;
+      }
+
+      // Generic fallback - check for floorplan images (including data-src for lazy loading)
+      const floorplanImg = document.querySelector(
+        'img[src*="floorplan"], img[src*="floor-plan"], img[src*="Floorplan"], ' +
+        'img[data-src*="floorplan"], img[data-src*="floor-plan"], ' +
+        'img[alt*="floorplan" i], img[alt*="floor plan" i], ' +
+        '.floorplan img, [class*="floorplan"] img, [data-type="floorplan"] img'
+      );
+      if (floorplanImg) {
+        const url = getBestImgUrl(floorplanImg);
+        if (url) return url;
+      }
+
+      // Check for floorplan links
+      const floorplanLink = document.querySelector(
+        'a[href*="floorplan"], a[href*="floor-plan"], ' +
+        '[class*="floorplan"] a, [data-type="floorplan"] a'
+      );
+      if (floorplanLink && floorplanLink.href) {
+        return floorplanLink.href;
+      }
+
+      // Final fallback - regex search in page HTML for common CDN patterns
+      const htmlContent = document.body.innerHTML;
+      const patterns = [
+        /https:\/\/[^"\s]+\/files\/floorplan\/[^"\s]+/i,  // Chestertons
+        /https:\/\/content\.knightfrank\.com\/[^"\s]*floorplan[^"\s]*\.(?:jpg|png|jpeg)/i,  // Knight Frank
+        /https:\/\/[^"\s]*savills[^"\s]*(?:floorplan|floor-plan|_fp)[^"\s]*\.(?:jpg|png|jpeg)/i,  // Savills
+      ];
+      for (const pattern of patterns) {
+        const match = htmlContent.match(pattern);
+        if (match) return match[0];
+      }
+    }
+
     return null;
   }
 
@@ -487,12 +1288,36 @@ console.log('[RFV] Script loaded!');
 
   function parsePrice(text) {
     if (!text) return null;
-    const num = text.replace(/[^\d.]/g, '');
-    if (!num) return null;
-    let price = parseFloat(num);
-    if (/pw|per week|weekly/i.test(text)) {
-      price = price * 52 / 12;
+
+    // CRITICAL FIX: Extract FIRST price only (handles "£500 pw (£2,166 pcm)" cases)
+    // Look for £X,XXX pattern - extract first match only
+    const priceMatch = text.match(/£([\d,]+(?:\.\d{2})?)/);
+    if (!priceMatch) {
+      // Fallback: try to find any number sequence
+      const numMatch = text.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/);
+      if (!numMatch) return null;
+      const num = parseFloat(numMatch[1].replace(/,/g, ''));
+      if (isNaN(num) || num <= 0) return null;
+      // Apply weekly conversion if needed
+      if (/pw|per week|weekly/i.test(text)) {
+        return Math.round(num * 52 / 12);
+      }
+      return Math.round(num);
     }
+
+    // Parse the matched price (remove commas)
+    const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+    if (isNaN(price) || price <= 0) return null;
+
+    // Check if this is a weekly price - look at context around the matched price
+    const priceIndex = text.indexOf(priceMatch[0]);
+    const contextAfter = text.substring(priceIndex, priceIndex + 30).toLowerCase();
+
+    if (/pw|per\s*week|weekly/i.test(contextAfter)) {
+      // Convert weekly to monthly: price * 52 / 12
+      return Math.round(price * 52 / 12);
+    }
+
     return Math.round(price);
   }
 
@@ -506,7 +1331,9 @@ console.log('[RFV] Script loaded!');
           console.log('[RFV] Cache loaded:', Object.keys(predictionsCache).length);
         }
       }
-      return predictionsCache?.[`rightmove:${propertyId}`] || null;
+      // Use site-specific cache key
+      const cacheKey = `${currentSite}:${propertyId}`;
+      return predictionsCache?.[cacheKey] || null;
     } catch (e) {
       console.error('[RFV] Cache load failed:', e);
       return null;
@@ -728,9 +1555,21 @@ console.log('[RFV] Script loaded!');
 
         <div id="rfv-similar-placeholder"></div>
 
+        <button class="rfv-compare-btn" id="rfv-compare-btn">
+          Compare with Similar Properties
+        </button>
+
         <div class="rfv-footer">XGBoost V20 · ${source === 'cached' ? 'Cached' : 'Live'}</div>
       </div>
     `;
+
+    // Add click handler for Compare button
+    const compareBtn = document.getElementById('rfv-compare-btn');
+    if (compareBtn) {
+      compareBtn.addEventListener('click', () => {
+        openComparePage(r);
+      });
+    }
 
     // Load similar properties in background
     if (r.postcode_district && r.beds) {
@@ -789,5 +1628,29 @@ console.log('[RFV] Script loaded!');
 
   function formatNum(n) { return n.toLocaleString('en-GB'); }
   function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+  function openComparePage(result) {
+    // Build URL params from result data
+    const propertyData = extractPropertyData();
+    const address = propertyData?.address?.displayAddress || 'Unknown Property';
+    const postcode = extractPostcode(propertyData);
+    const propertyId = extractPropertyId();
+
+    const params = new URLSearchParams({
+      address: address,
+      postcode: postcode,
+      beds: result.beds || 2,
+      sqft: result.size_sqft || 0,
+      price: result.asking_price,
+      fairValue: result.fair_value,
+      type: extractPropertyType(propertyData),
+      url: window.location.href,
+      propertyId: propertyId || '',
+    });
+
+    // Open compare page in new tab
+    const compareUrl = chrome.runtime.getURL('compare.html') + '?' + params.toString();
+    window.open(compareUrl, '_blank');
+  }
 
 })();

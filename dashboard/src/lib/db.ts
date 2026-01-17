@@ -1104,6 +1104,7 @@ export interface SimilarListing {
   property_type: string | null;
   ppsf: number | null;
   similarity_score: number;
+  last_seen: string | null;  // ISO timestamp of when listing was last verified active
 }
 
 export interface SimilarListingsResult {
@@ -1159,6 +1160,7 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
   const safeExcludeId = excludeId ?? '__NO_MATCH__';
 
   // Query for similar listings with similarity scoring
+  // Only include listings seen in the last 7 days to avoid showing stale/removed listings
   const { rows } = await sql<SimilarListing>`
     WITH scored AS (
       SELECT
@@ -1172,6 +1174,7 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
         size_sqft::int as size_sqft,
         bedrooms::int as bedrooms,
         property_type,
+        last_seen::text as last_seen,
         CASE WHEN size_sqft > 0 THEN ROUND((price_pcm::numeric / size_sqft::numeric), 2)::float ELSE NULL END as ppsf,
         -- Similarity scoring (0-1 scale)
         (

@@ -182,3 +182,115 @@
   opacity: 0.6;
   line-height: 1.4;
 }
+
+/* Short-term let warning */
+#rent-fair-value .rfv-short-let-warning {
+  text-align: center;
+  padding: 16px 12px;
+  background: #92400e;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+#rent-fair-value .rfv-warning-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+#rent-fair-value .rfv-warning-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #fbbf24;
+}
+
+#rent-fair-value .rfv-warning-text {
+  font-size: 11px;
+  opacity: 0.9;
+  line-height: 1.5;
+}
+
+/* Similar Properties */
+#rent-fair-value .rfv-similar-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #374151;
+}
+
+#rent-fair-value .rfv-similar-title {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#rent-fair-value .rfv-similar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#rent-fair-value .rfv-similar-item {
+  background: #374151;
+  border-radius: 6px;
+  padding: 10px;
+  text-decoration: none;
+  color: white;
+  transition: background 0.2s;
+}
+
+#rent-fair-value .rfv-similar-item:hover {
+  background: #4b5563;
+}
+
+#rent-fair-value .rfv-similar-address {
+  font-size: 11px;
+  opacity: 0.9;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#rent-fair-value .rfv-similar-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#rent-fair-value .rfv-similar-price {
+  font-size: 13px;
+  font-weight: 600;
+  color: #60a5fa;
+}
+
+#rent-fair-value .rfv-similar-specs {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* Compare Button */
+#rent-fair-value .rfv-compare-btn {
+  width: 100%;
+  padding: 12px 16px;
+  margin-top: 16px;
+  background: #00a651;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+#rent-fair-value .rfv-compare-btn:hover {
+  background: #00934a;
+  transform: translateY(-1px);
+}
+
+#rent-fair-value .rfv-compare-btn:active {
+  transform: translateY(0);
+}

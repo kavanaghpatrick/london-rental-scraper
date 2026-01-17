@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Property Comparison | Rent Fair Value</title>
+  <link rel="stylesheet" href="compare.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <h1 class="logo">Rent Fair Value</h1>
+        <span class="badge">Comparison</span>
+      </div>
+      <a id="back-link" href="#" class="back-link">Back to listing</a>
+    </header>
+
+    <!-- Loading State -->
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <p>Finding similar properties...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="error" class="error hidden">
+      <h2>Unable to load comparison</h2>
+      <p id="error-message"></p>
+      <button onclick="location.reload()">Try Again</button>
+    </div>
+
+    <!-- Main Content -->
+    <main id="content" class="content hidden">
+      <!-- Your Property Card -->
+      <section class="your-property">
+        <h2>Your Property</h2>
+        <div class="property-card highlight">
+          <div class="property-details">
+            <h3 id="your-address">Loading...</h3>
+            <div class="property-meta">
+              <span id="your-beds">-</span> bed
+              <span class="sep">|</span>
+              <span id="your-sqft">-</span> sqft
+              <span class="sep">|</span>
+              <span id="your-postcode">-</span>
+            </div>
+          </div>
+          <div class="property-price">
+            <div class="price-main" id="your-price">-</div>
+            <div class="price-sub">
+              <span id="your-ppsf">-</span>/sqft
+            </div>
+          </div>
+          <div class="property-value">
+            <div class="value-label">Fair Value</div>
+            <div class="value-amount" id="your-fair-value">-</div>
+            <div class="value-diff" id="your-diff">-</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats Summary -->
+      <section class="stats-summary">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-peers">-</div>
+          <div class="stat-label">Similar Properties</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-avg-price">-</div>
+          <div class="stat-label">Avg Price</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-avg-ppsf">-</div>
+          <div class="stat-label">Avg £/sqft</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-percentile">-</div>
+          <div class="stat-label">Price Percentile</div>
+        </div>
+      </section>
+
+      <!-- Price Positioning -->
+      <section class="price-positioning">
+        <h2>Price Positioning</h2>
+        <div class="price-range">
+          <div class="range-labels">
+            <span id="range-min">£-</span>
+            <span id="range-max">£-</span>
+          </div>
+          <div class="range-bar">
+            <div class="range-fill" id="range-fill"></div>
+            <div class="range-marker your-marker" id="your-marker" title="Your property"></div>
+            <div class="range-marker avg-marker" id="avg-marker" title="Average"></div>
+          </div>
+          <div class="range-legend">
+            <span><span class="dot your"></span> Your property</span>
+            <span><span class="dot avg"></span> Peer average</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Similar Properties Grid -->
+      <section class="peers-section">
+        <h2>Similar Properties <span id="peers-count">(0)</span></h2>
+        <div class="peers-grid" id="peers-grid">
+          <!-- Peer cards will be inserted here -->
+        </div>
+        <div id="no-peers" class="no-peers hidden">
+          <p>No similar properties found in this area.</p>
+          <p>Try expanding your search criteria.</p>
+        </div>
+      </section>
+
+      <!-- Market Insights -->
+      <section class="insights">
+        <h2>Market Insights</h2>
+        <ul id="insights-list">
+          <!-- Insights will be inserted here -->
+        </ul>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>Data from London rental listings database. Updated daily.</p>
+    </footer>
+  </div>
+
+  <script src="compare.js"></script>
+</body>
+</html>

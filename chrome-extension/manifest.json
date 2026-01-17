@@ -1,17 +1,25 @@
 {
   "manifest_version": 3,
   "name": "Rent Fair Value",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "ML-powered fair rent estimates for London properties",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://www.rightmove.co.uk/properties/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://www.rightmove.co.uk/properties/*",
+        "https://www.knightfrank.co.uk/properties/*",
+        "https://www.chestertons.co.uk/properties/*",
+        "https://search.savills.com/property-detail/*"
+      ],
+      "js": ["vendor/tesseract.min.js", "xgboost.js", "content.js"],
       "css": ["sidebar.css"],
       "run_at": "document_idle"
     }
@@ -19,6 +27,29 @@
   "permissions": ["activeTab"],
   "host_permissions": [
     "https://*.rightmove.co.uk/*",
-    "https://raw.githubusercontent.com/*"
+    "https://media.rightmove.co.uk/*",
+    "https://*.knightfrank.co.uk/*",
+    "https://content.knightfrank.com/*",
+    "https://*.chestertons.co.uk/*",
+    "https://*.homeflow-assets.co.uk/*",
+    "https://*.savills.com/*",
+    "https://raw.githubusercontent.com/*",
+    "https://dashboard-fawn-nu-59.vercel.app/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["api/model.json", "api/features.json"],
+      "matches": [
+        "https://www.rightmove.co.uk/*",
+        "https://www.knightfrank.co.uk/*",
+        "https://www.chestertons.co.uk/*",
+        "https://search.savills.com/*",
+        "https://*.savills.com/*"
+      ]
+    },
+    {
+      "resources": ["compare.html", "compare.js", "compare.css"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }
