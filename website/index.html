@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rent Fair Value - Know If You're Overpaying Rent | Free Chrome Extension</title>
+  <meta name="description" content="Free Chrome extension showing fair market rent for London properties. Analyzes 10,000+ listings across 120+ postcodes.">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Know If You're Overpaying Rent">
+  <meta property="og:description" content="Free Chrome extension for London renters. See fair market rent instantly.">
+  <meta property="og:image" content="assets/images/og-image.png">
+  <meta property="og:type" content="website">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Skip link for keyboard users -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Header -->
+  <header id="header" class="header">
+    <div class="container header__container">
+      <a href="/" class="header__logo">
+        <svg class="header__logo-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        <span>Rent Fair Value</span>
+      </a>
+      <nav aria-label="Primary actions">
+        <a href="#" class="btn btn-primary" data-cta="header">
+          <svg class="btn__icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" fill="#4285F4"/>
+            <circle cx="12" cy="12" r="4" fill="#fff"/>
+            <path d="M21.8 10.4h-9.5v3.3h5.5c-.5 2.5-2.6 4.3-5.5 4.3-3.3 0-6-2.7-6-6s2.7-6 6-6c1.5 0 2.8.5 3.9 1.4l2.5-2.5C16.6 3.2 14.4 2.2 12 2.2 6.5 2.2 2 6.7 2 12.2s4.5 10 10 10c5.2 0 9.8-3.8 9.8-10 0-.6-.1-1.2-.2-1.8z" fill="#4285F4"/>
+          </svg>
+          Add to Chrome - Free
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <!-- Hero Section -->
+    <section id="hero" class="hero">
+      <div class="container hero__container">
+        <div class="hero__content">
+          <h1 class="hero__title">Know If You're Overpaying Rent. Instantly.</h1>
+          <p class="hero__subtitle">
+            Free Chrome extension that shows fair market rent for any London listing.
+            Powered by analysis of 10,000+ properties across 120+ postcodes.
+          </p>
+          <a href="#" class="btn btn-primary btn-large" data-cta="hero">
+            <svg class="btn__icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" fill="#4285F4"/>
+              <circle cx="12" cy="12" r="4" fill="#fff"/>
+              <path d="M21.8 10.4h-9.5v3.3h5.5c-.5 2.5-2.6 4.3-5.5 4.3-3.3 0-6-2.7-6-6s2.7-6 6-6c1.5 0 2.8.5 3.9 1.4l2.5-2.5C16.6 3.2 14.4 2.2 12 2.2 6.5 2.2 2 6.7 2 12.2s4.5 10 10 10c5.2 0 9.8-3.8 9.8-10 0-.6-.1-1.2-.2-1.8z" fill="#4285F4"/>
+            </svg>
+            Add to Chrome - It's Free
+          </a>
+        </div>
+        <div class="hero__visual" aria-hidden="true">
+          <div class="mockup">
+            <div class="mockup__browser">
+              <div class="mockup__toolbar">
+                <div class="mockup__dots">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="mockup__url">rentals.example.com</div>
+              </div>
+              <div class="mockup__content">
+                <div class="mockup__listing">
+                  <div class="mockup__image"></div>
+                  <div class="mockup__details">
+                    <div class="mockup__line mockup__line--title"></div>
+                    <div class="mockup__line mockup__line--short"></div>
+                    <div class="mockup__line mockup__line--short"></div>
+                  </div>
+                </div>
+                <div class="mockup__overlay">
+                  <div class="mockup__overlay-header">Rent Fair Value</div>
+                  <div class="mockup__overlay-row">
+                    <span>Asking:</span>
+                    <span class="mockup__price">£2,100/mo</span>
+                  </div>
+                  <div class="mockup__overlay-row">
+                    <span>Fair Value:</span>
+                    <span class="mockup__price mockup__price--green">£1,847/mo</span>
+                  </div>
+                  <div class="mockup__overlay-row mockup__overlay-row--highlight">
+                    <span>You could save:</span>
+                    <span class="mockup__price mockup__price--green">£253/mo</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="how-it-works">
+      <div class="container">
+        <h2 class="section-title">How It Works</h2>
+        <div class="steps">
+          <div class="step">
+            <div class="step__number">1</div>
+            <div class="step__icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <h3 class="step__title">Install</h3>
+            <p class="step__desc">Add to Chrome in one click</p>
+          </div>
+          <div class="step">
+            <div class="step__number">2</div>
+            <div class="step__icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <h3 class="step__title">Browse</h3>
+            <p class="step__desc">Visit any London rental listing</p>
+          </div>
+          <div class="step">
+            <div class="step__number">3</div>
+            <div class="step__icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+            </div>
+            <h3 class="step__title">Save</h3>
+            <p class="step__desc">See fair value instantly</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="features">
+      <div class="container">
+        <div class="features__grid">
+          <div class="feature-card">
+            <div class="feature-card__icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <line x1="12" y1="20" x2="12" y2="10"></line>
+                <line x1="18" y1="20" x2="18" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="16"></line>
+              </svg>
+            </div>
+            <h3 class="feature-card__title">Fair Value Estimates</h3>
+            <p class="feature-card__desc">
+              See what properties should actually cost based on 10,000+ London rentals
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card__icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+            </div>
+            <h3 class="feature-card__title">Similar Properties</h3>
+            <p class="feature-card__desc">
+              Compare with nearby rentals at similar price points
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card__icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+            </div>
+            <h3 class="feature-card__title">Instant Assessment</h3>
+            <p class="feature-card__desc">
+              Know immediately if a listing is overpriced, fair, or a deal
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Data Credibility -->
+    <section id="data" class="data-section">
+      <div class="container">
+        <div class="stats">
+          <div class="stat">
+            <div class="stat__number">10,000+</div>
+            <div class="stat__label">London rentals analyzed</div>
+          </div>
+          <div class="stat">
+            <div class="stat__number">120+</div>
+            <div class="stat__label">Postcode districts covered</div>
+          </div>
+          <div class="stat">
+            <div class="stat__number">80%</div>
+            <div class="stat__label">Model accuracy</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Example -->
+    <section id="example" class="example-section">
+      <div class="container">
+        <h2 class="section-title">Real Example</h2>
+        <div class="example-card">
+          <h3 class="example-card__title">2-Bed Flat in Shoreditch, E1</h3>
+          <div class="example-card__divider"></div>
+          <div class="example-card__rows">
+            <div class="example-card__row">
+              <span class="example-card__label">Listed at:</span>
+              <span class="example-card__value">£2,400/mo</span>
+            </div>
+            <div class="example-card__row">
+              <span class="example-card__label">Our estimate:</span>
+              <span class="example-card__value example-card__value--green">£2,050/mo</span>
+            </div>
+            <div class="example-card__row example-card__row--highlight">
+              <span class="example-card__label">Difference:</span>
+              <span class="example-card__value example-card__value--green">£350/mo (£4,200/year)</span>
+            </div>
+          </div>
+          <p class="example-card__note">
+            Based on similar properties in the area with comparable size and amenities.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="faq-section">
+      <div class="container">
+        <h2 class="section-title">Frequently Asked Questions</h2>
+        <div class="faq-list">
+          <div class="faq-item">
+            <button class="faq-item__question" aria-expanded="false">
+              <span>How does it work?</span>
+              <span class="faq-item__icon">+</span>
+            </button>
+            <div class="faq-item__answer">
+              <p>We analyze the property you're viewing and compare it against 10,000+ similar London rentals. Our model estimates fair market rent based on location, size, and features.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-item__question" aria-expanded="false">
+              <span>Is my data private?</span>
+              <span class="faq-item__icon">+</span>
+            </button>
+            <div class="faq-item__answer">
+              <p>Yes. The extension processes data locally. We don't track your browsing or store personal information.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-item__question" aria-expanded="false">
+              <span>How accurate is it?</span>
+              <span class="faq-item__icon">+</span>
+            </button>
+            <div class="faq-item__answer">
+              <p>Our model achieves ~80% accuracy (R² score) on London rental data. Estimates are most reliable for central London postcodes.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-item__question" aria-expanded="false">
+              <span>Is it really free?</span>
+              <span class="faq-item__icon">+</span>
+            </button>
+            <div class="faq-item__answer">
+              <p>Yes, completely free. No account needed.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section id="final-cta" class="final-cta">
+      <div class="container">
+        <h2 class="final-cta__title">Ready to stop overpaying?</h2>
+        <a href="#" class="btn btn-primary btn-primary--inverted btn-large" data-cta="final">
+          Add to Chrome - It's Free
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer id="footer" class="footer">
+    <div class="container">
+      <div class="footer__content">
+        <a href="privacy.html" class="footer__link">Privacy Policy</a>
+        <span class="footer__divider">·</span>
+        <a href="mailto:hello@rentfairvalue.com" class="footer__link">Contact</a>
+        <span class="footer__divider">·</span>
+        <span class="footer__text">Made in London</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- PostHog Analytics -->
+  <script>
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    posthog.init('phc_uQbCXX8hDY6LYEgDohL8hYggfx98qwe1yFSfM1vjEf0', {api_host: 'https://us.i.posthog.com'});
+  </script>
+  <script src="script.js"></script>
+</body>
+</html>

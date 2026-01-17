@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Rent Fair Value</title>
+  <meta name="description" content="Privacy Policy for Rent Fair Value Chrome Extension">
+  <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .privacy-page {
+      padding-top: calc(var(--header-height) + 40px);
+      padding-bottom: var(--spacing-section);
+    }
+    .privacy-content {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .privacy-content h1 {
+      font-size: var(--font-size-h1);
+      color: var(--color-text-dark);
+      margin-bottom: 16px;
+    }
+    .privacy-content .updated {
+      color: var(--color-text-light);
+      margin-bottom: 48px;
+    }
+    .privacy-content h2 {
+      font-size: var(--font-size-h3);
+      color: var(--color-text-dark);
+      margin-top: 40px;
+      margin-bottom: 16px;
+    }
+    .privacy-content p {
+      margin-bottom: 16px;
+      line-height: 1.7;
+    }
+    .privacy-content ul {
+      margin-bottom: 16px;
+      padding-left: 24px;
+    }
+    .privacy-content li {
+      margin-bottom: 8px;
+      line-height: 1.6;
+    }
+    .summary-box {
+      background: var(--color-primary-light);
+      border: 1px solid var(--color-primary);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+    .summary-box h2 {
+      color: var(--color-primary);
+      margin-top: 0;
+      margin-bottom: 16px;
+      font-size: 18px;
+    }
+    .summary-box ul {
+      margin: 0;
+      list-style: none;
+      padding: 0;
+    }
+    .summary-box li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .summary-box li::before {
+      content: '✓';
+      color: var(--color-primary);
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header id="header" class="header">
+    <div class="container header__container">
+      <a href="/" class="header__logo">
+        <svg class="header__logo-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        <span>Rent Fair Value</span>
+      </a>
+      <a href="index.html" class="btn btn-primary">
+        Back to Home
+      </a>
+    </div>
+  </header>
+
+  <main class="privacy-page">
+    <div class="container">
+      <div class="privacy-content">
+        <h1>Privacy Policy</h1>
+        <p class="updated">Last Updated: January 2025 | Version 1.0</p>
+
+        <div class="summary-box">
+          <h2>Privacy at a Glance</h2>
+          <ul>
+            <li>No login required</li>
+            <li>No personal data collected</li>
+            <li>Predictions run locally in your browser</li>
+            <li>Data never sold</li>
+            <li>Anonymous analytics only</li>
+          </ul>
+        </div>
+
+        <h2>1. What We Collect</h2>
+        <p>We use PostHog to collect anonymous analytics about how the extension is used:</p>
+        <ul>
+          <li>Page URLs where the extension runs</li>
+          <li>Event types (e.g., "prediction completed")</li>
+          <li>Property metadata (bedrooms, postcode district)</li>
+          <li>Extension version</li>
+        </ul>
+        <p>We store one randomly-generated identifier locally to distinguish unique installations. This ID is not linked to your identity.</p>
+
+        <h2>2. How We Use Data</h2>
+        <p>Analytics data is used to:</p>
+        <ul>
+          <li>Improve extension features</li>
+          <li>Fix bugs and errors</li>
+          <li>Understand usage patterns</li>
+        </ul>
+
+        <h2>3. Local Processing</h2>
+        <p>All rent predictions are calculated entirely within your browser using a pre-trained machine learning model. Property data from listings is processed locally and never sent to external servers.</p>
+
+        <h2>4. Third-Party Services</h2>
+        <ul>
+          <li><strong>PostHog:</strong> Anonymous usage analytics</li>
+          <li><strong>GitHub:</strong> Hosts ML model files (no user data sent)</li>
+        </ul>
+
+        <h2>5. Your Rights</h2>
+        <ul>
+          <li><strong>Delete data:</strong> Uninstall the extension to delete all locally stored data</li>
+          <li><strong>Opt out:</strong> Block us.i.posthog.com to disable analytics</li>
+          <li><strong>Contact us:</strong> Email hello@rentfairvalue.com for data requests</li>
+        </ul>
+
+        <h2>6. Contact</h2>
+        <p>For privacy inquiries: <a href="mailto:hello@rentfairvalue.com">hello@rentfairvalue.com</a></p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__content">
+        <a href="privacy.html" class="footer__link">Privacy Policy</a>
+        <span class="footer__divider">·</span>
+        <a href="mailto:hello@rentfairvalue.com" class="footer__link">Contact</a>
+        <span class="footer__divider">·</span>
+        <span class="footer__text">Made in London</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
