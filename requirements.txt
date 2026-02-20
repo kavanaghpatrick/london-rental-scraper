@@ -5,9 +5,7 @@ scrapy>=2.11.0
 itemadapter>=0.8.0
 
 # JavaScript rendering (Playwright for JS-heavy sites)
-# Using PR branch for Scrapy 2.14 compatibility until scrapy-playwright 0.0.45 is released
-# See: https://github.com/scrapy-plugins/scrapy-playwright/pull/357
-scrapy-playwright @ git+https://github.com/scrapy-plugins/scrapy-playwright.git@scrapy-2.14-2
+scrapy-playwright>=0.0.46
 playwright>=1.40.0
 
 # CLI
