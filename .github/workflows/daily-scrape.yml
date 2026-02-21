@@ -112,6 +112,7 @@ jobs:
           echo "items_scraped=$ITEMS" >> $GITHUB_OUTPUT
 
       - name: Run OCR enrichment on backlog floorplans
+        continue-on-error: true
         run: |
           # OCR enrichment for listings that weren't processed during scraping
           # Only process sources whose CDNs work from GitHub Actions:
