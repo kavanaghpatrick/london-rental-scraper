@@ -32,8 +32,8 @@
   const CONFIG = {
     PREDICTIONS_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/predictions.json',
     SIMILAR_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/similar_listings.json',
-    MODEL_URL: chrome.runtime.getURL('api/model.json'),
-    FEATURES_URL: chrome.runtime.getURL('api/features.json'),
+    MODEL_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/model.json',
+    FEATURES_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/features.json',
     OCR_TIMEOUT: 60000,
   };
 
