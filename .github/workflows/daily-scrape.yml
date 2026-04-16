@@ -331,11 +331,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Add the exported model files
+          # Add the exported model files (-f for .pkl files ignored by .gitignore)
           git add chrome-extension/api/model.json
           git add chrome-extension/api/features.json
-          git add output/rental_model_v20.pkl
-          git add output/rental_model_v20_features.pkl
+          git add -f output/rental_model_v20.pkl
+          git add -f output/rental_model_v20_features.pkl
 
           # Only commit if there are changes
           if git diff --staged --quiet; then
