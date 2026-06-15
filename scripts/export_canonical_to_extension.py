@@ -1,73 +1,49 @@
 #!/usr/bin/env python3
 """
-Export the CANONICAL model (output/rental_model_canonical.pkl) to the Chrome
-extension artifact format, with ZERO drift from the served model.
+Export the CANONICAL model to the Chrome extension artifact format
+(chrome-extension/api/model.json + features.json) with ZERO drift.
 
-Why this and not `rental_price_models_v20.py --export`:
-  `--export` RE-TRAINS a fresh booster on the `is_active=1` (or Postgres) frame,
-  which is a DIFFERENT row set than the canonical recency-independent retrain.
-  Same hyperparameters, different data -> a different booster -> drift. Exporting
-  the canonical pkl's booster directly guarantees chrome-extension/api/model.json
-  IS the canonical model, byte-for-byte.
+This is a thin CLI wrapper around the SINGLE SOURCE OF TRUTH,
+`canonical_predict.export_to_chrome()`. All export logic lives there so the
+Python serving path, the automation pipeline, and this script can never diverge.
 
-Loader contract (chrome-extension/xgboost.js):
-  - model.json  : native XGBoost JSON (booster.save_model). Reads
-                  learner.gradient_booster.model.trees[] and base_score.
-  - features.json: a FLAT, ORDER-SENSITIVE list[str]. The loader builds the
-                  feature vector from THIS order and zero-fills any name the
-                  extension's buildFeatures() does not emit. The canonical
-                  135-feature order (rental_model_canonical_features.pkl) IS the
-                  contract.
+Why delegate (instead of a private implementation):
+  - canonical_predict.export_to_chrome() serializes via the underlying Booster
+    (`get_booster().save_model`), NOT the sklearn wrapper's save_model. A *unpickled*
+    XGBRegressor can lose `_estimator_type` under xgboost>=2, making
+    XGBRegressor.save_model raise — which is why `rental_price_models_v20.py --export`
+    is broken. The Booster JSON is exactly what chrome-extension/xgboost.js parses
+    (learner.gradient_booster.model.trees[] + base_score).
+  - It loads the canonical model + the EXACT feature order it was trained on and
+    asserts the model.json + features.json pair matches before returning, so the
+    JSON model and the JSON feature list can never drift from each other.
 
-Outputs (overwrites in place):
-  chrome-extension/api/model.json
-  chrome-extension/api/features.json
+Loader contract reminder (chrome-extension/xgboost.js): features.json is a flat,
+ORDER-SENSITIVE list; the loader builds the vector from that order and zero-fills
+any name buildFeatures() doesn't emit (`?? 0`), so a 135-feature artifact is fully
+compatible with the extension's 150-key feature builder.
+
+Usage:
+    python3 scripts/export_canonical_to_extension.py [out_dir]
+    (out_dir defaults to chrome-extension/api)
 """
 
-import json
-import os
-import pickle
 import sys
 from pathlib import Path
 
+# Make the project root importable so `import canonical_predict` works from scripts/.
 ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = ROOT / 'output'
-API_DIR = ROOT / 'chrome-extension' / 'api'
+sys.path.insert(0, str(ROOT))
 
-CANONICAL_MODEL = OUTPUT_DIR / 'rental_model_canonical.pkl'
-CANONICAL_FEATURES = OUTPUT_DIR / 'rental_model_canonical_features.pkl'
-
-MODEL_JSON = API_DIR / 'model.json'
-FEATURES_JSON = API_DIR / 'features.json'
+import canonical_predict as cp  # noqa: E402
 
 
-def export():
-    if not CANONICAL_MODEL.exists() or not CANONICAL_FEATURES.exists():
-        sys.exit(f"ERROR: canonical artifacts missing under {OUTPUT_DIR}/ "
-                 f"(need rental_model_canonical.pkl + _features.pkl)")
-
-    model = pickle.load(open(CANONICAL_MODEL, 'rb'))
-    feature_cols = list(pickle.load(open(CANONICAL_FEATURES, 'rb')))
-
-    n_in = getattr(model, 'n_features_in_', None)
-    if n_in != len(feature_cols):
-        sys.exit(f"ERROR: model.n_features_in_={n_in} != len(features)={len(feature_cols)}")
-
-    API_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Native XGBoost JSON straight from the canonical booster (no retrain).
-    booster = model.get_booster()
-    booster.save_model(str(MODEL_JSON))
-
-    # Feature order = canonical contract.
-    with open(FEATURES_JSON, 'w') as f:
-        json.dump(feature_cols, f, indent=2)
-
-    print(f"Wrote {MODEL_JSON}")
-    print(f"Wrote {FEATURES_JSON}")
-    print(f"  features: {len(feature_cols)}  trees: {model.n_estimators}")
-    return MODEL_JSON, FEATURES_JSON
+def main():
+    out_dir = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / 'chrome-extension' / 'api')
+    model_path, features_path = cp.export_to_chrome(out_dir)
+    print(f"Exported canonical {cp.CANONICAL_VERSION} -> {model_path}, {features_path}")
+    return model_path, features_path
 
 
 if __name__ == '__main__':
-    export()
+    main()
