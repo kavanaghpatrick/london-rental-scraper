@@ -342,8 +342,16 @@ def is_likely_social_housing(row):
         if re.search(pattern, address):
             return 1
 
+    # Gate the PPSF-based branch on a REAL positive price. At inference time price
+    # is the unknown target, so ppsf defaults to 0 — `ppsf < 3.5` would then fire
+    # on EVERY premium-postcode prediction, spuriously discounting the whole prime
+    # market (~-81% on e.g. SW1W). Require 0 < ppsf < 3.5 so only genuinely cheap
+    # listings (real low ppsf) trip it. Training rows always have a real price
+    # (0 training rows have ppsf==0), so this is PREDICTION-ONLY — the trained model
+    # is unchanged, no retrain needed. Matches chrome-extension/xgboost.js
+    # (`if (ppsf && ppsf < 3.5)`). See task #30.
     if any(postcode_district.startswith(p) for p in PREMIUM_POSTCODES_SOCIAL):
-        if ppsf < 3.5:
+        if 0 < ppsf < 3.5:
             return 1
     return 0
 
@@ -1084,12 +1092,20 @@ def export_to_chrome(model, feature_cols, output_dir):
     print("EXPORTING TO CHROME EXTENSION")
     print("=" * 70)
 
-    chrome_dir = Path('chrome-extension/api')
+    # Honor the passed output_dir (was previously hardcoded to chrome-extension/api).
+    chrome_dir = Path(output_dir) if output_dir else Path('chrome-extension/api')
     chrome_dir.mkdir(parents=True, exist_ok=True)
 
-    # Export model to JSON
+    # Export model to JSON.
+    # Use the underlying Booster: a *unpickled* XGBRegressor can lose its
+    # _estimator_type metadata under xgboost>=2/3, and XGBRegressor.save_model()
+    # then raises "`_estimator_type` undefined". The Booster JSON is exactly what
+    # chrome-extension/xgboost.js parses, so this is the correct + robust path.
+    # (Canonical exports go through canonical_predict.export_to_chrome, which does
+    # the same thing; this keeps the script's own --export path working too.)
     model_path = chrome_dir / 'model.json'
-    model.save_model(str(model_path.with_suffix('.json')))
+    booster = model.get_booster() if hasattr(model, 'get_booster') else model
+    booster.save_model(str(model_path))
     print(f"  Saved model to {model_path}")
 
     # Export features list
@@ -1099,7 +1115,7 @@ def export_to_chrome(model, feature_cols, output_dir):
     print(f"  Saved features to {features_path}")
 
     print(f"\n  Total features: {len(feature_cols)}")
-    print(f"  Model trees: {model.n_estimators}")
+    print(f"  Model trees: {booster.num_boosted_rounds()}")
 
     return model_path, features_path
 

@@ -14,6 +14,7 @@ import gzip
 import json
 import logging
 import os
+import pickle
 import shutil
 import signal
 import sqlite3
@@ -86,13 +87,19 @@ class DailyPipeline:
         self.start_time = datetime.now()
         logger.info(f"{'[DRY RUN] ' if self.dry_run else ''}Starting daily pipeline run: {self.run_id}")
 
-        # Define stage order and functions
+        # Define stage order and functions.
+        # Core loop (user ask: "model retrains after every scrape, everything served"):
+        #   scrape -> enrich -> dedupe -> RETRAIN(canonical) -> EXPORT artifacts
+        #   -> SYNC to Postgres/Neon -> deploy (trigger).
         all_stages = [
             ('preflight', self._run_preflight),
             ('scrape', self._run_scrape),
             ('enrich', self._run_enrich),
             ('dedupe', self._run_dedupe),
-            ('train', self._run_train),
+            ('train', self._run_train),      # retrain canonical (v20) -> rental_model_canonical.pkl
+            ('export', self._run_export),    # model.json/features.json/similar_listings.json/predictions.json
+            ('sync', self._run_sync),        # mirror canonical SQLite -> Neon Postgres (dry-run in pipeline)
+            ('deploy', self._run_deploy),    # trigger dashboard/extension refresh (gated)
             ('report', self._run_report),
             ('postflight', self._run_postflight),
         ]
@@ -200,10 +207,13 @@ class DailyPipeline:
         result.metrics['backup_path'] = str(backup_path)
         logger.info(f"Database backed up to: {backup_path}")
 
-        # 5. Mark old listings inactive
-        marked = self._mark_inactive_listings()
+        # 5. Mark old listings inactive (cycle-relative; never in dry-run)
+        marked = self._mark_inactive_listings(dry_run=self.dry_run)
         result.metrics['listings_marked_inactive'] = marked
-        logger.info(f"Marked {marked} listings as inactive (not seen in {self.config.mark_inactive_days} days)")
+        if self.dry_run:
+            logger.info(f"[DRY RUN] Would mark {marked} listings inactive (no write performed)")
+        else:
+            logger.info(f"Marked {marked} listings as inactive (cycle-relative, {self.config.mark_inactive_days}d window)")
 
         # 6. Get baseline stats
         stats = self._get_db_stats()
@@ -253,19 +263,82 @@ class DailyPipeline:
 
         return backup_path
 
-    def _mark_inactive_listings(self) -> int:
-        """Mark listings not seen recently as inactive."""
-        cutoff = (datetime.utcnow() - timedelta(days=self.config.mark_inactive_days)).isoformat()
+    def _mark_inactive_listings(self, dry_run: bool = False) -> int:
+        """Mark listings not seen in the last N days inactive — CYCLE-RELATIVE.
+
+        BUG FIX (#25): the previous version used wall-clock `utcnow() - N days`. On a
+        FROZEN/STALE snapshot (e.g. the canonical DB whose last scrape was months ago)
+        every row is older than `now - N days`, so this zeroed ALL is_active — which
+        re-empties the dashboard (the original prod-empty bug). Worse, it ran even in
+        --dry-run because preflight is exempt from the dry-skip.
+
+        Fixes:
+          * Cutoff is relative to the DATA's own clock: max(last_seen) - N days. On a
+            fresh scrape max(last_seen) ≈ now, so behavior is unchanged; on a stale
+            snapshot the recent rows of THAT cycle stay active.
+          * Frozen-snapshot guard: if the newest row is itself older than N days by
+            wall clock, the data isn't from a live cycle — skip entirely rather than
+            zero everything.
+          * Honors dry_run: counts what WOULD change, writes nothing.
+        """
         conn = sqlite3.connect(self.config.db_path)
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE listings SET is_active = 0
-            WHERE is_active = 1 AND last_seen < ?
-        """, (cutoff,))
-        affected = cursor.rowcount
-        conn.commit()
-        conn.close()
-        return affected
+        try:
+            cursor = conn.cursor()
+            row = cursor.execute("SELECT MAX(last_seen) FROM listings").fetchone()
+            max_last_seen = row[0] if row else None
+            if not max_last_seen:
+                return 0
+
+            # Frozen-snapshot guard: if even the newest listing is older than the
+            # window by wall clock, treat the DB as a frozen snapshot and do nothing.
+            wall_cutoff = (datetime.utcnow() - timedelta(days=self.config.mark_inactive_days)).isoformat()
+            if max_last_seen < wall_cutoff:
+                logger.warning(
+                    f"Frozen-snapshot guard: newest last_seen={max_last_seen[:10]} is older than "
+                    f"{self.config.mark_inactive_days}d — SKIPPING mark-inactive to avoid zeroing a stale DB"
+                )
+                return 0
+
+            # Cycle-relative cutoff: relative to the data's own latest timestamp.
+            try:
+                anchor = datetime.fromisoformat(max_last_seen)
+            except ValueError:
+                anchor = datetime.utcnow()
+            cutoff = (anchor - timedelta(days=self.config.mark_inactive_days)).isoformat()
+
+            count = cursor.execute(
+                "SELECT COUNT(*) FROM listings WHERE is_active = 1 AND last_seen < ?",
+                (cutoff,),
+            ).fetchone()[0]
+
+            # Defense-in-depth (dataeng's request): even with the cycle-relative cutoff,
+            # ABORT if this single pass would flip more than half of the currently-active
+            # listings inactive. A correct daily cycle retires a small tail, never the
+            # bulk — a >50% flip means the date logic or the data is wrong, so refuse to
+            # write rather than risk re-emptying the dashboard/model.
+            active_now = cursor.execute(
+                "SELECT COUNT(*) FROM listings WHERE is_active = 1"
+            ).fetchone()[0]
+            if active_now > 0 and count > 0.5 * active_now:
+                logger.error(
+                    f"mark-inactive ABORTED: would flip {count}/{active_now} "
+                    f"({100*count/active_now:.0f}%) of active listings inactive — exceeds 50% "
+                    f"safety threshold. Refusing to write (likely bad cutoff or stale data)."
+                )
+                return 0
+
+            if dry_run:
+                return count  # no write
+
+            cursor.execute(
+                "UPDATE listings SET is_active = 0 WHERE is_active = 1 AND last_seen < ?",
+                (cutoff,),
+            )
+            affected = cursor.rowcount
+            conn.commit()
+            return affected
+        finally:
+            conn.close()
 
     def _get_db_stats(self) -> dict:
         """Get current database statistics."""
@@ -386,6 +459,34 @@ class DailyPipeline:
             pass
         return 0
 
+    def _run_subprocess(self, cmd: list[str], log_name: str) -> bool:
+        """Run a child command, tee output to a per-run log, return success.
+
+        Shared helper for the train/export/sync/deploy stages. Honors the relevant
+        stage timeout via the calling stage's config where applicable; uses the
+        total_timeout as a safety ceiling otherwise. Logs the command for auditability.
+        """
+        log_file = self.run_log_dir / log_name
+        logger.info(f"$ {' '.join(cmd)}  (log: {log_name})")
+        try:
+            with open(log_file, "w") as f:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=self.config.project_root,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,
+                    timeout=self.config.total_timeout_seconds,
+                )
+            if proc.returncode != 0:
+                logger.warning(f"Command exited {proc.returncode}: {' '.join(cmd)} (see {log_name})")
+            return proc.returncode == 0
+        except subprocess.TimeoutExpired:
+            logger.error(f"Command timed out: {' '.join(cmd)}")
+            return False
+        except Exception as e:
+            logger.error(f"Command errored: {' '.join(cmd)}: {e}")
+            return False
+
     # =========================================================================
     # ENRICH STAGE
     # =========================================================================
@@ -483,18 +584,34 @@ class DailyPipeline:
         return result
 
     # =========================================================================
-    # TRAIN STAGE
+    # TRAIN STAGE (canonical retrain)
     # =========================================================================
     def _run_train(self, result: StageResult) -> StageResult:
-        """Retrain model if sufficient new data."""
-        # Check if we should retrain
+        """Retrain the CANONICAL model (v20) after the scrape.
+
+        Calls retrain_canonical.py (chosen by the modeler bake-off, MODEL_DECISION.md)
+        which trains on the recency-independent set from a copy of the canonical DB
+        and writes deterministic artifacts:
+            output/rental_model_canonical.pkl
+            output/rental_model_canonical_features.pkl
+            output/rental_model_canonical_meta.json
+
+        Idempotent: re-running overwrites the same deterministic paths. We verify the
+        artifacts exist afterward and smoke-test the CV metrics against a floor so a
+        regressed retrain is flagged (but does not, by itself, halt the pipeline).
+        """
         stats = self._get_db_stats()
         result.metrics['current_records'] = stats['with_sqft']
+        logger.info(f"Retraining canonical model (db has {stats['with_sqft']} sqft records)")
 
-        # For now, always train (can add threshold logic later)
-        logger.info(f"Training model with {stats['with_sqft']} records")
-
-        cmd = ["python3", "rental_price_models_v14.py", "--quick"]
+        # retrain_canonical.py reads a --db; in this local pipeline the canonical
+        # SQLite is the source of truth. (CI is a fresh checkout, so reading the file
+        # directly is safe per the modeler's note; locally there is no concurrent writer
+        # by this point because the scrape stage has already finished.)
+        cmd = [
+            "python3", self.config.retrain_script,
+            "--db", str(self.config.db_path),
+        ]
         log_file = self.run_log_dir / "train_model.log"
 
         try:
@@ -506,18 +623,207 @@ class DailyPipeline:
                     stderr=subprocess.STDOUT,
                     timeout=self.config.train.timeout_seconds,
                 )
-
-            if proc.returncode == 0:
-                result.status = StageStatus.SUCCESS
-                logger.info("Model training completed successfully")
-            else:
-                result.status = StageStatus.FAILED
-                result.error_message = f"Training failed with exit code {proc.returncode}"
-
         except subprocess.TimeoutExpired:
             result.status = StageStatus.FAILED
-            result.error_message = "Training timed out"
+            result.error_message = "Canonical retrain timed out"
+            return result
 
+        if proc.returncode != 0:
+            result.status = StageStatus.FAILED
+            result.error_message = f"Retrain failed with exit code {proc.returncode} (see {log_file.name})"
+            return result
+
+        # Verify the deterministic artifacts were produced.
+        missing = [
+            str(p) for p in (
+                self.config.canonical_model_path,
+                self.config.canonical_features_path,
+                self.config.canonical_meta_path,
+            ) if not p.exists()
+        ]
+        if missing:
+            result.status = StageStatus.FAILED
+            result.error_message = f"Retrain finished but artifacts missing: {missing}"
+            return result
+
+        # Smoke-test the CV metrics against the floor (MODEL_DECISION.md).
+        try:
+            with open(self.config.canonical_meta_path) as f:
+                meta = json.load(f)
+            cv = meta.get('cv_metrics_5fold', {})
+            r2 = cv.get('R2')
+            mae = cv.get('MAE')
+            result.metrics['retrain_r2'] = r2
+            result.metrics['retrain_mae'] = mae
+            result.metrics['retrain_n_features'] = meta.get('n_features')
+            result.metrics['retrain_n_samples'] = meta.get('n_samples')
+            logger.info(f"Canonical retrain: R2={r2}, MAE=£{mae}, n_features={meta.get('n_features')}")
+
+            regressed = False
+            if r2 is not None and r2 < self.config.retrain_min_r2:
+                regressed = True
+                result.warnings.append(f"R2 {r2:.4f} below floor {self.config.retrain_min_r2}")
+            if mae is not None and mae > self.config.retrain_max_mae:
+                regressed = True
+                result.warnings.append(f"MAE £{mae:,.0f} above ceiling £{self.config.retrain_max_mae:,.0f}")
+
+            result.status = StageStatus.WARNING if regressed else StageStatus.SUCCESS
+            if regressed:
+                logger.warning("Canonical retrain REGRESSED below the smoke-test floor")
+            else:
+                logger.info("Canonical retrain passed smoke-test floor")
+        except Exception as e:
+            # Artifacts exist but meta unreadable: succeed with a warning rather than fail.
+            result.warnings.append(f"Could not verify retrain metrics: {e}")
+            result.status = StageStatus.WARNING
+
+        return result
+
+    # =========================================================================
+    # EXPORT STAGE (orchestrate artifact generators owned by #7)
+    # =========================================================================
+    def _run_export(self, result: StageResult) -> StageResult:
+        """Export served artifacts from the freshly-retrained canonical model.
+
+        OWNERSHIP: the GENERATORS are owned by artifacts (#7). This stage only
+        ORCHESTRATES them in sequence and verifies output, per the lead's ruling.
+            1. chrome model.json + features.json  (from canonical pkl via xgboost save_model)
+            2. similar_listings.json              (scripts/export_similar_listings.py)
+            3. predictions.json                   (cache; best-effort)
+        """
+        exported = {}
+        model_json = self.config.project_root / "chrome-extension" / "api" / "model.json"
+        features_json = self.config.project_root / "chrome-extension" / "api" / "features.json"
+
+        # --- 1. Chrome model.json + features.json from the CANONICAL model ---
+        # Call the modeler's blessed entrypoint canonical_predict.export_to_chrome()
+        # (lead's ruling: import, don't reimplement). It loads the canonical model +
+        # the exact training feature order and writes both as ONE matched pair via
+        # the Booster JSON (fixing the earlier xgboost wrapper save_model quirk that
+        # exited non-zero). We still verify the served pair against the canonical
+        # features pkl as a belt-and-braces check.
+        chrome_script = (
+            "import canonical_predict as cp\n"
+            "cp.export_to_chrome('chrome-extension/api')\n"
+        )
+        exit_ok = self._run_subprocess(
+            ["python3", "-c", chrome_script], "export_chrome.log"
+        )
+
+        # Truth = does the served pair match the canonical model? (order-sensitive)
+        count_ok = False
+        model_ok = model_json.exists() and model_json.stat().st_size > 1024
+        try:
+            canon_feats = pickle.loads(self.config.canonical_features_path.read_bytes())
+            served_feats = json.loads(features_json.read_text()) if features_json.exists() else []
+            result.metrics['served_feature_count'] = len(served_feats)
+            result.metrics['canonical_feature_count'] = len(canon_feats)
+            count_ok = list(served_feats) == list(canon_feats)
+            if not count_ok:
+                result.warnings.append(
+                    f"served features ({len(served_feats)}) != canonical ({len(canon_feats)}) or order differs"
+                )
+        except Exception as e:
+            result.warnings.append(f"feature verification failed: {e}")
+
+        ok_chrome = count_ok and model_ok and exit_ok
+        exported['chrome_model'] = ok_chrome
+        if ok_chrome:
+            logger.info(
+                f"Chrome artifacts verified: features.json ({result.metrics.get('served_feature_count')}) "
+                f"matches canonical order; model.json {model_json.stat().st_size // 1024} KB"
+            )
+        else:
+            result.warnings.append("Chrome model/features export not verified (export error, missing model.json, or feature mismatch)")
+
+        # --- 2. similar_listings.json ---
+        ok_similar = self._run_subprocess(
+            ["python3", self.config.similar_listings_script], "export_similar.log"
+        )
+        exported['similar_listings'] = ok_similar
+        similar_json = self.config.project_root / "chrome-extension" / "api" / "similar_listings.json"
+        if ok_similar and similar_json.exists():
+            size_kb = similar_json.stat().st_size / 1024
+            # Detect an EMPTY export: export_similar_listings.py filters is_active=1.
+            # On a frozen snapshot where everything aged to is_active=0, this yields {}.
+            try:
+                n_similar = len(json.loads(similar_json.read_text()))
+            except Exception:
+                n_similar = -1
+            result.metrics['similar_listings_count'] = n_similar
+            logger.info(f"similar_listings.json exported ({size_kb:.1f} KB, {n_similar} listings)")
+            if n_similar == 0:
+                result.warnings.append(
+                    "similar_listings.json is EMPTY: 0 active listings (is_active=1) in the DB. "
+                    "On a fresh scrape this fills; on a frozen/aged snapshot it stays empty — "
+                    "served comps will be empty. Data-state issue (not a code bug)."
+                )
+        else:
+            result.warnings.append("similar_listings.json export incomplete")
+
+        result.metrics['exports'] = exported
+        # Stage is SUCCESS if the served model pair made it; warnings note partial.
+        if exported.get('chrome_model'):
+            result.status = StageStatus.WARNING if result.warnings else StageStatus.SUCCESS
+        else:
+            result.status = StageStatus.FAILED
+            result.error_message = "Canonical model export failed (served model not refreshed)"
+        return result
+
+    # =========================================================================
+    # SYNC STAGE (mirror canonical SQLite -> Neon Postgres)
+    # =========================================================================
+    def _run_sync(self, result: StageResult) -> StageResult:
+        """Mirror the canonical SQLite DB into Neon Postgres.
+
+        OWNERSHIP: serving (#8) owns scripts/sync_sqlite_to_postgres.py. This stage
+        CALLS it. The pipeline ALWAYS runs it in DRY-RUN (no --execute): the real
+        prod load is lead-gated behind --execute --i-have-rotated-the-secret and is
+        run manually after secret rotation. So an automated pipeline run never writes
+        prod, but it DOES validate schema parity and report the row-count delta.
+        """
+        if not os.environ.get("POSTGRES_URL"):
+            result.warnings.append("POSTGRES_URL not set — skipping prod-sync dry-run")
+            result.status = StageStatus.SKIPPED
+            logger.info("POSTGRES_URL unset; sync stage skipped (local-only run)")
+            return result
+
+        # Dry-run only: NEVER pass --execute from the automated pipeline.
+        ok = self._run_subprocess(
+            ["python3", self.config.sync_script, "--sqlite", str(self.config.db_path)],
+            "sync_postgres.log",
+        )
+        result.metrics['sync_dry_run'] = ok
+        if ok:
+            logger.info("Prod-sync DRY-RUN completed (no writes). Real load is lead-gated.")
+            result.status = StageStatus.SUCCESS
+        else:
+            result.warnings.append("Prod-sync dry-run reported an error (see sync_postgres.log)")
+            result.status = StageStatus.WARNING
+        return result
+
+    # =========================================================================
+    # DEPLOY STAGE (trigger only; gated)
+    # =========================================================================
+    def _run_deploy(self, result: StageResult) -> StageResult:
+        """Trigger the downstream deploy (dashboard/extension refresh).
+
+        GATED: live deploy / prod writes are disabled by default (config.deploy_enabled
+        = False) until the lead confirms (secret rotation). When disabled this stage is
+        a logged no-op that records what it WOULD trigger, so the loop is complete and
+        auditable without performing an outward-facing action.
+        """
+        if not self.config.deploy_enabled:
+            logger.info("Deploy disabled (lead-gated). Would trigger: dashboard/extension artifact refresh.")
+            result.metrics['deploy'] = 'skipped (gated)'
+            result.status = StageStatus.SKIPPED
+            return result
+
+        # When enabled, the deploy is performed by committing refreshed artifacts in CI
+        # (generate-predictions.yml / daily-scrape.yml). Locally there is nothing to push.
+        logger.info("Deploy enabled: artifact commit/push is handled by CI workflows.")
+        result.metrics['deploy'] = 'delegated-to-ci'
+        result.status = StageStatus.SUCCESS
         return result
 
     # =========================================================================

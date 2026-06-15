@@ -272,16 +272,25 @@ class FoxtonsSpider(scrapy.Spider):
         # Check for explicit pagination metadata in JSON, with fallback to page count heuristic
         # Foxtons typically returns 100 per page, but we shouldn't assume this
         try:
+            # Foxtons exposes pagination directly on page_data: total, page, pageSize, totalPages
+            total_pages_meta = page_data.get('totalPages', None)
             pagination_meta = page_data.get('pagination', {}) or page_data.get('meta', {})
             has_next_explicit = pagination_meta.get('hasNext', None) or pagination_meta.get('has_next', None)
-            total_results = pagination_meta.get('total', None) or pagination_meta.get('totalCount', None)
+            total_results = (page_data.get('total', None)
+                             or pagination_meta.get('total', None)
+                             or pagination_meta.get('totalCount', None))
+            page_size = page_data.get('pageSize', None)
 
-            if has_next_explicit is not None:
+            if total_pages_meta is not None:
+                # Most reliable: explicit total page count from Foxtons
+                should_continue = page < int(total_pages_meta)
+            elif has_next_explicit is not None:
                 # Use explicit flag if available
                 should_continue = has_next_explicit
             elif total_results is not None:
-                # Calculate from total if available (assume 100 per page)
-                total_pages = (int(total_results) + 99) // 100
+                # Calculate from total (use reported pageSize, fall back to 100)
+                per_page = int(page_size) if page_size else 100
+                total_pages = (int(total_results) + per_page - 1) // per_page
                 should_continue = page < total_pages
             else:
                 # Fallback: continue if we got any results (more conservative than >= 100)
@@ -297,7 +306,9 @@ class FoxtonsSpider(scrapy.Spider):
 
         if should_continue:
             next_page = page + 1
-            next_url = f'https://www.foxtons.co.uk/properties-to-rent/{area}/?page={next_page}'
+            # Use the same URL slug as the initial request for consistency
+            slug = self.AREA_SLUGS.get(area, area.lower())
+            next_url = f'https://www.foxtons.co.uk/properties-to-rent/{slug}/?page={next_page}'
 
             self.logger.debug(f"[PAGINATION] {area}: Following to page {next_page}")
 
@@ -331,9 +342,14 @@ class FoxtonsSpider(scrapy.Spider):
         item['area'] = area
 
         # Extract postcode district for URL (Foxtons uses /properties-to-rent/{postcode}/{ref})
+        # Prefer the reliable postcodeShort field; streetName rarely contains a postcode.
         address = prop.get('streetName', '')
-        postcode_match = re.search(r'([A-Z]{1,2}\d{1,2}[A-Z]?)', address.upper())
-        postcode_district = postcode_match.group(1) if postcode_match else None
+        postcode_short = prop.get('postcodeShort')
+        if postcode_short:
+            postcode_district = postcode_short.upper()
+        else:
+            postcode_match = re.search(r'([A-Z]{1,2}\d{1,2}[A-Z]?)', address.upper())
+            postcode_district = postcode_match.group(1) if postcode_match else None
 
         if postcode_district:
             item['url'] = f"https://www.foxtons.co.uk/properties-to-rent/{postcode_district}/{prop_ref}"

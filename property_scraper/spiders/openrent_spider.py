@@ -21,6 +21,7 @@ import re
 import time
 from datetime import datetime
 from urllib.parse import urlencode
+from scrapy_playwright.page import PageMethod
 from property_scraper.items import PropertyItem
 
 
@@ -95,7 +96,7 @@ class OpenRentSpider(scrapy.Spider):
                     'playwright': True,
                     'playwright_include_page': True,
                     'playwright_page_methods': [
-                        {'method': 'wait_for_selector', 'args': ['[data-listing-id]'], 'kwargs': {'timeout': 10000}},
+                        PageMethod('wait_for_selector', '[data-listing-id]', timeout=15000),
                     ],
                     'area': area,
                     'area_key': area_key,
@@ -137,19 +138,30 @@ class OpenRentSpider(scrapy.Spider):
                 await playwright_page.close()
             return
 
-        # Extract listing IDs from the rendered page
-        listing_elements = response.css('[data-listing-id]')
-        self.logger.info(f"[DISCOVERY] {area} p{page}: {len(listing_elements)} listing elements found")
+        # Extract structured card data from the rendered page.
+        # OpenRent's [data-listing-id] element is just the image swiper; the price,
+        # title/address and bed/bath counts live in the surrounding card container.
+        # We compute innerText/alt in the browser context, which the raw-HTML
+        # selectors used previously could not do.
+        cards = []
+        if playwright_page:
+            try:
+                cards = await playwright_page.evaluate(self._CARD_EXTRACTION_JS)
+            except Exception as e:
+                self.logger.warning(f"[EXTRACT] {area} p{page}: card evaluate failed - {e}")
+        else:
+            self.logger.warning(f"[EXTRACT] {area} p{page}: no Playwright page available")
+
+        self.logger.info(f"[DISCOVERY] {area} p{page}: {len(cards)} listing cards found")
 
         # Parse each property card
         parsed_count = 0
-        for element in listing_elements:
-            listing_id = element.attrib.get('data-listing-id')
+        for card in cards:
+            listing_id = card.get('id')
             if not listing_id:
                 continue
 
-            # Extract data from the card
-            item = self.parse_property_card(element, listing_id, area_key)
+            item = self.parse_property_card(card, listing_id, area_key)
             if item:
                 parsed_count += 1
                 self.stats['total'] += 1
@@ -163,7 +175,7 @@ class OpenRentSpider(scrapy.Spider):
         self.stats['by_area'][area_key]['pages'] += 1
 
         self.logger.info(
-            f"[PAGE] {area} p{page}: {parsed_count}/{len(listing_elements)} parsed | "
+            f"[PAGE] {area} p{page}: {parsed_count}/{len(cards)} parsed | "
             f"Running total: {self.stats['by_area'][area_key]['count']}"
         )
 
@@ -172,7 +184,7 @@ class OpenRentSpider(scrapy.Spider):
             await playwright_page.close()
 
         # Check for pagination - OpenRent uses skip parameter
-        if len(listing_elements) >= self.ITEMS_PER_PAGE and page < self.max_pages:
+        if len(cards) >= self.ITEMS_PER_PAGE and page < self.max_pages:
             skip = page * self.ITEMS_PER_PAGE
             params = {
                 'term': area,
@@ -190,7 +202,7 @@ class OpenRentSpider(scrapy.Spider):
                     'playwright': True,
                     'playwright_include_page': True,
                     'playwright_page_methods': [
-                        {'method': 'wait_for_selector', 'args': ['[data-listing-id]'], 'kwargs': {'timeout': 10000}},
+                        PageMethod('wait_for_selector', '[data-listing-id]', timeout=15000),
                     ],
                     'area': area,
                     'area_key': area_key,
@@ -204,81 +216,119 @@ class OpenRentSpider(scrapy.Spider):
             reason = "max pages reached" if page >= self.max_pages else "no more results"
             self.logger.info(f"[COMPLETE] {area}: Stopped at page {page} ({reason})")
 
-    def parse_property_card(self, element, listing_id: str, area: str) -> PropertyItem:
-        """Parse a property card element from search results."""
+    # JS run in the browser context to pull structured data out of each card.
+    # OpenRent's [data-listing-id] node is only the photo swiper, so we walk up to
+    # the nearest ancestor that contains a price, then read its innerText plus the
+    # property image's alt text (which reliably encodes "<beds> Bed <type>, <street>, <district>").
+    _CARD_EXTRACTION_JS = r'''() => {
+        const swipers = [...document.querySelectorAll('[data-listing-id]')];
+        const results = [];
+        const seen = new Set();
+        for (const sw of swipers) {
+            const id = sw.getAttribute('data-listing-id');
+            if (!id || seen.has(id)) continue;
+            seen.add(id);
+            // Walk up to the card container that holds the price text
+            let node = sw, card = null;
+            for (let i = 0; i < 6; i++) {
+                node = node.parentElement;
+                if (!node) break;
+                if (node.innerText && node.innerText.includes('£')) { card = node; break; }
+            }
+            if (!card) { results.push({ id }); continue; }
+            const img = card.querySelector('img.propertyPic, img[alt]');
+            results.push({
+                id,
+                alt: img ? (img.getAttribute('alt') || '') : '',
+                fullText: card.innerText || '',
+            });
+        }
+        return results;
+    }'''
+
+    def parse_property_card(self, card: dict, listing_id: str, area: str) -> PropertyItem:
+        """Parse a structured property card dict (from _CARD_EXTRACTION_JS)."""
         item = PropertyItem()
+
+        alt = (card.get('alt') or '').strip()
+        full_text = card.get('fullText') or ''
 
         item['source'] = 'openrent'
         item['property_id'] = listing_id
         item['url'] = f"https://www.openrent.co.uk/property-to-rent/{listing_id}"
         item['area'] = area
 
-        # Try to extract price from the card
-        # OpenRent shows price in format "£X,XXX pcm" or "£XXX pw"
-        price_text = element.css('.price-link::text, .price::text').get()
-        if price_text:
-            price_match = re.search(r'£([\d,]+)\s*(pcm|pw|per\s*month|per\s*week)?', price_text, re.I)
-            if price_match:
-                price = int(price_match.group(1).replace(',', ''))
-                period = price_match.group(2) or 'pcm'
+        # Price - OpenRent shows "£X,XXX" followed by "/month" or "/week" (or "pcm"/"pw")
+        price_match = re.search(r'£\s*([\d,]+)', full_text)
+        item['price'] = 0
+        item['price_pcm'] = 0
+        item['price_pw'] = 0
+        item['price_period'] = 'pcm'
+        if price_match:
+            price = int(price_match.group(1).replace(',', ''))
+            # Look at the text right after the price for the period
+            tail = full_text[price_match.end():price_match.end() + 20].lower()
+            is_weekly = ('week' in tail) or ('/wk' in tail) or re.search(r'\bpw\b', tail) is not None
+            if is_weekly:
+                item['price_pw'] = price
+                item['price_pcm'] = int(price * 52 / 12)
+                item['price_period'] = 'pw'
+            else:
+                item['price_pcm'] = price
+                item['price_pw'] = int(price * 12 / 52)
+                item['price_period'] = 'pcm'
+            item['price'] = price
 
-                if 'pw' in period.lower() or 'week' in period.lower():
-                    item['price_pw'] = price
-                    item['price_pcm'] = int(price * 52 / 12)
-                    item['price_period'] = 'pw'
-                else:
-                    item['price_pcm'] = price
-                    item['price_pw'] = int(price * 12 / 52)
-                    item['price_period'] = 'pcm'
+        # Address - the image alt encodes "<type>, <street>, <district>", e.g.
+        # "2 Bed Flat, Elm Park Gardens, SW10". Fall back to the title line in text.
+        address = alt
+        if not address:
+            # First non-price line that contains a comma + postcode-like token
+            for line in full_text.split('\n'):
+                line = line.strip()
+                if ',' in line and re.search(r'[A-Z]{1,2}\d', line):
+                    address = line
+                    break
+        item['address'] = address
 
-                item['price'] = price
-        else:
-            item['price'] = 0
-            item['price_pcm'] = 0
-            item['price_pw'] = 0
-            item['price_period'] = 'pcm'
-
-        # Address - usually in the title or description
-        address_text = element.css('a::text, .title::text, h2::text').get()
-        item['address'] = address_text.strip() if address_text else ''
-
-        # Extract postcode
-        postcode_match = re.search(
-            r'([A-Z]{1,2}\d{1,2}[A-Z]?)\s*\d?[A-Z]{0,2}',
-            item['address'].upper()
-        )
+        # Postcode district (e.g. SW10) - from alt/address
+        postcode_match = re.search(r'\b([A-Z]{1,2}\d{1,2}[A-Z]?)\b', address.upper())
         item['postcode'] = postcode_match.group(1) if postcode_match else None
 
-        # Bedrooms - look for "X bed" pattern
-        beds_text = element.css('.beds::text, .property-beds::text').get()
-        if beds_text:
-            beds_match = re.search(r'(\d+)', beds_text)
-            item['bedrooms'] = int(beds_match.group(1)) if beds_match else None
+        # Property type and bedrooms from the alt/title ("2 Bed Flat" / "Studio Flat")
+        type_source = alt or address
+        item['property_type'] = ''
+        type_match = re.search(r'\b(flat|apartment|house|studio|maisonette|bungalow|room)\b', type_source, re.I)
+        if type_match:
+            item['property_type'] = type_match.group(1).lower()
+
+        # Bedrooms: "Studio" => 0, "N Bed" => N
+        if re.search(r'\bstudio\b', type_source, re.I):
+            item['bedrooms'] = 0
         else:
-            # Check in the full text
-            full_text = element.get()
-            beds_match = re.search(r'(\d+)\s*(?:bed|bedroom)', full_text, re.I)
+            beds_match = re.search(r'(\d+)\s*bed', type_source, re.I)
             item['bedrooms'] = int(beds_match.group(1)) if beds_match else None
 
-        # Bathrooms - OpenRent shows this
-        baths_text = element.css('.baths::text, .property-baths::text').get()
-        if baths_text:
-            baths_match = re.search(r'(\d+)', baths_text)
-            item['bathrooms'] = int(baths_match.group(1)) if baths_match else None
-        else:
-            item['bathrooms'] = None
+        # Bathrooms: "N Bath" in the card text
+        baths_match = re.search(r'(\d+)\s*bath', full_text, re.I)
+        item['bathrooms'] = int(baths_match.group(1)) if baths_match else None
 
-        # Property type
-        item['property_type'] = ''  # Not easily visible in cards
+        # Furnished status
+        if re.search(r'\bunfurnished\b', full_text, re.I):
+            item['furnished'] = 'unfurnished'
+        elif re.search(r'\bpart[\s-]*furnished\b', full_text, re.I):
+            item['furnished'] = 'part_furnished'
+        elif re.search(r'\bfurnished\b', full_text, re.I):
+            item['furnished'] = 'furnished'
 
-        # Coordinates - usually not in cards
+        # Coordinates - not in cards
         item['latitude'] = None
         item['longitude'] = None
 
-        # Size
+        # Size - not in cards
         item['size_sqft'] = None
 
-        # Agent - OpenRent is landlord-direct but sometimes shows agent
+        # Agent - OpenRent is landlord-direct
         item['agent_name'] = 'OpenRent'
         item['agent_phone'] = ''
 

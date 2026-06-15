@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - Rent Fair Value Chrome Extension</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --muted: #64748b;
+            --border: #e2e8f0;
+            --accent: #3b82f6;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+        }
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        .updated {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .summary-box {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .summary-box h2 {
+            color: #059669;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+        .summary-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .summary-item .icon {
+            color: #059669;
+        }
+        section {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        h2 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+        h3 {
+            font-size: 1rem;
+            margin: 1rem 0 0.5rem;
+            color: var(--text);
+        }
+        p {
+            margin-bottom: 1rem;
+            color: var(--muted);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            background: var(--bg);
+            font-weight: 600;
+            color: var(--text);
+        }
+        td {
+            color: var(--muted);
+        }
+        ul {
+            margin: 1rem 0;
+            padding-left: 1.5rem;
+        }
+        li {
+            margin-bottom: 0.5rem;
+            color: var(--muted);
+        }
+        .contact-box {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .contact-box a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .contact-box a:hover {
+            text-decoration: underline;
+        }
+        @media (max-width: 600px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Privacy Policy</h1>
+            <p>Rent Fair Value Chrome Extension</p>
+            <p class="updated">Last Updated: January 17, 2026 | Version 1.0.0</p>
+        </header>
+
+        <div class="summary-box">
+            <h2>Privacy at a Glance</h2>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <span class="icon">&#10003;</span>
+                    <span>No login required</span>
+                </div>
+                <div class="summary-item">
+                    <span class="icon">&#10003;</span>
+                    <span>No personal data collected</span>
+                </div>
+                <div class="summary-item">
+                    <span class="icon">&#10003;</span>
+                    <span>Predictions run locally</span>
+                </div>
+                <div class="summary-item">
+                    <span class="icon">&#10003;</span>
+                    <span>Data never sold</span>
+                </div>
+                <div class="summary-item">
+                    <span class="icon">&#10003;</span>
+                    <span>Anonymous analytics only</span>
+                </div>
+                <div class="summary-item">
+                    <span class="icon">&#10003;</span>
+                    <span>GDPR compliant</span>
+                </div>
+            </div>
+        </div>
+
+        <section>
+            <h2>1. What We Collect</h2>
+
+            <h3>Anonymous Usage Analytics</h3>
+            <p>We use PostHog to collect anonymous analytics about how the extension is used. This includes:</p>
+            <ul>
+                <li>Page URLs where the extension runs (e.g., rightmove.co.uk/properties/123)</li>
+                <li>Event types (e.g., "prediction completed", "OCR started")</li>
+                <li>Property metadata (bedrooms, postcode district, price ranges)</li>
+                <li>Extension version and site name</li>
+            </ul>
+
+            <h3>Local Storage</h3>
+            <p>We store one randomly-generated identifier locally on your device to distinguish unique installations for analytics aggregation. This ID is not linked to your identity and is deleted when you uninstall the extension.</p>
+
+            <h3>Property Data (Processed Only)</h3>
+            <p>The extension reads property details from rental listing pages you visit. This data is processed entirely in your browser to generate rent estimates and is never sent to our servers.</p>
+        </section>
+
+        <section>
+            <h2>2. How We Use Data</h2>
+            <table>
+                <tr>
+                    <th>Data Type</th>
+                    <th>Purpose</th>
+                </tr>
+                <tr>
+                    <td>Analytics events</td>
+                    <td>Improve extension features and fix bugs</td>
+                </tr>
+                <tr>
+                    <td>Property metadata</td>
+                    <td>Understand prediction accuracy patterns</td>
+                </tr>
+                <tr>
+                    <td>Error reports</td>
+                    <td>Identify and resolve issues</td>
+                </tr>
+            </table>
+        </section>
+
+        <section>
+            <h2>3. Third-Party Services</h2>
+            <table>
+                <tr>
+                    <th>Service</th>
+                    <th>Purpose</th>
+                    <th>Data Shared</th>
+                </tr>
+                <tr>
+                    <td>PostHog</td>
+                    <td>Analytics</td>
+                    <td>Anonymous usage events</td>
+                </tr>
+                <tr>
+                    <td>GitHub</td>
+                    <td>Model hosting</td>
+                    <td>None (download only)</td>
+                </tr>
+            </table>
+        </section>
+
+        <section>
+            <h2>4. Data Retention</h2>
+            <ul>
+                <li><strong>Analytics events:</strong> 90 days</li>
+                <li><strong>Local anonymous ID:</strong> Until extension uninstalled</li>
+                <li><strong>Property data:</strong> Not retained (processed transiently)</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>5. Your Rights</h2>
+            <p>Under GDPR and UK GDPR, you have the right to:</p>
+            <ul>
+                <li><strong>Access:</strong> Request a copy of data associated with your anonymous ID</li>
+                <li><strong>Deletion:</strong> Uninstall the extension or request analytics deletion</li>
+                <li><strong>Opt-out:</strong> Block analytics by blocking us.i.posthog.com</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>6. Permissions Explained</h2>
+            <table>
+                <tr>
+                    <th>Permission</th>
+                    <th>Reason</th>
+                </tr>
+                <tr>
+                    <td>activeTab</td>
+                    <td>Read property details from the page you're viewing</td>
+                </tr>
+                <tr>
+                    <td>storage</td>
+                    <td>Store your anonymous identifier locally</td>
+                </tr>
+                <tr>
+                    <td>Host permissions</td>
+                    <td>Access property sites and analytics service</td>
+                </tr>
+            </table>
+        </section>
+
+        <div class="contact-box">
+            <h2>Contact Us</h2>
+            <p>For privacy inquiries or data requests:</p>
+            <p><a href="mailto:privacy@rentfairvalue.com">privacy@rentfairvalue.com</a></p>
+            <p><a href="https://github.com/kavanaghpatrick/london-rental-scraper/issues">GitHub Issues</a></p>
+        </div>
+    </div>
+</body>
+</html>

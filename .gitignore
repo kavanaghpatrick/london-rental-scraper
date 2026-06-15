@@ -40,6 +40,9 @@ Thumbs.db
 # Scrapy
 .scrapy/
 
+# Pytest
+.pytest_cache/
+
 # Logs
 *.log
 logs/

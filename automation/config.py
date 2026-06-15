@@ -71,7 +71,19 @@ class PipelineConfig:
         continue_on_failure=True,
     ))
     train: StageConfig = field(default_factory=lambda: StageConfig(
-        timeout_seconds=1200,
+        timeout_seconds=1800,  # Canonical retrain on full data; allow more than --quick
+        continue_on_failure=True,
+    ))
+    export: StageConfig = field(default_factory=lambda: StageConfig(
+        timeout_seconds=900,
+        continue_on_failure=True,  # A failed export shouldn't strand a good retrain
+    ))
+    sync: StageConfig = field(default_factory=lambda: StageConfig(
+        timeout_seconds=900,
+        continue_on_failure=True,
+    ))
+    deploy: StageConfig = field(default_factory=lambda: StageConfig(
+        timeout_seconds=300,
         continue_on_failure=True,
     ))
     report: StageConfig = field(default_factory=lambda: StageConfig(
@@ -86,6 +98,25 @@ class PipelineConfig:
     # Training thresholds
     min_new_records_for_retrain: int = 50  # Minimum new records to trigger retraining
     retrain_percentage_threshold: float = 0.02  # Or 2% growth since last training
+
+    # Canonical model retrain (task #9 / #6). retrain_canonical.py reads --db and
+    # writes output/rental_model_canonical{,_features}.pkl + _meta.json.
+    retrain_script: str = "retrain_canonical.py"
+    canonical_model_path: Path = field(default_factory=lambda: Path(__file__).parent.parent / "output" / "rental_model_canonical.pkl")
+    canonical_features_path: Path = field(default_factory=lambda: Path(__file__).parent.parent / "output" / "rental_model_canonical_features.pkl")
+    canonical_meta_path: Path = field(default_factory=lambda: Path(__file__).parent.parent / "output" / "rental_model_canonical_meta.json")
+    # Smoke-test floor (modeler MODEL_DECISION.md): alert if a retrain regresses below these.
+    retrain_min_r2: float = 0.78
+    retrain_max_mae: float = 1800.0
+
+    # Export targets (artifacts owned by #7; the pipeline ORCHESTRATES their generators)
+    similar_listings_script: str = "scripts/export_similar_listings.py"
+
+    # Prod-sync (serving #8 owns scripts/sync_sqlite_to_postgres.py; pipeline CALLS it).
+    # The pipeline NEVER passes --execute; real prod load is lead-gated (secret rotation).
+    sync_script: str = "scripts/sync_sqlite_to_postgres.py"
+    # Deploy is a trigger only; disabled until lead confirms (no live prod writes from cron).
+    deploy_enabled: bool = False
 
     # Validation thresholds
     min_listings_per_spider: int = 10  # Warn if spider returns fewer

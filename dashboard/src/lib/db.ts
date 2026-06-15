@@ -310,7 +310,16 @@ export async function getMarketStats(): Promise<MarketStats> {
       AND size_sqft IS NOT NULL AND size_sqft > 100
       AND price_pcm IS NOT NULL AND price_pcm > 500
   `;
-  return rows[0];
+  // On an empty DB the aggregate still returns ONE row of all-NULLs. Coalesce to
+  // zeros so callers can rely on numeric fields (no NaN / .toLocaleString on null).
+  const r = rows[0];
+  return {
+    total_listings: r?.total_listings ?? 0,
+    median_ppsf: r?.median_ppsf ?? 0,
+    p25_ppsf: r?.p25_ppsf ?? 0,
+    p75_ppsf: r?.p75_ppsf ?? 0,
+    avg_ppsf: r?.avg_ppsf ?? 0,
+  };
 }
 
 export async function getPpsfDistribution(): Promise<PpsfDistribution[]> {

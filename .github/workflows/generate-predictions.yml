@@ -2,14 +2,26 @@ name: Generate Predictions Cache
 
 on:
   workflow_run:
-    workflows: ["Train Model"]  # Run after daily training
+    # FIX (#9): chain off the workflow that actually retrains the model.
+    # There is no workflow named "Train Model"; training happens inside
+    # "Daily Property Scrape" (daily-scrape.yml), which retrains the canonical
+    # model and commits output/rental_model_canonical.pkl. Triggering off that
+    # name is what makes scrape -> retrain -> predictions chain at all.
+    workflows: ["Daily Property Scrape"]
     types: [completed]
   workflow_dispatch:  # Manual trigger
+
+env:
+  # Predictions must read the SAME store the scrape wrote and the dashboard serves.
+  POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -21,179 +33,21 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install numpy pandas xgboost
+        run: pip install numpy pandas xgboost scikit-learn psycopg2-binary
 
-      - name: Generate predictions for all listings
+      - name: Generate predictions from the CANONICAL model
         run: |
-          python3 << 'SCRIPT'
-          import sqlite3
-          import json
-          import pickle
-          import numpy as np
-          import pandas as pd
-          import re
-          from pathlib import Path
-
-          print("Loading model...")
-          with open('output/rental_model_v15.pkl', 'rb') as f:
-              model = pickle.load(f)
-          with open('output/rental_model_v15_features.pkl', 'rb') as f:
-              feature_cols = pickle.load(f)
-
-          # Constants
-          AMENITY_FEATURES = [
-              'has_balcony', 'has_terrace', 'has_garden', 'has_porter',
-              'has_gym', 'has_pool', 'has_parking', 'has_lift', 'has_ac',
-              'has_furnished', 'has_high_ceilings', 'has_view',
-              'has_modern', 'has_period', 'has_roof_terrace'
-          ]
-          PRIME_POSTCODES = ['SW1', 'SW3', 'SW7', 'SW10', 'W1', 'W8', 'W11', 'NW3', 'NW8']
-          CITY_CENTER = (51.5074, -0.1278)
-          TUBE_STATIONS = {
-              'South Kensington': (51.4941, -0.1738), 'Knightsbridge': (51.5015, -0.1607),
-              'Green Park': (51.5067, -0.1428), 'Notting Hill Gate': (51.5094, -0.1967),
-          }
-          POSTCODE_CENTROIDS = {
-              'SW1': (51.4970, -0.1400), 'SW3': (51.4900, -0.1680), 'SW7': (51.4950, -0.1780),
-              'W1': (51.5150, -0.1450), 'W8': (51.5010, -0.1920), 'NW8': (51.5330, -0.1750),
-          }
-
-          def haversine(lat1, lon1, lat2, lon2):
-              R = 6371
-              lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
-              dlat, dlon = lat2 - lat1, lon2 - lon1
-              a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
-              return R * 2 * np.arcsin(np.sqrt(a))
-
-          print("Loading listings...")
-          conn = sqlite3.connect('output/rentals.db')
-          df = pd.read_sql("""
-              SELECT property_id, source, url, price_pcm, bedrooms, bathrooms,
-                     size_sqft, postcode, description, features, latitude, longitude
-              FROM listings
-              WHERE is_active = 1 AND price_pcm > 500
-          """, conn)
-          conn.close()
-          print(f"Loaded {len(df)} active listings")
-
-          # Process each listing
-          predictions = {}
-
-          for _, row in df.iterrows():
-              try:
-                  beds = row['bedrooms'] or 1
-                  baths = row['bathrooms'] or 1
-                  size_sqft = row['size_sqft'] or (beds * 400)
-                  postcode = row['postcode'] or 'SW3'
-                  postcode_district = postcode.split()[0]
-                  desc = str(row['description'] or '') + ' ' + str(row['features'] or '')
-
-                  # Coordinates
-                  lat = row['latitude'] or POSTCODE_CENTROIDS.get(postcode_district, CITY_CENTER)[0]
-                  lon = row['longitude'] or POSTCODE_CENTROIDS.get(postcode_district, CITY_CENTER)[1]
-
-                  tube_dist = min(haversine(lat, lon, s[0], s[1]) for s in TUBE_STATIONS.values())
-                  center_dist = haversine(lat, lon, CITY_CENTER[0], CITY_CENTER[1])
-                  center_inv = 1 / (1 + center_dist)
-
-                  # Amenities
-                  text = desc.lower()
-                  amenities = {
-                      'has_balcony': int('balcony' in text),
-                      'has_terrace': int('terrace' in text and 'roof terrace' not in text),
-                      'has_roof_terrace': int('roof terrace' in text),
-                      'has_garden': int('garden' in text),
-                      'has_porter': int('porter' in text or 'concierge' in text),
-                      'has_gym': int('gym' in text),
-                      'has_pool': int('pool' in text),
-                      'has_parking': int('parking' in text),
-                      'has_lift': int('lift' in text),
-                      'has_ac': int('air con' in text or 'a/c' in text),
-                      'has_high_ceilings': int('high ceiling' in text),
-                      'has_view': int('view' in text),
-                      'has_modern': int('modern' in text),
-                      'has_period': int('period' in text),
-                      'has_furnished': int('furnished' in text and 'unfurnished' not in text),
-                  }
-
-                  is_prime = int(any(postcode_district.startswith(p) for p in PRIME_POSTCODES))
-                  amenity_score = sum(amenities.values())
-
-                  feat = {
-                      'bedrooms': beds, 'bathrooms': baths, 'size_sqft': size_sqft,
-                      'size_per_bed': size_sqft / max(beds, 0.5),
-                      'bath_ratio': baths / max(beds, 0.5),
-                      'bed_bath_interaction': beds * baths,
-                      'log_sqft': np.log1p(size_sqft),
-                      'sqrt_sqft': np.sqrt(size_sqft),
-                      'size_squared': size_sqft ** 2 / 100000,
-                      'beds_squared': beds ** 2,
-                      'size_bin': 2.0,
-                      'tube_distance_km': tube_dist,
-                      'log_tube_distance': np.log1p(tube_dist),
-                      'center_distance_km': center_dist,
-                      'log_center_distance': np.log1p(center_dist),
-                      'center_distance_inv': center_inv,
-                      'is_prime_postcode': is_prime,
-                      'postcode_freq': 0.05, 'postcode_area_freq': 0.1,
-                      'size_x_central': size_sqft * center_inv / 100,
-                      'size_x_prime': size_sqft * is_prime / 1000,
-                      'beds_x_central': beds * center_inv,
-                      'floor_count': 1, 'is_multi_floor': 0,
-                      'floor_size_interaction': size_sqft/1000,
-                      'has_basement': 0, 'has_ground': 0, 'has_first_floor': 0,
-                      'has_second_floor': 0, 'has_third_floor': 0, 'has_fourth_plus': 0,
-                      'is_premium_agent': 0, 'premium_agent_size': 0, 'source_quality': 1,
-                      'amenity_score': amenity_score,
-                      'premium_amenity_count': amenities['has_pool'] + amenities['has_porter'] + amenities['has_gym'] + amenities['has_ac'],
-                      'has_outdoor_space': int(amenities['has_balcony'] or amenities['has_terrace'] or amenities['has_garden']),
-                      'amenity_x_central': amenity_score * center_inv,
-                      'outdoor_x_prime': int(amenities['has_balcony'] or amenities['has_terrace'] or amenities['has_garden']) * is_prime,
-                      'is_short_let': 0, 'is_long_let': 1,
-                      'short_let_x_central': 0, 'short_let_size': 0,
-                      'property_type_num': 1,
-                      **amenities,
-                  }
-
-                  # One-hot columns
-                  for col in feature_cols:
-                      if col.startswith('type_') or col.startswith('pc_'):
-                          feat[col] = 0
-
-                  X = pd.DataFrame([feat])[feature_cols]
-                  pred_log = model.predict(X)[0]
-                  fair_value = int(np.expm1(pred_log))
-
-                  asking = row['price_pcm']
-                  premium = round((asking / fair_value - 1) * 100, 1) if fair_value > 0 else 0
-
-                  # Key by source + property_id (matches Rightmove URL pattern)
-                  key = f"{row['source']}:{row['property_id']}"
-                  predictions[key] = {
-                      'fv': fair_value,
-                      'lo': int(fair_value * 0.79),
-                      'hi': int(fair_value * 1.21),
-                      'pct': premium,
-                      'sq': size_sqft if row['size_sqft'] else None,
-                  }
-
-              except Exception as e:
-                  print(f"Error processing {row['property_id']}: {e}")
-
-          print(f"Generated {len(predictions)} predictions")
-
-          # Save as compact JSON
-          Path('chrome-extension/api').mkdir(parents=True, exist_ok=True)
-          with open('chrome-extension/api/predictions.json', 'w') as f:
-              json.dump(predictions, f, separators=(',', ':'))
-
-          print(f"Saved to chrome-extension/api/predictions.json ({Path('chrome-extension/api/predictions.json').stat().st_size / 1024:.1f} KB)")
-          SCRIPT
+          # FIX (#9): single source of truth for feature construction.
+          # scripts/generate_predictions.py loads output/rental_model_canonical.pkl
+          # (the model daily-scrape just retrained & committed) and builds features
+          # via rental_price_models_v20.engineer_features_v20 — NOT a hand-coded inline
+          # v15 feature dict. Reads active listings from Postgres (POSTGRES_URL).
+          python3 scripts/generate_predictions.py
 
       - name: Commit predictions
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add chrome-extension/api/predictions.json
-          git diff --staged --quiet || git commit -m "Update predictions cache [skip ci]"
+          git diff --staged --quiet || git commit -m "Update predictions cache (canonical model) [skip ci]"
           git push

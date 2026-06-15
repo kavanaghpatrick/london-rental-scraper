@@ -16,7 +16,7 @@ import sqlite3
 import logging
 import time
 import psutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from scrapy import signals
 from scrapy.exceptions import NotConfigured
 
@@ -26,9 +26,18 @@ logger = logging.getLogger(__name__)
 class AuditLoggerExtension:
     """Scrapy extension that logs comprehensive audit data to SQLite."""
 
-    def __init__(self, db_path, run_id=None):
+    # Reap any scrape_runs left status='running' for longer than this many
+    # hours. The only way a row stays 'running' is hard external process death
+    # (SIGKILL / OOM / reboot) before spider_closed fires - every clean or
+    # errored close updates the row. Default is comfortably above
+    # CLOSESPIDER_TIMEOUT (3600s = 1h) so a legitimately long-running spider is
+    # never falsely reaped. Override via AUDIT_STALE_RUN_HOURS setting.
+    STALE_RUN_HOURS = 4
+
+    def __init__(self, db_path, run_id=None, stale_run_hours=None):
         self.db_path = db_path
         self.run_id = run_id or datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        self.stale_run_hours = stale_run_hours if stale_run_hours is not None else self.STALE_RUN_HOURS
         self.conn = None
         self.spider_runs = {}  # spider_name -> run record
         self.process = psutil.Process()
@@ -39,8 +48,9 @@ class AuditLoggerExtension:
         db_path = os.path.join(db_path, 'rentals.db')
 
         run_id = crawler.settings.get('AUDIT_RUN_ID')
+        stale_run_hours = crawler.settings.getfloat('AUDIT_STALE_RUN_HOURS', cls.STALE_RUN_HOURS)
 
-        ext = cls(db_path, run_id)
+        ext = cls(db_path, run_id, stale_run_hours)
 
         # Connect signals
         crawler.signals.connect(ext.spider_opened, signal=signals.spider_opened)
@@ -115,6 +125,44 @@ class AuditLoggerExtension:
             self.conn.execute("PRAGMA journal_mode = WAL")
             self._ensure_tables()
 
+    def _reap_stale_runs(self):
+        """Auto-clean orphaned 'running' rows from hard process death.
+
+        A scrape_runs row only stays status='running' if the process was killed
+        (SIGKILL / OOM / reboot) before spider_closed could update it. This sweep
+        marks any such row older than self.stale_run_hours as failed so active
+        counts and run dashboards stay accurate without manual cleanup.
+
+        Excludes the current run_id so concurrent spiders sharing this process's
+        run are never touched, and never reaps anything if stale_run_hours <= 0.
+        """
+        if not self.stale_run_hours or self.stale_run_hours <= 0:
+            return
+        try:
+            now = datetime.utcnow().isoformat()
+            cutoff = (datetime.utcnow() - timedelta(hours=self.stale_run_hours)).isoformat()
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                UPDATE scrape_runs
+                SET status = 'failed',
+                    finished_at = ?,
+                    exit_reason = 'stale_orphan',
+                    error_summary = ?
+                WHERE status = 'running'
+                  AND run_id != ?
+                  AND started_at < ?
+            ''', (now,
+                  f"Auto-reaped by audit_logger at {now}: status='running' with no "
+                  f"finished_at for >{self.stale_run_hours}h (process killed before "
+                  f"spider_closed). started_at predates cutoff {cutoff}.",
+                  self.run_id, cutoff))
+            reaped = cursor.rowcount
+            self.conn.commit()
+            if reaped:
+                logger.warning(f"[AUDIT] Reaped {reaped} stale 'running' scrape_runs (>{self.stale_run_hours}h orphans)")
+        except Exception as e:
+            logger.warning(f"[AUDIT] Stale-run reap failed (non-fatal): {e}")
+
     def _log_event(self, spider_name, event_type, message, details=None, severity='info'):
         """Log an event to the scrape_events table."""
         try:
@@ -132,6 +180,10 @@ class AuditLoggerExtension:
     def spider_opened(self, spider):
         """Called when spider starts."""
         self._connect()
+
+        # Reap orphaned 'running' rows from prior hard-killed processes before
+        # inserting this run, so active counts/dashboards self-heal.
+        self._reap_stale_runs()
 
         now = datetime.utcnow().isoformat()
         memory_mb = self.process.memory_info().rss / 1024 / 1024

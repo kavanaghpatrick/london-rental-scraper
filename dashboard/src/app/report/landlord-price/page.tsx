@@ -99,6 +99,12 @@ export default async function LandlordPriceReport() {
     );
   }
 
+  // EMPTY-STATE GUARD: no comparables AND no market listings -> graceful page
+  // instead of NaN medians / divide-by-zero on an empty DB.
+  if (comparables.length === 0 && marketStats.total_listings === 0) {
+    return <NoDataYet reportTitle="Rental Price Analysis" address={`${PROPERTY.address}, London ${PROPERTY.postcode}`} />;
+  }
+
   // Add tier info
   const comparablesWithTier = comparables.map(comp => ({
     ...comp,
@@ -391,6 +397,32 @@ export default async function LandlordPriceReport() {
             <a href="/report" className="text-blue-600 hover:underline">← View Fair Value Report</a>
             <span className="mx-4">|</span>
             <a href="/" className="text-blue-600 hover:underline">Dashboard</a>
+          </p>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+// Graceful empty-state shown when the market DB has no listings yet (e.g. before
+// the first prod data sync). Prevents divide-by-zero NaN / 500 on empty DB.
+function NoDataYet({ reportTitle, address }: { reportTitle: string; address: string }) {
+  return (
+    <main className="min-h-screen p-4 md:p-8 bg-gray-100">
+      <div className="max-w-3xl mx-auto">
+        <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-xl p-6 md:p-8 mb-6 text-center">
+          <h1 className="text-2xl md:text-3xl font-bold mb-2">{reportTitle}</h1>
+          <p className="text-lg opacity-90">{address}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow p-8 text-center">
+          <div className="text-5xl mb-4">📊</div>
+          <h2 className="text-xl font-semibold text-slate-800 mb-2">Market data not available yet</h2>
+          <p className="text-gray-600 max-w-xl mx-auto">
+            No comparable listings are currently loaded for this market. This report becomes
+            available once the latest rental data has been synced. Please check back shortly.
+          </p>
+          <p className="mt-6">
+            <a href="/" className="text-blue-600 hover:underline">← Back to Dashboard</a>
           </p>
         </div>
       </div>

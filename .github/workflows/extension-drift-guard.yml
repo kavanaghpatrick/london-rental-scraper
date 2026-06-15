@@ -1,0 +1,104 @@
+name: Extension Drift Guard
+
+# CI guards (#28, lead-required for architecture B = dual Python+JS prediction).
+# Two independent checks, EITHER fails the build:
+#
+#   1. FIXTURE DIFF — JS XGBFeatures.buildFeatures/predictor vs the Python v20 truth.
+#      Regenerates the golden fixture FROM Python (gen_feature_parity_golden.py) so the
+#      JS is diffed against FRESH Python truth, not a stale committed fixture, then runs
+#      artifacts' _fixture_diff.mjs (fails on ANY feature or £ mismatch across all samples).
+#      This catches the JS feature builder / tree-walker silently drifting from Python v20.
+#
+#   2. BYTE-IDENTITY — serving vendored a COPY of chrome-extension/xgboost.js into
+#      dashboard/src/app/api/predict/xgboost.predictor.js (Next can't import cross-dir),
+#      so the /api/predict route runs a copy. This check fails if the copy ever drifts
+#      byte-for-byte from the canonical source.
+#
+# Together with the Python version-source SSOT (retrain_canonical.CANON_VERSION), these
+# make the dual Python-batch + JS-server/extension implementations safe from drift.
+
+on:
+  pull_request:
+    paths:
+      - 'chrome-extension/xgboost.js'
+      - 'chrome-extension/_fixture_diff.mjs'
+      - 'chrome-extension/api/model.json'
+      - 'chrome-extension/api/features.json'
+      - 'dashboard/src/app/api/predict/xgboost.predictor.js'
+      - 'output/rental_model_canonical*.pkl'
+      - 'output/feature_parity_golden.json'
+      - 'gen_feature_parity_golden.py'
+      - 'canonical_predict.py'
+      - '.github/workflows/extension-drift-guard.yml'
+  push:
+    paths:
+      - 'chrome-extension/xgboost.js'
+      - 'chrome-extension/_fixture_diff.mjs'
+      - 'chrome-extension/api/model.json'
+      - 'chrome-extension/api/features.json'
+      - 'dashboard/src/app/api/predict/xgboost.predictor.js'
+      - 'output/rental_model_canonical*.pkl'
+      - 'output/feature_parity_golden.json'
+      - 'gen_feature_parity_golden.py'
+      - 'canonical_predict.py'
+      - '.github/workflows/extension-drift-guard.yml'
+  workflow_dispatch:
+
+jobs:
+  # === Guard 1: JS ↔ FRESH Python v20 fixture diff ===
+  fixture-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python deps (for the golden regen)
+        run: pip install numpy pandas xgboost scikit-learn
+
+      - name: Regenerate golden fixture from Python v20 (fresh truth)
+        run: |
+          # gen_feature_parity_golden.py emits output/feature_parity_golden.json from
+          # canonical_predict (the v20 SSOT). Regenerating here means the JS is checked
+          # against the CURRENT Python truth — a model/FE change updates the oracle so a
+          # stale committed fixture can never mask real JS drift.
+          python3 gen_feature_parity_golden.py
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: JS ↔ Python parity (fail on ANY feature or £ drift)
+        run: |
+          # Harness defaults to output/feature_parity_golden.json (just regenerated).
+          # Exits non-zero on any feature mismatch or £ mismatch beyond epsilon.
+          node chrome-extension/_fixture_diff.mjs
+
+  # === Guard 2: vendored predictor byte-identity ===
+  vendored-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: chrome-extension/xgboost.js == dashboard vendored copy (byte-identical)
+        run: |
+          SRC=chrome-extension/xgboost.js
+          VENDORED=dashboard/src/app/api/predict/xgboost.predictor.js
+          if [ ! -f "$VENDORED" ]; then
+            echo "::error::Vendored predictor missing: $VENDORED"
+            exit 1
+          fi
+          if cmp -s "$SRC" "$VENDORED"; then
+            echo "OK: $VENDORED is byte-identical to $SRC"
+          else
+            echo "::error::Vendored predictor DRIFTED from source."
+            echo "$VENDORED differs from $SRC — re-copy the source so the /api/predict route"
+            echo "runs the same predictor as the extension. Sizes: $(wc -c <"$SRC") vs $(wc -c <"$VENDORED")."
+            cmp "$SRC" "$VENDORED" || true
+            exit 1
+          fi

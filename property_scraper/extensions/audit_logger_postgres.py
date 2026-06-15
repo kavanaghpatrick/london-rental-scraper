@@ -8,7 +8,7 @@ import os
 import logging
 import time
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timedelta
 from scrapy import signals
 
 logger = logging.getLogger(__name__)
@@ -17,8 +17,17 @@ logger = logging.getLogger(__name__)
 class PostgresAuditLoggerExtension:
     """Scrapy extension that logs audit data to Vercel Postgres."""
 
-    def __init__(self, run_id=None):
+    # Reap any scrape_runs left status='running' for longer than this many
+    # hours. A row only stays 'running' after hard external process death
+    # (SIGKILL / OOM / reboot) before spider_closed fires - every clean or
+    # errored close (incl. timeout) updates the row. Default is comfortably
+    # above CLOSESPIDER_TIMEOUT (1h) so a legit long run is never falsely
+    # reaped. Override via AUDIT_STALE_RUN_HOURS setting; <=0 disables.
+    STALE_RUN_HOURS = 4
+
+    def __init__(self, run_id=None, stale_run_hours=None):
         self.run_id = run_id or datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+        self.stale_run_hours = stale_run_hours if stale_run_hours is not None else self.STALE_RUN_HOURS
         self.conn = None
         self.spider_runs = {}
         try:
@@ -39,7 +48,8 @@ class PostgresAuditLoggerExtension:
     @classmethod
     def from_crawler(cls, crawler):
         run_id = crawler.settings.get('AUDIT_RUN_ID')
-        ext = cls(run_id)
+        stale_run_hours = crawler.settings.getfloat('AUDIT_STALE_RUN_HOURS', cls.STALE_RUN_HOURS)
+        ext = cls(run_id, stale_run_hours)
 
         crawler.signals.connect(ext.spider_opened, signal=signals.spider_opened)
         crawler.signals.connect(ext.spider_closed, signal=signals.spider_closed)
@@ -118,6 +128,46 @@ class PostgresAuditLoggerExtension:
 
         cursor.close()
 
+    def _reap_stale_runs(self):
+        """Auto-clean orphaned 'running' rows from hard process death.
+
+        A scrape_runs row only stays status='running' if the process was killed
+        (SIGKILL / OOM / reboot) before spider_closed could update it. This sweep
+        marks any such row older than self.stale_run_hours as failed so the
+        dashboard's /api/running stops reporting dead spiders as live.
+
+        Excludes the current run_id so concurrent spiders sharing this process's
+        run are never touched, and never reaps anything if stale_run_hours <= 0.
+        """
+        if not self.stale_run_hours or self.stale_run_hours <= 0:
+            return
+        if not self.conn:
+            return
+        try:
+            now = datetime.utcnow().isoformat()
+            cutoff = (datetime.utcnow() - timedelta(hours=self.stale_run_hours)).isoformat()
+            cursor = self.conn.cursor()
+            cursor.execute('''
+                UPDATE scrape_runs
+                SET status = 'failed',
+                    finished_at = %s,
+                    exit_reason = 'stale_orphan',
+                    error_summary = %s
+                WHERE status = 'running'
+                  AND run_id != %s
+                  AND started_at < %s
+            ''', (now,
+                  f"Auto-reaped by audit_logger at {now}: status='running' with no "
+                  f"finished_at for >{self.stale_run_hours}h (process killed before "
+                  f"spider_closed). started_at predates cutoff {cutoff}.",
+                  self.run_id, cutoff))
+            reaped = cursor.rowcount
+            cursor.close()
+            if reaped:
+                logger.warning(f"[AUDIT:Postgres] Reaped {reaped} stale 'running' scrape_runs (>{self.stale_run_hours}h orphans)")
+        except Exception as e:
+            logger.warning(f"[AUDIT] Stale-run reap failed (non-fatal): {e}")
+
     def _log_event(self, spider_name, event_type, message, details=None, severity='info'):
         """Log an event to scrape_events table."""
         if not self._connect():
@@ -137,6 +187,10 @@ class PostgresAuditLoggerExtension:
         """Called when spider starts."""
         if not self._connect():
             return
+
+        # Reap orphaned 'running' rows from prior hard-killed processes before
+        # inserting this run, so /api/running self-heals.
+        self._reap_stale_runs()
 
         now = datetime.utcnow().isoformat()
         memory_mb = self.process.memory_info().rss / 1024 / 1024 if self.process else 0

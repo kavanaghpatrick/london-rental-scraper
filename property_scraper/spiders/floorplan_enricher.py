@@ -79,7 +79,7 @@ class FloorplanEnricherSpider(scrapy.Spider):
         },
     }
 
-    def __init__(self, source=None, limit=None, use_ocr=False, *args, **kwargs):
+    def __init__(self, source=None, limit=None, use_ocr=False, db_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         if not source or source not in self.SOURCE_CONFIG:
@@ -89,7 +89,8 @@ class FloorplanEnricherSpider(scrapy.Spider):
         self.source_config = self.SOURCE_CONFIG[source]
         self.allowed_domains = [self.source_config['domain']]
         self.limit = int(limit) if limit else None
-        self.db_path = 'output/rentals.db'
+        # db_path defaults to the canonical DB; override via -a db_path=... for testing
+        self.db_path = db_path or 'output/rentals.db'
         self.use_ocr = str(use_ocr).lower() in ('true', '1', 'yes') and OCR_AVAILABLE
 
         # ThreadPoolExecutor for OCR
@@ -544,7 +545,13 @@ class FloorplanEnricherSpider(scrapy.Spider):
         return floorplan_url, description
 
     def _extract_foxtons(self, response):
-        """Extract floorplan URL and description from Foxtons JSON (no Playwright needed)."""
+        """Extract floorplan URL and description from Foxtons JSON (no Playwright needed).
+
+        Foxtons detail pages (2026) expose fields directly on
+        props.pageProps.propertyDetail (floorplan.src is a full URL, features/
+        bulletPoints are lists, shortDescription holds the prose). Older structures
+        (propertyBlob, pageData.data.propertyBlob) are kept as fallbacks.
+        """
         floorplan_url = None
         description = None
 
@@ -556,41 +563,46 @@ class FloorplanEnricherSpider(scrapy.Spider):
         try:
             data = json.loads(script)
             props = data.get('props', {}).get('pageProps', {})
-
-            # NEW PATH (2025): propertyDetail.propertyBlob
             property_detail = props.get('propertyDetail', {}) or {}
-            prop_blob = property_detail.get('propertyBlob', {}) or {}
 
-            # Fallback to old path: pageData.data.propertyBlob
-            if not prop_blob:
-                page_data = props.get('pageData', {}).get('data', {})
-                prop_blob = page_data.get('propertyBlob', {}) or {}
+            # --- NEW PATH (2026): fields directly on propertyDetail ---
+            # Floorplan is a dict {"id", "src", "updatedAt"} where src is a full URL
+            floorplan = property_detail.get('floorplan', {}) or {}
+            if isinstance(floorplan, dict) and floorplan.get('src'):
+                floorplan_url = floorplan['src']
 
-            # Extract description directly from propertyBlob (new structure)
-            description = prop_blob.get('description', '') or prop_blob.get('descriptionShort', '')
+            # Description: shortDescription prose + bulletPoints / features list
+            description = property_detail.get('shortDescription', '') or property_detail.get('description', '')
+            features = (property_detail.get('bulletPoints', [])
+                        or property_detail.get('features', [])
+                        or property_detail.get('keyFeatures', []) or [])
 
-            # Fallback: try propertyInfo.description (old structure)
-            if not description:
-                property_info = prop_blob.get('propertyInfo', {}) or {}
-                description = property_info.get('description', '')
+            # --- FALLBACK: legacy propertyBlob structures ---
+            if not floorplan_url and not description and not features:
+                prop_blob = property_detail.get('propertyBlob', {}) or {}
+                if not prop_blob:
+                    page_data = props.get('pageData', {}).get('data', {})
+                    prop_blob = page_data.get('propertyBlob', {}) or {}
 
-            # Also get key features if available
-            features = prop_blob.get('keyFeatures', []) or prop_blob.get('features', []) or []
+                description = prop_blob.get('description', '') or prop_blob.get('descriptionShort', '')
+                if not description:
+                    property_info = prop_blob.get('propertyInfo', {}) or {}
+                    description = property_info.get('description', '')
+                features = prop_blob.get('keyFeatures', []) or prop_blob.get('features', []) or []
+
+                asset_info = prop_blob.get('assetInfo', {}) or {}
+                assets = asset_info.get('assets', {}) or {}
+                floorplan_data = assets.get('floorplan', {}) or {}
+                if floorplan_data.get('large') and floorplan_data['large'].get('filename'):
+                    floorplan_url = f"https://assets.foxtons.co.uk/{floorplan_data['large']['filename']}"
+                elif floorplan_data.get('small') and floorplan_data['small'].get('filename'):
+                    floorplan_url = f"https://assets.foxtons.co.uk/{floorplan_data['small']['filename']}"
+
+            # Append features to description for richer text
             if features and description:
                 description = description + '\n\nFeatures:\n' + '\n'.join(f'- {f}' for f in features)
-
-            # Get floorplan from assets (try new then old structure)
-            asset_info = prop_blob.get('assetInfo', {}) or {}
-            assets = asset_info.get('assets', {}) or {}
-            floorplan_data = assets.get('floorplan', {}) or {}
-
-            # Get large floorplan URL
-            if floorplan_data.get('large') and floorplan_data['large'].get('filename'):
-                filename = floorplan_data['large']['filename']
-                floorplan_url = f"https://assets.foxtons.co.uk/{filename}"
-            elif floorplan_data.get('small') and floorplan_data['small'].get('filename'):
-                filename = floorplan_data['small']['filename']
-                floorplan_url = f"https://assets.foxtons.co.uk/{filename}"
+            elif features and not description:
+                description = 'Features:\n' + '\n'.join(f'- {f}' for f in features)
 
         except (json.JSONDecodeError, KeyError, TypeError):
             pass

@@ -44,12 +44,13 @@ class FeaturesEnricherSpider(scrapy.Spider):
         },
     }
 
-    def __init__(self, source=None, limit=None, *args, **kwargs):
+    def __init__(self, source=None, limit=None, db_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.source_filter = source  # Optional: 'rightmove', 'foxtons', 'knightfrank', 'chestertons'
         self.limit = int(limit) if limit else None
-        self.db_path = 'output/rentals.db'
+        # db_path defaults to the canonical DB; override via -a db_path=... for testing
+        self.db_path = db_path or 'output/rentals.db'
 
         self.stats = {
             'total': 0,
@@ -176,43 +177,52 @@ class FeaturesEnricherSpider(scrapy.Spider):
             )
 
     def parse_rightmove(self, response):
-        """Parse Rightmove property page."""
-        features = {}
+        """Parse Rightmove property page.
 
-        # Extract from __NEXT_DATA__
+        Rightmove (2026) renders to plain HTML with stable test ids and no longer
+        ships a __NEXT_DATA__ blob (data lives in a normalized window.__PAGE_MODEL
+        pool that is impractical to parse). We extract keyFeatures and description
+        from the rendered markup, falling back to legacy __NEXT_DATA__ if present.
+        """
+        features = {}
+        key_features = []
+        description = ''
+
+        # PRIMARY: legacy __NEXT_DATA__ JSON (kept for compatibility)
         script = response.css('script#__NEXT_DATA__::text').get()
         if script:
             try:
                 data = json.loads(script)
-                props = data.get('props', {}).get('pageProps', {})
-                property_data = props.get('propertyData', {})
-
-                # Key features list
-                key_features = property_data.get('keyFeatures', [])
-                features['key_features'] = key_features
-
-                # Full description
-                text_data = property_data.get('text', {})
-                description = text_data.get('description', '')
-                features['raw_text'] = description
-
-                # Location/address info
-                location = property_data.get('location', {})
-                # Sometimes has floor level
-
-                # Parse amenities from key features and description
-                all_text = ' '.join(key_features) + ' ' + description
-                features.update(self.extract_amenities(all_text.lower()))
-
+                property_data = data.get('props', {}).get('pageProps', {}).get('propertyData', {})
+                key_features = property_data.get('keyFeatures', []) or []
+                description = (property_data.get('text', {}) or {}).get('description', '') or ''
             except (json.JSONDecodeError, KeyError, TypeError) as e:
                 self.logger.debug(f"[PARSE] Rightmove JSON error: {e}")
 
-        # Fallback to page text
-        if not features.get('raw_text'):
-            page_text = response.css('div.property-description ::text').getall()
-            full_text = ' '.join(page_text)
-            features['raw_text'] = full_text
-            features.update(self.extract_amenities(full_text.lower()))
+        # PRIMARY (current): rendered HTML with data-testid="keyFeatures"
+        if not key_features:
+            key_features = [
+                f.strip() for f in
+                response.css('[data-testid="keyFeatures"] li::text').getall()
+                if f.strip()
+            ]
+
+        # Description from rendered HTML (current markup uses an article/section with
+        # a "Property description" heading; grab the article text as a robust source)
+        if not description:
+            desc_parts = response.css(
+                '[data-testid="description"] ::text, '
+                'article ::text, '
+                'div.property-description ::text'
+            ).getall()
+            description = ' '.join(p.strip() for p in desc_parts if p.strip())
+
+        features['key_features'] = key_features
+        features['raw_text'] = description
+
+        # Parse amenities from key features and description
+        all_text = (' '.join(key_features) + ' ' + description).lower()
+        features.update(self.extract_amenities(all_text))
 
         return features
 

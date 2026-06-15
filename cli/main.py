@@ -671,6 +671,7 @@ def status():
 def mark_inactive(
     days: int = typer.Option(7, "--days", "-d", help="Days since last seen"),
     execute: bool = typer.Option(False, "--execute", help="Actually apply changes"),
+    force: bool = typer.Option(False, "--force", help="Override the frozen-snapshot + >50% safety guards (logs a warning)"),
 ):
     """Mark listings not seen recently as inactive."""
     db_path = get_db_path()
@@ -682,7 +683,46 @@ def mark_inactive(
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    # === Frozen-snapshot + cycle-relative guard (mirrors daily_pipeline #25 fix) ===
+    # A wall-clock cutoff (utcnow() - days) zeroes 100% of is_active on a frozen
+    # snapshot (e.g. canonical DB last scraped months ago), which empties the
+    # dashboard and breaks the model. So:
+    #   1. Anchor the cutoff to the DATA's own clock: max(last_seen) - days.
+    #   2. FROZEN-SNAPSHOT GUARD: if the newest row is older than `days` by wall
+    #      clock, refuse entirely (the DB hasn't been scraped recently).
+    # --force overrides the refusals (logs a warning) for the rare deliberate case;
+    # the cutoff stays cycle-relative even under --force so force never re-introduces
+    # the wall-clock-zeroing footgun.
+    cursor.execute("SELECT MAX(last_seen) FROM listings")
+    row = cursor.fetchone()
+    max_last_seen = row[0] if row else None
+    if not max_last_seen:
+        console.print("[green]No listings to evaluate.[/green]")
+        conn.close()
+        return
+
+    wall_cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    if max_last_seen < wall_cutoff:
+        if not force:
+            console.print(
+                f"[yellow]Frozen-snapshot guard:[/yellow] newest last_seen={max_last_seen[:10]} "
+                f"is older than {days}d. This DB has not been scraped recently — running "
+                f"mark-inactive would flip ALL listings inactive. [red]Refusing.[/red]\n"
+                f"Run a fresh scrape first, set is_active cycle-relative per DATA_LAYER_CONTRACT §5.1, "
+                f"or pass --force to override."
+            )
+            conn.close()
+            raise typer.Exit(1)
+        console.print(
+            f"[red]--force:[/red] overriding frozen-snapshot guard (newest last_seen={max_last_seen[:10]}, "
+            f"older than {days}d). Proceeding with CYCLE-RELATIVE cutoff (not wall-clock)."
+        )
+
+    try:
+        anchor = datetime.fromisoformat(max_last_seen)
+    except ValueError:
+        anchor = datetime.utcnow()
+    cutoff = (anchor - timedelta(days=days)).isoformat()
 
     # Count affected
     cursor.execute("""
@@ -691,12 +731,30 @@ def mark_inactive(
     """, (cutoff,))
     count = cursor.fetchone()[0]
 
-    console.print(f"\nFound [cyan]{count}[/cyan] listings not seen in {days}+ days")
+    console.print(f"\nFound [cyan]{count}[/cyan] listings not seen in {days}+ days (cycle-relative to {max_last_seen[:10]})")
 
     if count == 0:
         console.print("[green]Nothing to update.[/green]")
         conn.close()
         return
+
+    # === >50% ABORT (defense-in-depth, dataeng's request) ===
+    cursor.execute("SELECT COUNT(*) FROM listings WHERE is_active = 1")
+    active_now = cursor.fetchone()[0]
+    if active_now > 0 and count > 0.5 * active_now:
+        if not force:
+            console.print(
+                f"[red]Aborted:[/red] would flip {count}/{active_now} "
+                f"({100*count/active_now:.0f}%) of active listings inactive — exceeds 50% safety "
+                f"threshold. Refusing (likely a bad cutoff or stale data). Re-check the data first, "
+                f"or pass --force to override."
+            )
+            conn.close()
+            raise typer.Exit(1)
+        console.print(
+            f"[red]--force:[/red] overriding >50% guard — flipping {count}/{active_now} "
+            f"({100*count/active_now:.0f}%) of active listings inactive."
+        )
 
     if not execute:
         console.print("[yellow]Dry run.[/yellow] Use --execute to apply changes.")

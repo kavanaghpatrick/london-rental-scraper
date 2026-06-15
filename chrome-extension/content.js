@@ -34,6 +34,11 @@
     SIMILAR_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/similar_listings.json',
     MODEL_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/model.json',
     FEATURES_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/chrome-extension/api/features.json',
+    // PRIMARY estimate source: our backend running the canonical v20 model (#28/#29).
+    // The in-browser XGBoost path is a LABELED-approximate FALLBACK (it diverges from
+    // canonical — see PREDICT_API_CONTRACT.md). On error/timeout we fall back.
+    PREDICT_URL: 'https://dashboard-fawn-nu-59.vercel.app/api/predict',
+    PREDICT_TIMEOUT: 6000,
     OCR_TIMEOUT: 60000,
   };
 
@@ -302,6 +307,71 @@
       sizeSource = 'estimated';
     }
 
+    // Derive floor flags from OCR floorplan text (same extractor the model uses)
+    // so the server gets explicit floors instead of having to re-OCR.
+    const floors = window.XGBFeatures.extractFloors(ocrText);
+
+    // RAW property fields = the /api/predict request contract
+    // (see PREDICT_API_CONTRACT.md). These are the fields canonical v20 FE reads;
+    // property_type_std + source + the floor flags are load-bearing for parity, so
+    // send them explicitly. The server passes this straight to buildFeatures().
+    const rawFields = {
+      bedrooms: beds,
+      bathrooms: baths,
+      size_sqft: sizeSqft,
+      postcode: postcode,
+      postcode_normalized: postcode,
+      area: '',
+      property_type: propertyType,          // raw type (Python field name)
+      property_type_std: propertyType,      // canonical type signal (drives FE)
+      address: address,
+      latitude: lat,
+      longitude: lon,
+      source: currentSite || '',            // rightmove|knightfrank|chestertons|savills -> source_quality
+      agent_brand: agentName,               // premium-agent detection (Python field name)
+      let_type: 'long',  // short lets are intercepted in init() before this runs
+      features: '',
+      description: description,
+      ocrText: ocrText,
+      pageUrl: window.location.href,
+      // explicit floor flags (model consumes these directly)
+      floor_count: floors.floor_count,
+      has_basement: floors.has_basement,
+      has_ground: floors.has_ground,
+      has_first_floor: floors.has_first_floor,
+      has_second_floor: floors.has_second_floor,
+      has_third_floor: floors.has_third_floor,
+      has_fourth_plus: floors.has_fourth_plus,
+      has_roof_terrace: floors.has_roof_terrace,
+    };
+
+    // PRIMARY: ask our backend (canonical v20). On error/timeout, fall back to the
+    // in-browser model (labeled approximate).
+    injectLoadingState('Calculating fair value...');
+    const serverResult = await fetchServerEstimate(rawFields);
+    if (serverResult && serverResult.estimate_pcm > 0) {
+      const fairValue = Math.round(serverResult.estimate_pcm);
+      const premiumPct = Math.round((askingPrice / fairValue - 1) * 100 * 10) / 10;
+      const amenities = window.XGBFeatures.parseAmenities(description);
+      const amenitiesDetected = Object.entries(amenities).filter(([k, v]) => v).map(([k]) => k.replace('has_', ''));
+      return {
+        asking_price: askingPrice,
+        fair_value: fairValue,
+        range_low: Math.round(serverResult.range_low ?? fairValue * 0.79),
+        range_high: Math.round(serverResult.range_high ?? fairValue * 1.21),
+        premium_pct: premiumPct,
+        size_sqft: sizeSqft,
+        size_source: sizeSource,
+        amenities_detected: amenitiesDetected,
+        postcode_district: postcode.split(' ')[0],
+        beds: beds,
+        baths: baths,
+        predictor_source: 'server',  // drives the UI "v20 · Live" label
+      };
+    }
+    log(' Server estimate unavailable — falling back to in-browser model (approximate)');
+
+    // FALLBACK: in-browser XGBoost (approximate — diverges from canonical v20)
     // Load XGBoost model if needed
     if (!xgbPredictor) {
       injectLoadingState('Loading model...');
@@ -309,23 +379,12 @@
       await xgbPredictor.load(CONFIG.MODEL_URL, CONFIG.FEATURES_URL);
     }
 
-    // Build features and predict
+    // Build features and predict — reuse the SAME rawFields the server gets, so the
+    // in-browser fallback now matches canonical v20 too (the JS FE was made byte-equal
+    // to Python). Identical inputs => identical features.
     injectLoadingState('Calculating fair value...');
     console.log(`[RFV] Building features with: beds=${beds}, baths=${baths}, sqft=${sizeSqft}, postcode=${postcode}, propertyType=${propertyType}, agent=${agentName}`);
-    const features = window.XGBFeatures.buildFeatures({
-      bedrooms: beds,
-      bathrooms: baths,
-      size_sqft: sizeSqft,
-      postcode: postcode,
-      propertyType: propertyType,
-      latitude: lat,
-      longitude: lon,
-      address: address,  // V16: for garden square/prime street detection
-      description: description,
-      ocrText: ocrText, // Pass OCR text for floor extraction
-      agentName: agentName, // For premium agent detection
-      pageUrl: window.location.href, // For source quality detection
-    });
+    const features = window.XGBFeatures.buildFeatures(rawFields);
     console.log(`[RFV] Key features: tube_dist=${features.tube_distance_km?.toFixed(3)}, center_dist=${features.center_distance_km?.toFixed(3)}, center_inv=${features.center_distance_inv?.toFixed(4)}, is_prime=${features.is_prime_postcode}`);
 
     const predLog = xgbPredictor.predict(features);
@@ -352,7 +411,39 @@
       postcode_district: postcodeDistrict,
       beds: beds,
       baths: baths,
+      predictor_source: 'fallback',  // in-browser model; approximate vs canonical v20
     };
+  }
+
+  // Ask our backend (canonical v20) for the estimate. Returns the parsed JSON
+  // ({estimate_pcm, range_low, range_high, model_version, ...}) or null on any
+  // error/timeout so analyzeProperty falls back to the in-browser model.
+  async function fetchServerEstimate(rawFields) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CONFIG.PREDICT_TIMEOUT);
+    try {
+      const res = await fetch(CONFIG.PREDICT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rawFields),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        log(' /api/predict HTTP ' + res.status);
+        return null;
+      }
+      const data = await res.json();
+      if (!data || !(data.estimate_pcm > 0)) {
+        log(' /api/predict returned no estimate');
+        return null;
+      }
+      return data;
+    } catch (e) {
+      log(' /api/predict failed: ' + (e.name === 'AbortError' ? 'timeout' : e.message));
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ============================================
@@ -1580,7 +1671,11 @@
           Compare with Similar Properties
         </button>
 
-        <div class="rfv-footer">XGBoost V20 · ${source === 'cached' ? 'Cached' : 'Live'}</div>
+        <div class="rfv-footer">${
+          r.predictor_source === 'fallback'
+            ? 'XGBoost V20 · ~estimate (offline)'
+            : 'XGBoost V20 · Live'
+        }</div>
       </div>
     `;
 

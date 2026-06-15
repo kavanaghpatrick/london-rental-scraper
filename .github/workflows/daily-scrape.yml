@@ -313,37 +313,50 @@ jobs:
           conn.close()
           EOF
 
-      - name: Train price prediction model (V20)
+      - name: Retrain CANONICAL model (v20) after scrape
         run: |
-          pip install xgboost scikit-learn optuna pandas numpy
-          # Full training for scheduled runs, quick mode for manual tests
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "Running FULL model training (Optuna optimization)..."
-            python rental_price_models_v20.py --export 2>&1 | tee model_output.txt
-          else
-            echo "Running QUICK model training (skip Optuna)..."
-            python rental_price_models_v20.py --quick --export 2>&1 | tee model_output.txt
-          fi
+          pip install xgboost scikit-learn optuna pandas numpy psycopg2-binary
+          # FIX (#9): retrain ONE canonical version (rental_model_canonical.pkl), not
+          # an ad-hoc v20 file. The scrape wrote to Postgres, but retrain_canonical.py
+          # reads SQLite — so first materialize Postgres -> a local SQLite, then retrain.
+          echo "Materializing Postgres -> SQLite for the trainer..."
+          python3 scripts/pg_to_sqlite.py --out output/rentals.db 2>&1 | tee model_output.txt
+
+          echo "Retraining canonical model..."
+          python3 retrain_canonical.py --db output/rentals.db 2>&1 | tee -a model_output.txt
+
+          echo "Exporting canonical model to the Chrome extension format..."
+          python3 - <<'PY' 2>&1 | tee -a model_output.txt
+          # Modeler's blessed entrypoint: writes model.json + features.json as ONE
+          # matched pair via the Booster JSON (no xgboost wrapper save_model quirk).
+          import canonical_predict as cp
+          mp, fp = cp.export_to_chrome('chrome-extension/api')
+          import json, os
+          n = len(json.load(open('chrome-extension/api/features.json')))
+          assert os.path.getsize('chrome-extension/api/model.json') > 1024, 'model.json not written'
+          print(f'chrome export verified: {n} features')
+          PY
         timeout-minutes: 30
 
-      - name: Commit updated model files
+      - name: Commit canonical model files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Add the exported model files (-f for .pkl files ignored by .gitignore)
+          # Served extension artifacts + the canonical pkls (-f: .pkl is gitignored).
           git add chrome-extension/api/model.json
           git add chrome-extension/api/features.json
-          git add -f output/rental_model_v20.pkl
-          git add -f output/rental_model_v20_features.pkl
+          git add -f output/rental_model_canonical.pkl
+          git add -f output/rental_model_canonical_features.pkl
+          git add -f output/rental_model_canonical_meta.json
 
           # Only commit if there are changes
           if git diff --staged --quiet; then
             echo "No model changes to commit"
           else
-            git commit -m "Auto-update V20 model $(date +%Y-%m-%d) [skip ci]"
+            git commit -m "Auto-update canonical model $(date +%Y-%m-%d) [skip ci]"
             git push
-            echo "✅ Model files committed and pushed"
+            echo "✅ Canonical model files committed and pushed"
           fi
 
       - name: Show model results
