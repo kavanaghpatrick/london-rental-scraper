@@ -898,8 +898,12 @@ const XGBFeatures = {
     const lon = data.longitude || this.CITY_CENTER.lon;
     const description = data.description || '';
     const ocrText = data.ocrText || '';
-    // agent_brand is the Python/contract field; agentName kept as legacy fallback.
-    const agentName = data.agent_brand || data.agentName || '';
+    // IMPORTANT: the canonical inference path (modeler's build_features / the golden
+    // fixture) yields is_premium_agent=0 even when agent_brand is a premium agent — at
+    // inference this feature is effectively inert. To stay byte-equal to the fixture we
+    // do NOT read agent_brand here (reading it would spuriously fire is_premium_agent).
+    // agent_brand still travels in the contract for any future use. See PREDICT_API_CONTRACT.md.
+    const agentName = data.agentName || '';
     // pageUrl is a RAW INPUT (used for source-quality detection). The browser I/O
     // layer (content.js) passes window.location.href; the server passes the POSTed
     // pageUrl. buildFeatures itself stays pure/Node-safe — no window/document/location.

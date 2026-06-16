@@ -32,7 +32,13 @@ One source for both client and server — no client/server drift.
 
 Body = RAW property fields (`feature_parity_golden.json.required_input_fields`). Pass
 straight to `buildFeatures(body)` — do NOT hand-build features. **Load-bearing for parity:**
-`property_type_std`, `source`, `agent_brand`, and the explicit floor flags.
+`property_type_std`, `source`, and the explicit floor flags.
+
+**Field naming = snake_case (Python field names), end to end** (content.js sender →
+this contract → serving's parser → buildFeatures). No camelCase aliases — use
+`property_type` (not `propertyType`) and `agent_brand` (not `agentName`). buildFeatures
+still accepts the old camelCase as a last-resort fallback for legacy in-page callers, but
+the /api/predict contract is snake_case only. (Naming confirmation requested from serving.)
 
 ```jsonc
 {
@@ -42,7 +48,8 @@ straight to `buildFeatures(body)` — do NOT hand-build features. **Load-bearing
   "address": "12 Some Street",
   "latitude": 51.4934, "longitude": -0.1610,
   "source": "rightmove",            // rightmove|knightfrank|chestertons|savills|foxtons -> source_quality
-  "agent_brand": "Knight Frank",    // premium-agent detection
+  "agent_brand": "Knight Frank",    // carried in contract; NOTE is_premium_agent is INERT at
+                                    // inference in the canonical path (fixture = 0 even for premium)
   "let_type": "long",
   "features": "", "description": "",
   "floor_count": 0,                 // explicit floors (else 0 = training default)
