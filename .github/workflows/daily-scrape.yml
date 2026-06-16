@@ -302,11 +302,38 @@ jobs:
               to_delete.extend([m['id'] for m in members[1:]])
 
           if to_delete:
-              placeholders = ','.join(['%s'] * len(to_delete))
-              cur.execute(f"DELETE FROM price_history WHERE listing_id IN ({placeholders})", to_delete)
-              cur.execute(f"DELETE FROM listings WHERE id IN ({placeholders})", to_delete)
+              # === DESTRUCTIVE-OP GUARDS (#37) ===
+              # This DELETE runs against PROD every scrape. A clustering bug (bad
+              # union-find / over-loose similarity) could nuke a large slice of prod.
+              # So: (1) ABORT if the delete exceeds a safe fraction of active rows;
+              # (2) BACK UP the to-be-deleted rows to a CSV artifact BEFORE deleting,
+              # so any over-deletion is recoverable.
+              import csv, datetime
+              total_active = len(listings)
+              pct = len(to_delete) / total_active if total_active else 0
+              MAX_DELETE_FRACTION = 0.10  # dedupe should retire a small slice, never >10%
+              if pct > MAX_DELETE_FRACTION:
+                  print(f"::error::Dedupe DELETE aborted: would remove {len(to_delete)}/{total_active} "
+                        f"({pct*100:.1f}%) active listings — exceeds {MAX_DELETE_FRACTION*100:.0f}% safety "
+                        f"threshold. Likely a clustering bug. NOT deleting. Investigate before re-running.")
+                  conn.close()
+                  raise SystemExit(1)
+
+              # Backup the doomed rows (full row + their price_history) to a CSV artifact.
+              ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+              backup_path = f"dedupe_deleted_backup_{ts}.csv"
+              ph = ','.join(['%s'] * len(to_delete))
+              cur.execute(f"SELECT * FROM listings WHERE id IN ({ph})", to_delete)
+              cols = [d[0] for d in cur.description]
+              with open(backup_path, 'w', newline='') as f:
+                  w = csv.writer(f); w.writerow(cols); w.writerows(cur.fetchall())
+              print(f"Backed up {len(to_delete)} to-be-deleted listings to {backup_path} (uploaded as artifact)")
+
+              cur.execute(f"DELETE FROM price_history WHERE listing_id IN ({ph})", to_delete)
+              cur.execute(f"DELETE FROM listings WHERE id IN ({ph})", to_delete)
               conn.commit()
-              print(f"✅ Removed {len(to_delete)} duplicate listings (address similarity >70%)")
+              print(f"✅ Removed {len(to_delete)} duplicate listings ({pct*100:.1f}% of active, under "
+                    f"{MAX_DELETE_FRACTION*100:.0f}% guard; backup at {backup_path})")
           else:
               print("✅ No duplicates found")
 
@@ -323,6 +350,10 @@ jobs:
           python3 scripts/pg_to_sqlite.py --out output/rentals.db 2>&1 | tee model_output.txt
 
           echo "Retraining canonical model..."
+          # retrain_canonical.py also emits output/rental_model_canonical_inference.json in
+          # the SAME run (modeler folded gen_inference_stats in). That sidecar is REQUIRED by
+          # canonical_predict.build_features(inference=True) — without it, single-row predict
+          # regresses to the degenerate £3,430 bug — and it's committed below with the pkl.
           python3 retrain_canonical.py --db output/rentals.db 2>&1 | tee -a model_output.txt
 
           echo "Exporting canonical model to the Chrome extension format..."
@@ -349,6 +380,9 @@ jobs:
           git add -f output/rental_model_canonical.pkl
           git add -f output/rental_model_canonical_features.pkl
           git add -f output/rental_model_canonical_meta.json
+          # Inference stats (freq maps) — REQUIRED alongside the pkl or single-row
+          # predict silently regresses to the £3,430 degenerate bug. Not gitignored.
+          git add output/rental_model_canonical_inference.json
 
           # Only commit if there are changes
           if git diff --staged --quiet; then
@@ -404,6 +438,7 @@ jobs:
             scrape_output.txt
             ocr_output.txt
             model_output.txt
+            dedupe_deleted_backup_*.csv
           retention-days: 7
 
       - name: Create summary

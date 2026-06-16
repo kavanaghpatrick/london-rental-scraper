@@ -333,25 +333,20 @@ def is_short_let_or_serviced(row):
 
 
 def is_likely_social_housing(row):
-    """Detect social housing / affordable housing (V16)."""
-    address = str(row.get('address', '')).lower()
-    ppsf = row.get('ppsf', 0) or 0
-    postcode_district = str(row.get('postcode_district', ''))
+    """Detect social housing / affordable housing (V16) — ADDRESS-PATTERN ONLY.
 
+    TARGET-LEAKAGE FIX (leak audit 2026-06-16): a former branch flagged listings in
+    PREMIUM_POSTCODES_SOCIAL whose ppsf (price_pcm / size_sqft) fell in 0 < ppsf < 3.5.
+    That keyed off the row's OWN price — i.e. the regression target — so at TRAINING it
+    embedded the label into the feature (inflating CV and teaching a price-conditional
+    discount), while at INFERENCE price is unknown (ppsf=0) so the branch was always
+    dead. Net effect: train/inference skew + optimistic CV. Removed entirely. Detection
+    is now purely from address text (SOCIAL_ESTATE_PATTERNS), which is available and
+    identical at both train and inference time. See task #30 and the leak-audit notes.
+    """
+    address = str(row.get('address', '')).lower()
     for pattern in SOCIAL_ESTATE_PATTERNS:
         if re.search(pattern, address):
-            return 1
-
-    # Gate the PPSF-based branch on a REAL positive price. At inference time price
-    # is the unknown target, so ppsf defaults to 0 — `ppsf < 3.5` would then fire
-    # on EVERY premium-postcode prediction, spuriously discounting the whole prime
-    # market (~-81% on e.g. SW1W). Require 0 < ppsf < 3.5 so only genuinely cheap
-    # listings (real low ppsf) trip it. Training rows always have a real price
-    # (0 training rows have ppsf==0), so this is PREDICTION-ONLY — the trained model
-    # is unchanged, no retrain needed. Matches chrome-extension/xgboost.js
-    # (`if (ppsf && ppsf < 3.5)`). See task #30.
-    if any(postcode_district.startswith(p) for p in PREMIUM_POSTCODES_SOCIAL):
-        if 0 < ppsf < 3.5:
             return 1
     return 0
 

@@ -1,0 +1,85 @@
+name: Neon Prod Backup
+
+# Scheduled, read-only pg_dump of the production Neon Postgres, uploaded as a
+# retained CI artifact. This is the SCHEDULED half of the backup regime
+# (see BACKUP_STRATEGY.md). The PRE-DESTRUCTIVE-OP half lives in
+# scripts/backup_neon.sh, invoked before any prod TRUNCATE/load.
+#
+# SAFETY: pg_dump is read-only. This workflow NEVER writes to the database.
+# It requires the POSTGRES_URL repo secret (rotate it first — see ROTATION_RUNBOOK.md).
+
+on:
+  schedule:
+    # Daily at 05:17 UTC — offset from the 06:00 daily-scrape so a backup always
+    # exists from BEFORE the scrape mutates anything. Off-:00 minute on purpose.
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: 'Prune dumps in the artifact older than N days (local prune only)'
+        required: false
+        default: '30'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 16 client (pg_dump)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
+
+      - name: Guard — POSTGRES_URL must be set
+        env:
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+        run: |
+          if [ -z "${POSTGRES_URL}" ]; then
+            echo "::error::POSTGRES_URL secret is not set. Add it (rotated) before backups can run."
+            exit 1
+          fi
+          echo "POSTGRES_URL is set (value redacted)."
+
+      - name: Run backup (read-only pg_dump)
+        env:
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+          RETENTION_DAYS: ${{ github.event.inputs.retention_days || '30' }}
+          # Land the dump in a predictable dir for the upload step.
+          NEON_BACKUP_DIR: ${{ github.workspace }}/neon_backups
+        run: |
+          chmod +x scripts/backup_neon.sh
+          scripts/backup_neon.sh
+
+      - name: Upload dump as artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neon-backup-${{ github.run_id }}
+          path: neon_backups/neon_*.sql.gz
+          # CI artifact retention is independent of the script's local prune;
+          # 90 days gives a deep rollback window without external storage.
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Neon backup" >> "$GITHUB_STEP_SUMMARY"
+          if [ -d neon_backups ] && ls neon_backups/neon_*.sql.gz >/dev/null 2>&1; then
+            f=$(ls -1 neon_backups/neon_*.sql.gz | tail -1)
+            echo "- Dump: \`$(basename "$f")\` ($(du -h "$f" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Uploaded as artifact \`neon-backup-${{ github.run_id }}\` (90-day retention)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- :x: No dump produced — check logs." >> "$GITHUB_STEP_SUMMARY"
+          fi

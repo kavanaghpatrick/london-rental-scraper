@@ -1,0 +1,23 @@
+[
+  {
+    "card": {
+      "alt": "2 Bed Flat, Elm Park Gardens, SW10",
+      "fullText": "2 Bed Flat\nElm Park Gardens, SW10\n\u00a32,600 /month\n2 bath\nFurnished"
+    },
+    "listing_id": "1234567"
+  },
+  {
+    "card": {
+      "alt": "Studio Flat, Sloane Avenue, SW3",
+      "fullText": "Studio Flat\nSloane Avenue, SW3\n\u00a31,495 /month\n1 bath\nUnfurnished"
+    },
+    "listing_id": "2345678"
+  },
+  {
+    "card": {
+      "alt": "3 Bed House, Munster Road, SW6",
+      "fullText": "3 Bed House\nMunster Road, SW6\n\u00a3600 /week\n2 bath\nPart-furnished"
+    },
+    "listing_id": "3456789"
+  }
+]

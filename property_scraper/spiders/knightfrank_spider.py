@@ -180,7 +180,16 @@ class KnightFrankSpider(scrapy.Spider):
                     'playwright': True,
                     'playwright_include_page': True,
                     'page': page_num,
-                    'request_start': time.time()
+                    'request_start': time.time(),
+                    # FIX (#41): KF search pages hang on the default goto wait_until='load'
+                    # because the live site never reaches a full 'load' state (streaming/
+                    # analytics resources), causing Page.goto to time out at 30s on every
+                    # page. Use 'domcontentloaded' so goto returns once the HTML is parsed;
+                    # parse_search then does its own networkidle + .property-features waits.
+                    'playwright_page_goto_kwargs': {
+                        'timeout': 30000,
+                        'wait_until': 'domcontentloaded',
+                    },
                 },
                 dont_filter=True,
                 errback=self.handle_error

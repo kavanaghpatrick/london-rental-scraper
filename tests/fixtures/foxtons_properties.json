@@ -1,0 +1,993 @@
+[
+  {
+    "bathrooms": 3,
+    "officeName": "South Kensington",
+    "bedrooms": 5,
+    "class": "instruction",
+    "instructionTypeShort": "LON",
+    "isNewHome": false,
+    "isRecentLet": false,
+    "isRecentSold": false,
+    "isReduced": false,
+    "isSneakPeek": false,
+    "isUnderOffer": false,
+    "locationName": "Chelsea Harbour",
+    "streetName": "Chelsea Harbour",
+    "encodedPolygon": null,
+    "buildToRent": 0,
+    "hasBalcony": 1,
+    "hasPatio": 0,
+    "hasRoofTerrace": 1,
+    "hasVideo": 0,
+    "hasVirtualTour": 1,
+    "inInvestments": 0,
+    "inPrsSearch": 0,
+    "inUkDevelopment": 0,
+    "inUkMain": 1,
+    "isPrs": 0,
+    "location": {
+      "lat": 51.475302,
+      "lon": -0.180393
+    },
+    "postcodeShort": "SW10",
+    "priceFrom": "5769.23",
+    "pricePcm": 25000,
+    "priceTo": "5769.23",
+    "propertyId": "instruction-1349637",
+    "instructionType": "letting",
+    "instructionId": 1349637,
+    "typeGroup": "flats",
+    "canWebAdvertise": 1,
+    "managed": 0,
+    "openHouses": [],
+    "hasGarden": 0,
+    "propertyReference": "chpk0478367",
+    "photos": null,
+    "instructionReference": "IR_KNCL002627458",
+    "availableForAuction": 0,
+    "searchPropertyType": "flats",
+    "developmentName": null,
+    "webName": null,
+    "availableUnits": null,
+    "propertyBlob": {
+      "floorArea": 4019,
+      "assetInfo": {
+        "assets": {
+          "photos": [
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-1.jpg",
+              "index": "0",
+              "filename": "chpk0478367-1.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-2.jpg",
+              "index": "1",
+              "filename": "chpk0478367-2.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-3.jpg",
+              "index": "2",
+              "filename": "chpk0478367-3.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-4.jpg",
+              "index": "3",
+              "filename": "chpk0478367-4.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-5.jpg",
+              "index": "4",
+              "filename": "chpk0478367-5.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-6.jpg",
+              "index": "5",
+              "filename": "chpk0478367-6.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-7.jpg",
+              "index": "6",
+              "filename": "chpk0478367-7.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-8.jpg",
+              "index": "7",
+              "filename": "chpk0478367-8.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-9.jpg",
+              "index": "8",
+              "filename": "chpk0478367-9.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-11.jpg",
+              "index": "9",
+              "filename": "chpk0478367-11.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-12.jpg",
+              "index": "10",
+              "filename": "chpk0478367-12.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-13.jpg",
+              "index": "11",
+              "filename": "chpk0478367-13.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-14.jpg",
+              "index": "12",
+              "filename": "chpk0478367-14.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-15.jpg",
+              "index": "13",
+              "filename": "chpk0478367-15.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-16.jpg",
+              "index": "14",
+              "filename": "chpk0478367-16.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-17.jpg",
+              "index": "15",
+              "filename": "chpk0478367-17.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-18.jpg",
+              "index": "16",
+              "filename": "chpk0478367-18.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-19.jpg",
+              "index": "17",
+              "filename": "chpk0478367-19.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/76/38/740/chpk0478367/w/480/chpk0478367-23.jpg",
+              "index": "18",
+              "filename": "chpk0478367-23.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK0478367"
+            }
+          ]
+        }
+      },
+      "locationName": "Chelsea Harbour",
+      "addressTown": "London",
+      "addressLine1": "36 Thames Quay",
+      "landLordAcceptZeroDeposit": 0,
+      "serviceCharge": 0,
+      "groundRent": 0,
+      "children": {
+        "unit": null,
+        "category": null
+      },
+      "parents": {
+        "btrDevelopment": null,
+        "development": null,
+        "category": null
+      },
+      "bulletPoints": [],
+      "priceAskingType": null
+    }
+  },
+  {
+    "bathrooms": 2,
+    "officeName": "South Kensington",
+    "bedrooms": 2,
+    "class": "instruction",
+    "instructionTypeShort": "LON",
+    "isNewHome": false,
+    "isRecentLet": false,
+    "isRecentSold": false,
+    "isReduced": false,
+    "isSneakPeek": false,
+    "isUnderOffer": false,
+    "locationName": "South Kensington",
+    "streetName": "Onslow Gardens",
+    "encodedPolygon": null,
+    "buildToRent": 0,
+    "hasBalcony": 0,
+    "hasPatio": 0,
+    "hasRoofTerrace": 1,
+    "hasVideo": 0,
+    "hasVirtualTour": 0,
+    "inInvestments": 0,
+    "inPrsSearch": 0,
+    "inUkDevelopment": 0,
+    "inUkMain": 1,
+    "isPrs": 0,
+    "location": {
+      "lat": 51.490588,
+      "lon": -0.179195
+    },
+    "postcodeShort": "SW7",
+    "priceFrom": "3500",
+    "pricePcm": 15167,
+    "priceTo": "3500",
+    "propertyId": "instruction-1379645",
+    "instructionType": "letting",
+    "instructionId": 1379645,
+    "typeGroup": "flats",
+    "canWebAdvertise": 1,
+    "managed": 0,
+    "openHouses": [],
+    "hasGarden": 0,
+    "propertyReference": "chpk4074053",
+    "photos": null,
+    "instructionReference": "IR_KNCL002574654",
+    "availableForAuction": 0,
+    "searchPropertyType": "flats",
+    "developmentName": null,
+    "webName": null,
+    "availableUnits": null,
+    "propertyBlob": {
+      "floorArea": 1488,
+      "assetInfo": {
+        "assets": {
+          "photos": [
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254379/35/04/704/chpk4074053/w/480/chpk4074053-2.jpg",
+              "index": "0",
+              "filename": "chpk4074053-2.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781255121/35/04/704/chpk4074053/w/480/chpk4074053-3.jpg",
+              "index": "1",
+              "filename": "chpk4074053-3.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254389/35/04/704/chpk4074053/w/480/chpk4074053-4.jpg",
+              "index": "2",
+              "filename": "chpk4074053-4.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254395/35/04/704/chpk4074053/w/480/chpk4074053-5.jpg",
+              "index": "3",
+              "filename": "chpk4074053-5.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254413/35/04/704/chpk4074053/w/480/chpk4074053-8.jpg",
+              "index": "4",
+              "filename": "chpk4074053-8.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254432/35/04/704/chpk4074053/w/480/chpk4074053-11.jpg",
+              "index": "5",
+              "filename": "chpk4074053-11.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254437/35/04/704/chpk4074053/w/480/chpk4074053-12.jpg",
+              "index": "6",
+              "filename": "chpk4074053-12.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254424/35/04/704/chpk4074053/w/480/chpk4074053-10.jpg",
+              "index": "7",
+              "filename": "chpk4074053-10.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254407/35/04/704/chpk4074053/w/480/chpk4074053-7.jpg",
+              "index": "8",
+              "filename": "chpk4074053-7.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254401/35/04/704/chpk4074053/w/480/chpk4074053-6.jpg",
+              "index": "9",
+              "filename": "chpk4074053-6.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254442/35/04/704/chpk4074053/w/480/chpk4074053-13.jpg",
+              "index": "10",
+              "filename": "chpk4074053-13.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1781254419/35/04/704/chpk4074053/w/480/chpk4074053-9.jpg",
+              "index": "11",
+              "filename": "chpk4074053-9.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK4074053"
+            }
+          ]
+        }
+      },
+      "locationName": "South Kensington",
+      "addressTown": "London",
+      "addressLine1": "Flat 7",
+      "landLordAcceptZeroDeposit": 0,
+      "serviceCharge": 0,
+      "groundRent": 0,
+      "children": {
+        "unit": null,
+        "category": null
+      },
+      "parents": {
+        "btrDevelopment": null,
+        "development": null,
+        "category": null
+      },
+      "bulletPoints": [],
+      "priceAskingType": null
+    }
+  },
+  {
+    "bathrooms": 4,
+    "officeName": "Sloane Square",
+    "bedrooms": 4,
+    "class": "instruction",
+    "instructionTypeShort": "LON",
+    "isNewHome": false,
+    "isRecentLet": false,
+    "isRecentSold": false,
+    "isReduced": false,
+    "isSneakPeek": false,
+    "isUnderOffer": false,
+    "locationName": "Chelsea",
+    "streetName": "Pond Place",
+    "encodedPolygon": null,
+    "buildToRent": 0,
+    "hasBalcony": 1,
+    "hasPatio": 1,
+    "hasRoofTerrace": 0,
+    "hasVideo": 0,
+    "hasVirtualTour": 0,
+    "inInvestments": 0,
+    "inPrsSearch": 0,
+    "inUkDevelopment": 0,
+    "inUkMain": 1,
+    "isPrs": 0,
+    "location": {
+      "lat": 51.491092,
+      "lon": -0.171094
+    },
+    "postcodeShort": "SW3",
+    "priceFrom": "3250",
+    "pricePcm": 14084,
+    "priceTo": "3250",
+    "propertyId": "instruction-1358034",
+    "instructionType": "letting",
+    "instructionId": 1358034,
+    "typeGroup": "houses",
+    "canWebAdvertise": 1,
+    "managed": 0,
+    "openHouses": [],
+    "hasGarden": 0,
+    "propertyReference": "chpk3874935",
+    "photos": null,
+    "instructionReference": "IR_SLSQ002552155",
+    "availableForAuction": 0,
+    "searchPropertyType": "houses",
+    "developmentName": null,
+    "webName": null,
+    "availableUnits": null,
+    "propertyBlob": {
+      "floorArea": 2547,
+      "assetInfo": {
+        "assets": {
+          "photos": [
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-97.jpg",
+              "index": "0",
+              "filename": "chpk3874935-97.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-98.jpg",
+              "index": "1",
+              "filename": "chpk3874935-98.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-99.jpg",
+              "index": "2",
+              "filename": "chpk3874935-99.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-100.jpg",
+              "index": "3",
+              "filename": "chpk3874935-100.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-101.jpg",
+              "index": "4",
+              "filename": "chpk3874935-101.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-6.jpg",
+              "index": "5",
+              "filename": "chpk3874935-6.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-102.jpg",
+              "index": "6",
+              "filename": "chpk3874935-102.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-103.jpg",
+              "index": "7",
+              "filename": "chpk3874935-103.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-104.jpg",
+              "index": "8",
+              "filename": "chpk3874935-104.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-105.jpg",
+              "index": "9",
+              "filename": "chpk3874935-105.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-106.jpg",
+              "index": "10",
+              "filename": "chpk3874935-106.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-107.jpg",
+              "index": "11",
+              "filename": "chpk3874935-107.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-108.jpg",
+              "index": "12",
+              "filename": "chpk3874935-108.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-113.jpg",
+              "index": "13",
+              "filename": "chpk3874935-113.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-122.jpg",
+              "index": "14",
+              "filename": "chpk3874935-122.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-56.jpg",
+              "index": "15",
+              "filename": "chpk3874935-56.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-97.jpg",
+              "index": "16",
+              "filename": "chpk3874935-97.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-98.jpg",
+              "index": "17",
+              "filename": "chpk3874935-98.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-99.jpg",
+              "index": "18",
+              "filename": "chpk3874935-99.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-100.jpg",
+              "index": "19",
+              "filename": "chpk3874935-100.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-101.jpg",
+              "index": "20",
+              "filename": "chpk3874935-101.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-102.jpg",
+              "index": "21",
+              "filename": "chpk3874935-102.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-103.jpg",
+              "index": "22",
+              "filename": "chpk3874935-103.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-104.jpg",
+              "index": "23",
+              "filename": "chpk3874935-104.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-105.jpg",
+              "index": "24",
+              "filename": "chpk3874935-105.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-106.jpg",
+              "index": "25",
+              "filename": "chpk3874935-106.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-107.jpg",
+              "index": "26",
+              "filename": "chpk3874935-107.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-108.jpg",
+              "index": "27",
+              "filename": "chpk3874935-108.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-109.jpg",
+              "index": "28",
+              "filename": "chpk3874935-109.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-110.jpg",
+              "index": "29",
+              "filename": "chpk3874935-110.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-111.jpg",
+              "index": "30",
+              "filename": "chpk3874935-111.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-112.jpg",
+              "index": "31",
+              "filename": "chpk3874935-112.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-113.jpg",
+              "index": "32",
+              "filename": "chpk3874935-113.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-114.jpg",
+              "index": "33",
+              "filename": "chpk3874935-114.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-115.jpg",
+              "index": "34",
+              "filename": "chpk3874935-115.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-116.jpg",
+              "index": "35",
+              "filename": "chpk3874935-116.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-117.jpg",
+              "index": "36",
+              "filename": "chpk3874935-117.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-118.jpg",
+              "index": "37",
+              "filename": "chpk3874935-118.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-119.jpg",
+              "index": "38",
+              "filename": "chpk3874935-119.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-120.jpg",
+              "index": "39",
+              "filename": "chpk3874935-120.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-121.jpg",
+              "index": "40",
+              "filename": "chpk3874935-121.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-122.jpg",
+              "index": "41",
+              "filename": "chpk3874935-122.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-123.jpg",
+              "index": "42",
+              "filename": "chpk3874935-123.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-124.jpg",
+              "index": "43",
+              "filename": "chpk3874935-124.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-125.jpg",
+              "index": "44",
+              "filename": "chpk3874935-125.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-126.jpg",
+              "index": "45",
+              "filename": "chpk3874935-126.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-127.jpg",
+              "index": "46",
+              "filename": "chpk3874935-127.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-128.jpg",
+              "index": "47",
+              "filename": "chpk3874935-128.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-129.jpg",
+              "index": "48",
+              "filename": "chpk3874935-129.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-130.jpg",
+              "index": "49",
+              "filename": "chpk3874935-130.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-131.jpg",
+              "index": "50",
+              "filename": "chpk3874935-131.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-132.jpg",
+              "index": "51",
+              "filename": "chpk3874935-132.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-133.jpg",
+              "index": "52",
+              "filename": "chpk3874935-133.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-134.jpg",
+              "index": "53",
+              "filename": "chpk3874935-134.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-135.jpg",
+              "index": "54",
+              "filename": "chpk3874935-135.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-136.jpg",
+              "index": "55",
+              "filename": "chpk3874935-136.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-137.jpg",
+              "index": "56",
+              "filename": "chpk3874935-137.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-138.jpg",
+              "index": "57",
+              "filename": "chpk3874935-138.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-139.jpg",
+              "index": "58",
+              "filename": "chpk3874935-139.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-140.jpg",
+              "index": "59",
+              "filename": "chpk3874935-140.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-141.jpg",
+              "index": "60",
+              "filename": "chpk3874935-141.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-142.jpg",
+              "index": "61",
+              "filename": "chpk3874935-142.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-143.jpg",
+              "index": "62",
+              "filename": "chpk3874935-143.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            },
+            {
+              "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/53/94/783/chpk3874935/w/480/chpk3874935-144.jpg",
+              "index": "63",
+              "filename": "chpk3874935-144.jpg",
+              "filenameWebp": null,
+              "type": "jpg",
+              "propertyReference": "CHPK3874935"
+            }
+          ]
+        }
+      },
+      "locationName": "Chelsea",
+      "addressTown": "London",
+      "addressLine1": "18 Pond Place",
+      "landLordAcceptZeroDeposit": 0,
+      "serviceCharge": 0,
+      "groundRent": 0,
+      "children": {
+        "unit": null,
+        "category": null
+      },
+      "parents": {
+        "btrDevelopment": null,
+        "development": null,
+        "category": null
+      },
+      "bulletPoints": [],
+      "priceAskingType": null
+    }
+  }
+]

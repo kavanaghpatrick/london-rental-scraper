@@ -1,0 +1,35 @@
+[
+  {
+    "href": "https://search.savills.com/property-detail/gbssresll250139l",
+    "text": "Kinnerton Street, Belgravia, London SW1X 8EA\n2 Bedrooms 2 Bathrooms 721 sq ft\n\u00a34,723 Monthly FURNISHED Gym Porter",
+    "address": "Kinnerton Street, SW1X 8EA",
+    "sqft": "721",
+    "price": 4723,
+    "beds": "2",
+    "baths": "2",
+    "postcode": "SW1X 8EA",
+    "furnished": "furnished"
+  },
+  {
+    "href": "https://search.savills.com/property-detail/gbbyrebyl220056l",
+    "text": "Fulham Road, Fulham, London SW6 6AH\n1 Bedroom 1 Bathroom 565 sq ft\n\u00a3485 Weekly UNFURNISHED",
+    "address": "Fulham Road, SW6 6AH",
+    "sqft": "565",
+    "price": 2102,
+    "beds": "1",
+    "baths": "1",
+    "postcode": "SW6 6AH",
+    "furnished": "unfurnished"
+  },
+  {
+    "href": "https://search.savills.com/property-detail/gbwlrewll250021l",
+    "text": "Wimbledon Park Road, SW19 8JH\n4 Bedrooms 3 Bathrooms 1,039 sq ft\n\u00a33,601 Monthly",
+    "address": "Wimbledon Park Road, SW19 8JH",
+    "sqft": "1039",
+    "price": 3601,
+    "beds": "4",
+    "baths": "3",
+    "postcode": "SW19 8JH",
+    "furnished": null
+  }
+]

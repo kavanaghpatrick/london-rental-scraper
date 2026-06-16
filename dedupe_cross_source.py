@@ -410,10 +410,28 @@ def remove_duplicates(conn, dry_run=True):
     print(f"Keeping {len(groups)} canonical records\n")
 
     if not dry_run and to_delete:
-        placeholders = ','.join('?' * len(to_delete))
-        cursor.execute(f'DELETE FROM listings WHERE id IN ({placeholders})', to_delete)
-        conn.commit()
-        print(f"Deleted {len(to_delete)} duplicate records")
+        # === DESTRUCTIVE-OP GUARD (#37): delta-abort + backup before delete ===
+        import sys, os
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
+        from _safe_delete import guarded_delete, SafeDeleteAborted
+        total = cursor.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+
+        def _do_delete(ids):
+            ph = ','.join('?' * len(ids))
+            cursor.execute(f'DELETE FROM listings WHERE id IN ({ph})', list(ids))
+
+        try:
+            guarded_delete(
+                cursor, "listings", to_delete,
+                total_rows=total, do_delete=_do_delete,
+                label="cross-source dedupe --remove",
+            )
+            conn.commit()
+            print(f"Deleted {len(to_delete)} duplicate records (backed up first)")
+        except SafeDeleteAborted as e:
+            conn.rollback()
+            print(f"[ABORTED] {e}")
+            raise SystemExit(1)
 
     return to_delete
 

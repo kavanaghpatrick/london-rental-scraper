@@ -1,0 +1,133 @@
+name: CI
+
+# The full pre-merge CI (#49). Runs on every push + PR and gates merge. Three jobs,
+# each independently required:
+#   1. python-tests  — the pytest suite (UNIT + self-contained; data-validation tests
+#                      auto-skip without a DB via tests/conftest.py) + a coverage gate.
+#   2. node-parity   — the JS↔Python feature/£ parity harness (extension predictor).
+#   3. dashboard     — TypeScript type-check (tsc --noEmit) + next lint.
+#
+# Data-validation tests (need a populated rentals.db) and live scrape tests run in
+# daily-scrape.yml (post-scrape), NOT here — CI has no DB. The extension-drift-guard
+# and neon-backup workflows stay as their own required checks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # === 1. Python test suite + coverage gate ===
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Model deps: requirements.txt is the SCRAPER's deps and omits these, but the
+          # model regression tests (#47, tests/test_model_inference.py) import
+          # canonical_predict → need the ML stack. Same set the node-parity job installs.
+          pip install numpy pandas xgboost scikit-learn
+          pip install pytest pytest-cov
+
+      - name: Run unit + self-contained tests with coverage
+        run: |
+          # Default pytest excludes `live` (network) tests and, via conftest.py,
+          # skips data-validation tests when no rentals.db is present (CI has none).
+          # ALSO exclude `parity` here: the node-parity JOB already runs
+          # _fixture_diff.mjs (regen-then-diff, more robust), so the pytest parity
+          # wrapper (#47) would be a redundant double-run. It still runs in a local
+          # bare `pytest` for dev convenience.
+          # COVERAGE GATE: --cov-fail-under is a FLOOR that RATCHETS UP as the test
+          # owners (#45-48) land tests. Set to the current measured baseline so it
+          # catches a REGRESSION without blocking a PR on a number the suite hasn't
+          # reached (trajectory + 70%-core-logic target in TEST_SUITE_OVERVIEW.md).
+          # Cov scope = the app modules + the root model modules the #47 tests exercise.
+          pytest \
+            -m "not live and not parity" \
+            --cov=property_scraper --cov=automation --cov=cli --cov=scripts \
+            --cov=canonical_predict --cov=retrain_canonical --cov=rental_price_models_v20 \
+            --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under=5 \
+            -q
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 7
+
+  # === 2. JS ↔ Python parity (extension predictor) ===
+  node-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python deps (for fresh-golden regen)
+        run: pip install numpy pandas xgboost scikit-learn
+
+      - name: Regenerate golden from Python, then diff JS vs it
+        run: |
+          # Same logic as extension-drift-guard's fixture-diff: regenerate the golden
+          # from canonical_predict so JS is checked against FRESH Python truth.
+          python3 gen_feature_parity_golden.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: JS↔Python feature/£ parity (fail on drift)
+        run: node chrome-extension/_fixture_diff.mjs
+
+  # === 3. Dashboard type-check + lint ===
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: TypeScript type-check
+        run: npx tsc --noEmit
+
+      - name: Lint (non-blocking until ESLint is configured for Next 16)
+        # NOTE: Next.js 16 REMOVED `next lint` (the package.json "lint" script is dead —
+        # it resolves "lint" as a directory and no-ops). There is no ESLint config in
+        # dashboard/ yet. tsc --noEmit above is the load-bearing type gate. This step is
+        # non-blocking until serving (dashboard owner) adds a flat ESLint config + eslint
+        # dep; then flip continue-on-error off to make lint a hard gate. Flagged to serving.
+        continue-on-error: true
+        run: |
+          if [ -f .eslintrc.json ] || [ -f eslint.config.js ] || [ -f eslint.config.mjs ]; then
+            npx eslint . --max-warnings=0
+          else
+            echo "::warning::No ESLint config in dashboard/ — lint skipped (Next 16 removed 'next lint'). Serving to add flat ESLint config."
+          fi

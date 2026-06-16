@@ -386,34 +386,76 @@ class SavillsSpider(scrapy.Spider):
 
                     if clicked:
                         self.logger.info(f"[PAGINATION] Clicked NEXT, waiting for page {current_page + 1}...")
-                        # Wait for page number to change in pagination
+                        # Wait for the page-indicator to advance. Under crawl load the React
+                        # re-render can take >10s; if the first wait times out we re-click and
+                        # retry with a longer budget rather than blindly advancing into a
+                        # half-rendered DOM (which used to read "0 listings, has_next=False"
+                        # and abort the whole crawl early — Savills pagination regression fix).
+                        indicator_ok = False
+                        for attempt in range(3):
+                            try:
+                                await playwright_page.wait_for_function(
+                                    f'''() => {{
+                                        const selected = document.querySelector('.sv-pagination .sv--selected');
+                                        return selected && parseInt(selected.textContent) === {current_page + 1};
+                                    }}''',
+                                    timeout=20000
+                                )
+                                indicator_ok = True
+                                self.logger.info(f"[PAGINATION] Page indicator updated to {current_page + 1}")
+                                break
+                            except Exception as e:
+                                self.logger.warning(
+                                    f"[PAGINATION] Indicator wait timed out for page "
+                                    f"{current_page + 1} (attempt {attempt + 1}/3): {e}"
+                                )
+                                # Re-click NEXT and retry (the click may have been swallowed
+                                # mid-render, or the indicator just needs more time).
+                                await playwright_page.evaluate('''() => {
+                                    const pagination = document.querySelector('.sv-pagination');
+                                    if (!pagination) return false;
+                                    for (const link of pagination.querySelectorAll('a')) {
+                                        if (link.textContent && link.textContent.toLowerCase().includes('next')) {
+                                            link.click();
+                                            return true;
+                                        }
+                                    }
+                                    return false;
+                                }''')
+                                await playwright_page.wait_for_timeout(2000)
+
                         try:
-                            await playwright_page.wait_for_function(
-                                f'''() => {{
-                                    const selected = document.querySelector('.sv-pagination .sv--selected');
-                                    return selected && parseInt(selected.textContent) === {current_page + 1};
-                                }}''',
-                                timeout=10000
-                            )
-                            self.logger.info(f"[PAGINATION] Page indicator updated to {current_page + 1}")
-
-                            # CRITICAL: Wait for network to be idle (all fetch requests complete)
-                            # This ensures React has finished fetching and rendering new data
+                            # Let in-flight fetches settle (best-effort; don't fail the page on this).
                             await playwright_page.wait_for_load_state('networkidle', timeout=15000)
-                            self.logger.info(f"[PAGINATION] Network idle for page {current_page + 1}")
+                        except Exception:
+                            pass
 
-                            # Now wait for listings to actually load with fresh data
-                            await playwright_page.wait_for_selector(
-                                'li.sv-results-listing__item',
-                                timeout=10000
+                        # CRITICAL: confirm the listings grid is actually populated before we
+                        # let the loop re-extract. Without this the next iteration can read a
+                        # blank transitional DOM (0 listings) and conclude the crawl is done.
+                        listings_ready = False
+                        for _ in range(3):
+                            try:
+                                await playwright_page.wait_for_function(
+                                    '''() => document.querySelectorAll('li.sv-results-listing__item').length > 0''',
+                                    timeout=10000
+                                )
+                                listings_ready = True
+                                break
+                            except Exception:
+                                await playwright_page.wait_for_timeout(3000)
+
+                        # React hydration settle
+                        await playwright_page.wait_for_timeout(3000)
+
+                        if not indicator_ok and not listings_ready:
+                            # Genuinely stuck — both the indicator and the listings failed to
+                            # appear after retries. Stop rather than spin or extract garbage.
+                            self.logger.warning(
+                                f"[PAGINATION] Page {current_page + 1} never rendered after retries; stopping."
                             )
-                            # Additional wait for React to fully hydrate content
-                            await playwright_page.wait_for_timeout(3000)
-                            self.logger.info(f"[PAGINATION] Listings loaded for page {current_page + 1}")
-                        except Exception as e:
-                            self.logger.warning(f"[PAGINATION] Timeout waiting for page: {e}")
-                            # Fallback to fixed wait
-                            await playwright_page.wait_for_timeout(5000)
+                            break
+                        self.logger.info(f"[PAGINATION] Listings loaded for page {current_page + 1}")
                         current_page += 1
                     else:
                         self.logger.warning("[PAGINATION] Could not click NEXT button")

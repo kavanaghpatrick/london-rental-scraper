@@ -75,4 +75,9 @@ def main(db='output/rentals.db'):
 
 
 if __name__ == '__main__':
-    main()
+    import argparse
+    ap = argparse.ArgumentParser(description='Generate canonical inference freq-map stats.')
+    ap.add_argument('--db', default='output/rentals.db',
+                    help='SQLite DB to compute training freqs from (must match the retrain DB).')
+    args = ap.parse_args()
+    main(db=args.db)

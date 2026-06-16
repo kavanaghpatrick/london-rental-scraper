@@ -253,13 +253,38 @@ class DailyPipeline:
             return False
 
     def _backup_database(self) -> Path:
-        """Create compressed backup of database."""
+        """Create compressed backup of database, then VERIFY it's readable + valid.
+
+        A corrupt backup is worse than no backup (false sense of safety). After
+        gzipping, we re-open the .gz, write it to a temp file, and run a SQLite
+        integrity_check — raising if the backup can't be read or is corrupt (dataeng
+        #38 GAP A). This catches a bad backup at CREATION, not at restore time.
+        """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = self.config.backup_dir / f"rentals_{timestamp}.db.gz"
 
         with open(self.config.db_path, 'rb') as f_in:
             with gzip.open(backup_path, 'wb') as f_out:
                 shutil.copyfileobj(f_in, f_out)
+
+        # Verify: decompress to a temp file and integrity-check it.
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            with gzip.open(backup_path, 'rb') as f_in:
+                with open(tmp_path, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            conn = sqlite3.connect(tmp_path)
+            try:
+                ok = conn.execute("PRAGMA integrity_check").fetchone()[0]
+            finally:
+                conn.close()
+            if ok != "ok":
+                backup_path.unlink(missing_ok=True)
+                raise PipelineError(f"Backup verification FAILED ({ok}); removed corrupt backup {backup_path}")
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
         return backup_path
 
@@ -646,6 +671,22 @@ class DailyPipeline:
             result.error_message = f"Retrain finished but artifacts missing: {missing}"
             return result
 
+        # Verify the inference-stats sidecar was produced. retrain_canonical.py now
+        # emits output/rental_model_canonical_inference.json IN THE SAME RUN (modeler
+        # folded gen_inference_stats in), so we don't run a separate gen step — we just
+        # confirm it landed. canonical_predict.build_features(inference=True) loads it to
+        # fix single-row postcode_freq/area_freq degeneration; a fresh pkl with a stale/
+        # missing inference.json silently regresses single-row predict to the ~£3,430 bug.
+        inference_json = self.config.project_root / "output" / "rental_model_canonical_inference.json"
+        if inference_json.exists():
+            result.metrics['inference_stats_present'] = True
+            logger.info("rental_model_canonical_inference.json present (single-row freq maps)")
+        else:
+            result.warnings.append(
+                "inference.json MISSING after retrain — single-row predict will regress to the degenerate "
+                "fallback. retrain_canonical.py should emit it; check the train log."
+            )
+
         # Smoke-test the CV metrics against the floor (MODEL_DECISION.md).
         try:
             with open(self.config.canonical_meta_path) as f:
@@ -897,11 +938,23 @@ class DailyPipeline:
                 cleaned += 1
         return cleaned
 
-    def _cleanup_old_backups(self) -> int:
-        """Remove backups older than keep_backups_days."""
+    def _cleanup_old_backups(self, keep_min: int = 5) -> int:
+        """Remove backups older than keep_backups_days — but ALWAYS keep the newest
+        `keep_min` regardless of age (dataeng #38).
+
+        The old version deleted EVERY *.db.gz older than keep_backups_days with no
+        floor. On a frozen snapshot or any pipeline gap of >keep_backups_days, the
+        next run's cleanup would purge ALL backups → zero copies. The keep_min floor
+        guarantees we never drop below N recent backups even if they're all "old".
+        """
+        backups = sorted(
+            self.config.backup_dir.glob("*.db.gz"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
         cutoff = datetime.now() - timedelta(days=self.config.keep_backups_days)
         cleaned = 0
-        for backup_file in self.config.backup_dir.glob("*.db.gz"):
+        for backup_file in backups[keep_min:]:  # never touch the newest keep_min
             if datetime.fromtimestamp(backup_file.stat().st_mtime) < cutoff:
                 backup_file.unlink()
                 cleaned += 1

@@ -1,0 +1,2 @@
+# Neon prod pg_dump backups land here (gzipped, .sql.gz). Dumps are git-ignored.
+# See ../../../BACKUP_STRATEGY.md

@@ -1,0 +1,751 @@
+[
+  {
+    "id": 154653215,
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "numberOfImages": 9,
+    "numberOfFloorplans": 1,
+    "numberOfVirtualTours": 0,
+    "summary": " Luxuriously Designed | Two-Bedroom Apartment | High-end Amenities | Concierge Service This beautiful, newly renovated two-bedroom apartment, designed to the highest standard, spans 675 sq ft and is ideally located in the heart of South Kensington. The apartment boasts a spacious and brigh...",
+    "displayAddress": "161 Fulham Road SW3",
+    "countryCode": "GB",
+    "location": {
+      "latitude": 51.491914,
+      "longitude": -0.17134
+    },
+    "images": [
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/29a83e50f/154653215/29a83e50fb0084b66323ac1d2c8c2dab_max_476x317.jpeg",
+        "url": "property-photo/29a83e50f/154653215/29a83e50fb0084b66323ac1d2c8c2dab.jpeg",
+        "caption": "Living Room"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/0260aad72/154653215/0260aad723a9e0c39ebc5e5dface18e9_max_476x317.jpeg",
+        "url": "property-photo/0260aad72/154653215/0260aad723a9e0c39ebc5e5dface18e9.jpeg",
+        "caption": "Living Room"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/f6680741a/154653215/f6680741a90abe8de361e6f7f87374db_max_476x317.jpeg",
+        "url": "property-photo/f6680741a/154653215/f6680741a90abe8de361e6f7f87374db.jpeg",
+        "caption": "Living Room"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/8f0f21653/154653215/8f0f21653bee498217093fc365cffcdc_max_476x317.jpeg",
+        "url": "property-photo/8f0f21653/154653215/8f0f21653bee498217093fc365cffcdc.jpeg",
+        "caption": "Kitchen "
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/765e0512c/154653215/765e0512c191d09f1554c736c43b5bb4_max_476x317.jpeg",
+        "url": "property-photo/765e0512c/154653215/765e0512c191d09f1554c736c43b5bb4.jpeg",
+        "caption": "Hall"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/3080844cd/154653215/3080844cd2cd39e742874ea50484c41c_max_476x317.jpeg",
+        "url": "property-photo/3080844cd/154653215/3080844cd2cd39e742874ea50484c41c.jpeg",
+        "caption": "Bedroom "
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/b8284122b/154653215/b8284122b33935ffc19509f25e81b1da_max_476x317.jpeg",
+        "url": "property-photo/b8284122b/154653215/b8284122b33935ffc19509f25e81b1da.jpeg",
+        "caption": "Bathroom"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/4196a6db3/154653215/4196a6db398863a429fa4161ce5fe10c_max_476x317.jpeg",
+        "url": "property-photo/4196a6db3/154653215/4196a6db398863a429fa4161ce5fe10c.jpeg",
+        "caption": "Bedroom "
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/0a34b25d5/154653215/0a34b25d57f8b1305ff8c07a7b3f9ce4_max_476x317.jpeg",
+        "url": "property-photo/0a34b25d5/154653215/0a34b25d57f8b1305ff8c07a7b3f9ce4.jpeg",
+        "caption": "Bathroom"
+      }
+    ],
+    "propertySubType": "Apartment",
+    "tenure": {
+      "tenureType": null
+    },
+    "letAvailableDate": "0001-01-01T00:00:00Z",
+    "listingUpdate": {
+      "listingUpdateReason": "new",
+      "listingUpdateDate": "2026-03-25T12:27:03Z"
+    },
+    "price": {
+      "amount": 1000,
+      "frequency": "weekly",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "\u00a34,333 pcm",
+          "displayPriceQualifier": ""
+        },
+        {
+          "displayPrice": "\u00a31,000 pw",
+          "displayPriceQualifier": ""
+        }
+      ]
+    },
+    "premiumListing": false,
+    "featuredProperty": true,
+    "commercialSearchProminenceSelected": false,
+    "customer": {
+      "branchId": 3198,
+      "brandPlusLogoURI": "/partner-logo/69690-PRODUCTS_LOGO-1766058411.jpeg",
+      "contactTelephone": "020 3840 3778",
+      "branchDisplayName": "Residential Land Ltd, London - Lettings",
+      "branchName": "London - Lettings",
+      "brandTradingName": "Residential Land Ltd",
+      "branchLandingPageUrl": "/estate-agents/agent/Residential-Land-Ltd/London---Lettings-3198.html",
+      "development": false,
+      "mediaServerUrl": "https://media.rightmove.co.uk:443",
+      "showReducedProperties": true,
+      "hasBrandPlus": true,
+      "commercial": false,
+      "showOnMap": true,
+      "enhancedListing": false,
+      "developmentContent": null,
+      "buildToRent": false,
+      "buildToRentBenefits": [],
+      "updateDate": "2026-03-26T16:51:19Z",
+      "brandPlusLogoUrl": "https://media.rightmove.co.uk:443/partner-logo/69690-PRODUCTS_LOGO-1766058411.jpeg",
+      "primaryBrandColour": "#000000"
+    },
+    "distance": null,
+    "transactionType": "rent",
+    "productLabel": {
+      "productLabelText": null,
+      "spotlightLabel": false
+    },
+    "commercial": false,
+    "development": false,
+    "residential": true,
+    "students": true,
+    "auction": false,
+    "feesApply": true,
+    "feesApplyText": null,
+    "displaySize": "675 sq. ft.",
+    "showOnMap": true,
+    "propertyUrl": "/properties/154653215#/?channel=RES_LET",
+    "contactUrl": "/property-to-rent/contactBranch.html?propertyId=154653215",
+    "staticMapUrl": null,
+    "channel": "RENT",
+    "firstVisibleDate": "2024-11-06T10:57:06Z",
+    "keywords": [],
+    "tags": [],
+    "keywordMatchType": "no_keyword",
+    "saved": false,
+    "hidden": false,
+    "onlineViewingsAvailable": false,
+    "lozengeModel": {
+      "matchingLozenges": []
+    },
+    "streetView": {
+      "showStreetView": true
+    },
+    "enquiredTimestamp": null,
+    "updateDate": "2026-06-16T05:58:12Z",
+    "enquiryAddedTimestamp": null,
+    "enquiryCalledTimestamp": null,
+    "reviews": null,
+    "keyFeatures": [
+      {
+        "order": 1,
+        "description": "Central Chelsea Location",
+        "htmlDescription": "Central Chelsea Location"
+      },
+      {
+        "order": 2,
+        "description": "Close to all transport links",
+        "htmlDescription": "Close to all transport links"
+      },
+      {
+        "order": 3,
+        "description": "Concierge",
+        "htmlDescription": "Concierge"
+      },
+      {
+        "order": 4,
+        "description": "Dedicated Property Manager",
+        "htmlDescription": "Dedicated Property Manager"
+      },
+      {
+        "order": 5,
+        "description": "24 Hour Emergency Helpline & Service",
+        "htmlDescription": "24 Hour Emergency Helpline & Service"
+      },
+      {
+        "order": 6,
+        "description": "Video Entry Phone",
+        "htmlDescription": "Video Entry Phone"
+      },
+      {
+        "order": 7,
+        "description": "Close to South Kensington and Sloane Square",
+        "htmlDescription": "Close to South Kensington and Sloane Square"
+      },
+      {
+        "order": 8,
+        "description": "Furnished or unfurnished",
+        "htmlDescription": "Furnished or unfurnished"
+      },
+      {
+        "order": 9,
+        "description": "Pet friendly",
+        "htmlDescription": "Pet friendly"
+      },
+      {
+        "order": 10,
+        "description": "On-site building manager",
+        "htmlDescription": "On-site building manager"
+      }
+    ],
+    "enhancedListing": false,
+    "propertyImages": {
+      "images": [
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/29a83e50f/154653215/29a83e50fb0084b66323ac1d2c8c2dab_max_476x317.jpeg",
+          "url": "property-photo/29a83e50f/154653215/29a83e50fb0084b66323ac1d2c8c2dab.jpeg",
+          "caption": "Living Room"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/0260aad72/154653215/0260aad723a9e0c39ebc5e5dface18e9_max_476x317.jpeg",
+          "url": "property-photo/0260aad72/154653215/0260aad723a9e0c39ebc5e5dface18e9.jpeg",
+          "caption": "Living Room"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/f6680741a/154653215/f6680741a90abe8de361e6f7f87374db_max_476x317.jpeg",
+          "url": "property-photo/f6680741a/154653215/f6680741a90abe8de361e6f7f87374db.jpeg",
+          "caption": "Living Room"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/8f0f21653/154653215/8f0f21653bee498217093fc365cffcdc_max_476x317.jpeg",
+          "url": "property-photo/8f0f21653/154653215/8f0f21653bee498217093fc365cffcdc.jpeg",
+          "caption": "Kitchen "
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/765e0512c/154653215/765e0512c191d09f1554c736c43b5bb4_max_476x317.jpeg",
+          "url": "property-photo/765e0512c/154653215/765e0512c191d09f1554c736c43b5bb4.jpeg",
+          "caption": "Hall"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/3080844cd/154653215/3080844cd2cd39e742874ea50484c41c_max_476x317.jpeg",
+          "url": "property-photo/3080844cd/154653215/3080844cd2cd39e742874ea50484c41c.jpeg",
+          "caption": "Bedroom "
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/b8284122b/154653215/b8284122b33935ffc19509f25e81b1da_max_476x317.jpeg",
+          "url": "property-photo/b8284122b/154653215/b8284122b33935ffc19509f25e81b1da.jpeg",
+          "caption": "Bathroom"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/4196a6db3/154653215/4196a6db398863a429fa4161ce5fe10c_max_476x317.jpeg",
+          "url": "property-photo/4196a6db3/154653215/4196a6db398863a429fa4161ce5fe10c.jpeg",
+          "caption": "Bedroom "
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/0a34b25d5/154653215/0a34b25d57f8b1305ff8c07a7b3f9ce4_max_476x317.jpeg",
+          "url": "property-photo/0a34b25d5/154653215/0a34b25d57f8b1305ff8c07a7b3f9ce4.jpeg",
+          "caption": "Bathroom"
+        }
+      ],
+      "mainImageSrc": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/29a83e50f/154653215/29a83e50fb0084b66323ac1d2c8c2dab_max_476x317.jpeg",
+      "mainMapImageSrc": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/29a83e50f/154653215/29a83e50fb0084b66323ac1d2c8c2dab_max_296x197.jpeg"
+    },
+    "formattedBranchName": " by Residential Land Ltd, London - Lettings",
+    "addedOrReduced": "Added on 25/03/2026",
+    "formattedDistance": "",
+    "heading": "Featured Property",
+    "propertyTypeFullDescription": "2 bedroom apartment",
+    "displayStatus": "",
+    "isRecent": false,
+    "hasBrandPlus": true
+  },
+  {
+    "id": 89756064,
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "numberOfImages": 18,
+    "numberOfFloorplans": 1,
+    "numberOfVirtualTours": 0,
+    "summary": "A stunning four bedroom, three bathroom penthouse apartment with panoramic views of London.",
+    "displayAddress": "Roland Gardens, London",
+    "countryCode": "GB",
+    "location": {
+      "latitude": 51.490987,
+      "longitude": -0.18092
+    },
+    "images": [
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/9bd115062/89756064/9bd115062938929f6f167c2e43b68dcb_max_476x317.jpeg",
+        "url": "property-photo/9bd115062/89756064/9bd115062938929f6f167c2e43b68dcb.jpeg",
+        "caption": "Reception Room"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/29d8c6c66/89756064/29d8c6c664d941cea50bc1abb929c869_max_476x317.jpeg",
+        "url": "property-photo/29d8c6c66/89756064/29d8c6c664d941cea50bc1abb929c869.jpeg",
+        "caption": "Kitchen"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/e7f9aa8d2/89756064/e7f9aa8d26df51a4eb3d0f9b5d72fc20_max_476x317.jpeg",
+        "url": "property-photo/e7f9aa8d2/89756064/e7f9aa8d26df51a4eb3d0f9b5d72fc20.jpeg",
+        "caption": "Reception Room"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/1c46ac0b1/89756064/1c46ac0b1db133a6584e71cfac0741d7_max_476x317.jpeg",
+        "url": "property-photo/1c46ac0b1/89756064/1c46ac0b1db133a6584e71cfac0741d7.jpeg",
+        "caption": "Kitchen/Reception"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/02ece91a2/89756064/02ece91a2ef2c9b757d9a67aee3c9adb_max_476x317.jpeg",
+        "url": "property-photo/02ece91a2/89756064/02ece91a2ef2c9b757d9a67aee3c9adb.jpeg",
+        "caption": "Kitchen"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/7997e856c/89756064/7997e856c0affa51f859b2242367eb8a_max_476x317.jpeg",
+        "url": "property-photo/7997e856c/89756064/7997e856c0affa51f859b2242367eb8a.jpeg",
+        "caption": "Bedroom 1"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/7fc4d6c8b/89756064/7fc4d6c8b324230a1c1671b2f1d0441a_max_476x317.jpeg",
+        "url": "property-photo/7fc4d6c8b/89756064/7fc4d6c8b324230a1c1671b2f1d0441a.jpeg",
+        "caption": "Bedroom 1"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/bf0b3a5ac/89756064/bf0b3a5acde3aaa70d0a168319c7c0a6_max_476x317.jpeg",
+        "url": "property-photo/bf0b3a5ac/89756064/bf0b3a5acde3aaa70d0a168319c7c0a6.jpeg",
+        "caption": "En Suite"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/2287dc90c/89756064/2287dc90c9409fd389819d9173b52522_max_476x317.jpeg",
+        "url": "property-photo/2287dc90c/89756064/2287dc90c9409fd389819d9173b52522.jpeg",
+        "caption": "Bedroom 2"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/25962f657/89756064/25962f657f2285f92d6df0be958b7fb5_max_476x317.jpeg",
+        "url": "property-photo/25962f657/89756064/25962f657f2285f92d6df0be958b7fb5.jpeg",
+        "caption": "Bedroom 3"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/488c0fc93/89756064/488c0fc9331be2f6df775c7137ea2b8d_max_476x317.jpeg",
+        "url": "property-photo/488c0fc93/89756064/488c0fc9331be2f6df775c7137ea2b8d.jpeg",
+        "caption": "Bathroom 2"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/5beeb59b5/89756064/5beeb59b5db70620850770a1be87db2f_max_476x317.jpeg",
+        "url": "property-photo/5beeb59b5/89756064/5beeb59b5db70620850770a1be87db2f.jpeg",
+        "caption": "Bedroom 4"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/3f5c5d91e/89756064/3f5c5d91e0f935d3e2f0f44173319265_max_476x317.jpeg",
+        "url": "property-photo/3f5c5d91e/89756064/3f5c5d91e0f935d3e2f0f44173319265.jpeg",
+        "caption": "Bedroom 4"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/b06a4697f/89756064/b06a4697f4aaed9e6018f45a90f0c137_max_476x317.jpeg",
+        "url": "property-photo/b06a4697f/89756064/b06a4697f4aaed9e6018f45a90f0c137.jpeg",
+        "caption": "Wc"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/a36346278/89756064/a36346278a4e543f85e6db2439af7336_max_476x317.jpeg",
+        "url": "property-photo/a36346278/89756064/a36346278a4e543f85e6db2439af7336.jpeg",
+        "caption": "Balcony"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/72a7e539a/89756064/72a7e539a3139c442754904f5cf3215e_max_476x317.jpeg",
+        "url": "property-photo/72a7e539a/89756064/72a7e539a3139c442754904f5cf3215e.jpeg",
+        "caption": "Staircase"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/a72c8d023/89756064/a72c8d0233cdfd7b7e91a2c0f8456e9d_max_476x317.jpeg",
+        "url": "property-photo/a72c8d023/89756064/a72c8d0233cdfd7b7e91a2c0f8456e9d.jpeg",
+        "caption": "Reception"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/795e06a86/89756064/795e06a863c64c315fd8581c4b7baaaf_max_476x317.jpeg",
+        "url": "property-photo/795e06a86/89756064/795e06a863c64c315fd8581c4b7baaaf.jpeg",
+        "caption": "Kitchen"
+      }
+    ],
+    "propertySubType": "Penthouse",
+    "tenure": {
+      "tenureType": null
+    },
+    "letAvailableDate": "2026-06-26T00:00:00Z",
+    "listingUpdate": {
+      "listingUpdateReason": "new",
+      "listingUpdateDate": "2026-06-16T12:23:04Z"
+    },
+    "price": {
+      "amount": 4500,
+      "frequency": "weekly",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "\u00a319,500 pcm",
+          "displayPriceQualifier": ""
+        },
+        {
+          "displayPrice": "\u00a34,500 pw",
+          "displayPriceQualifier": ""
+        }
+      ]
+    },
+    "premiumListing": false,
+    "featuredProperty": false,
+    "commercialSearchProminenceSelected": false,
+    "customer": {
+      "branchId": 52791,
+      "brandPlusLogoURI": "/partner-logo/19215476-PRODUCTS_LOGO-1775116856856.png",
+      "contactTelephone": "020 3835 3769",
+      "branchDisplayName": "Strutt & Parker - Lettings, Chelsea SW10",
+      "branchName": "Chelsea SW10",
+      "brandTradingName": "Strutt & Parker - Lettings",
+      "branchLandingPageUrl": "/estate-agents/agent/Strutt-and-Parker---Lettings/Chelsea-SW10-52791.html",
+      "development": false,
+      "mediaServerUrl": "https://media.rightmove.co.uk:443",
+      "showReducedProperties": true,
+      "hasBrandPlus": true,
+      "commercial": false,
+      "showOnMap": true,
+      "enhancedListing": false,
+      "developmentContent": null,
+      "buildToRent": false,
+      "buildToRentBenefits": [],
+      "updateDate": "2026-04-20T12:40:58Z",
+      "brandPlusLogoUrl": "https://media.rightmove.co.uk:443/partner-logo/19215476-PRODUCTS_LOGO-1775116856856.png",
+      "primaryBrandColour": "#f7f5f2"
+    },
+    "distance": null,
+    "transactionType": "rent",
+    "productLabel": {
+      "productLabelText": null,
+      "spotlightLabel": false
+    },
+    "commercial": false,
+    "development": false,
+    "residential": true,
+    "students": false,
+    "auction": false,
+    "feesApply": true,
+    "feesApplyText": "Tenant charges are as set out in the Information for Tenant guide. Once you have decided to put forward an offer to let a property you are required to read and acknowledge Tenant guide and pay a holding deposit.<br /><br /><b>Lettings Fee Information for Assured Periodic Tenancies (APT)</b><br /><br /><b>Summary of Tenant charges for an APT</b><br /><br /><b>Holding Deposit</b><br />1 weeks rent (deducted from the pre move-in invoice)<br />Tenancy Deposit Between 5 or 6 weeks rent<br /><br />Change of Tenant (mid Tenancy)<br />Deed of assignment \u00a350 (inc VAT)<br />Deed of surrender \u00a350 (inc VAT)<br />Deed of variance \u00a350 (inc VAT)<br /><br />Rent is  Pure Rent  and does not include any services such as council tax and utilities. Monthly rent is calculated as follows: \u00a3weekly rental x 52 divided by 12 = monthly rent<br /><br /><b><b>All charges are inclusive of VAT at the prevailing rate.</b><br /><br /><b>Summary of Tenant charges for a Non APT</b><br /><br /><b> Holding Deposit</b><br />2 weeks rent (deducted from the pre move-in invoice)<br /><br /><b> New tenancies</b><br />Tenancy agreement \u00a3480 (inc VAT)<br />Credit references Individual \u00a390 (inc VAT) per application<br />Guarantor \u00a390 (inc VAT) per application<br />Company \u00a3144 (inc VAT) per application<br /><br /><b>Change of Tenant (mid Tenancy)</b><br />Deed of assignment \u00a3275 (inc VAT))<br />Deed of surrender \u00a3170 (inc VAT)<br />Deed of Variance \u00a3170<br />Credit references please refer above<br /><br /><b>Summary of Tenant charges for a Non APT</b><br /><br /><b>Renewal</b><br />Renewal memorandum document \u00a3225 (inc VAT)<br />Renewal Tenancy agreement \u00a3480 (inc VAT)<br /><br /><b>Deposit</b><br />Between 1.5 and 2 month s rent (depending on circumstances)<br />Rent Usually monthly/quarterly/six monthly/annually in advance and subject to negotiation. Rent is  Pure Rent  and does not include any services such as council tax and utilities. Monthly rent is calculated as follows; \u00a3weekly rental x 52 divided by 12 = monthly rent<br /><br /><b>All charges are inclusive of VAT at the prevailing rate.</b><br /><br />Strutt & Parker is a trading style of BNP Paribas Real Estate Advisory & Property Management UK Limited registered in England with company number 04176965 and registered office address 10 Harewood Avenue, London NW1 6AA<br /><br />We are a member of the Royal Institution of Chartered Surveyors ( RICS ) (with membership Number 007555) and subscribe to the RICS Clients Money Protection Scheme. Independent redress is provided by the Property Redress Scheme.<br /></b>",
+    "displaySize": "",
+    "showOnMap": true,
+    "propertyUrl": "/properties/89756064#/?channel=RES_LET",
+    "contactUrl": "/property-to-rent/contactBranch.html?propertyId=89756064",
+    "staticMapUrl": null,
+    "channel": "RENT",
+    "firstVisibleDate": "2026-06-16T12:17:37Z",
+    "keywords": [],
+    "tags": [],
+    "keywordMatchType": "no_keyword",
+    "saved": false,
+    "hidden": false,
+    "onlineViewingsAvailable": false,
+    "lozengeModel": {
+      "matchingLozenges": []
+    },
+    "streetView": {
+      "showStreetView": true
+    },
+    "enquiredTimestamp": null,
+    "updateDate": "2026-06-16T12:23:04Z",
+    "enquiryAddedTimestamp": null,
+    "enquiryCalledTimestamp": null,
+    "reviews": null,
+    "keyFeatures": [],
+    "enhancedListing": false,
+    "propertyImages": {
+      "images": [
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/9bd115062/89756064/9bd115062938929f6f167c2e43b68dcb_max_476x317.jpeg",
+          "url": "property-photo/9bd115062/89756064/9bd115062938929f6f167c2e43b68dcb.jpeg",
+          "caption": "Reception Room"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/29d8c6c66/89756064/29d8c6c664d941cea50bc1abb929c869_max_476x317.jpeg",
+          "url": "property-photo/29d8c6c66/89756064/29d8c6c664d941cea50bc1abb929c869.jpeg",
+          "caption": "Kitchen"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/e7f9aa8d2/89756064/e7f9aa8d26df51a4eb3d0f9b5d72fc20_max_476x317.jpeg",
+          "url": "property-photo/e7f9aa8d2/89756064/e7f9aa8d26df51a4eb3d0f9b5d72fc20.jpeg",
+          "caption": "Reception Room"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/1c46ac0b1/89756064/1c46ac0b1db133a6584e71cfac0741d7_max_476x317.jpeg",
+          "url": "property-photo/1c46ac0b1/89756064/1c46ac0b1db133a6584e71cfac0741d7.jpeg",
+          "caption": "Kitchen/Reception"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/02ece91a2/89756064/02ece91a2ef2c9b757d9a67aee3c9adb_max_476x317.jpeg",
+          "url": "property-photo/02ece91a2/89756064/02ece91a2ef2c9b757d9a67aee3c9adb.jpeg",
+          "caption": "Kitchen"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/7997e856c/89756064/7997e856c0affa51f859b2242367eb8a_max_476x317.jpeg",
+          "url": "property-photo/7997e856c/89756064/7997e856c0affa51f859b2242367eb8a.jpeg",
+          "caption": "Bedroom 1"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/7fc4d6c8b/89756064/7fc4d6c8b324230a1c1671b2f1d0441a_max_476x317.jpeg",
+          "url": "property-photo/7fc4d6c8b/89756064/7fc4d6c8b324230a1c1671b2f1d0441a.jpeg",
+          "caption": "Bedroom 1"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/bf0b3a5ac/89756064/bf0b3a5acde3aaa70d0a168319c7c0a6_max_476x317.jpeg",
+          "url": "property-photo/bf0b3a5ac/89756064/bf0b3a5acde3aaa70d0a168319c7c0a6.jpeg",
+          "caption": "En Suite"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/2287dc90c/89756064/2287dc90c9409fd389819d9173b52522_max_476x317.jpeg",
+          "url": "property-photo/2287dc90c/89756064/2287dc90c9409fd389819d9173b52522.jpeg",
+          "caption": "Bedroom 2"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/25962f657/89756064/25962f657f2285f92d6df0be958b7fb5_max_476x317.jpeg",
+          "url": "property-photo/25962f657/89756064/25962f657f2285f92d6df0be958b7fb5.jpeg",
+          "caption": "Bedroom 3"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/488c0fc93/89756064/488c0fc9331be2f6df775c7137ea2b8d_max_476x317.jpeg",
+          "url": "property-photo/488c0fc93/89756064/488c0fc9331be2f6df775c7137ea2b8d.jpeg",
+          "caption": "Bathroom 2"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/5beeb59b5/89756064/5beeb59b5db70620850770a1be87db2f_max_476x317.jpeg",
+          "url": "property-photo/5beeb59b5/89756064/5beeb59b5db70620850770a1be87db2f.jpeg",
+          "caption": "Bedroom 4"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/3f5c5d91e/89756064/3f5c5d91e0f935d3e2f0f44173319265_max_476x317.jpeg",
+          "url": "property-photo/3f5c5d91e/89756064/3f5c5d91e0f935d3e2f0f44173319265.jpeg",
+          "caption": "Bedroom 4"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/b06a4697f/89756064/b06a4697f4aaed9e6018f45a90f0c137_max_476x317.jpeg",
+          "url": "property-photo/b06a4697f/89756064/b06a4697f4aaed9e6018f45a90f0c137.jpeg",
+          "caption": "Wc"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/a36346278/89756064/a36346278a4e543f85e6db2439af7336_max_476x317.jpeg",
+          "url": "property-photo/a36346278/89756064/a36346278a4e543f85e6db2439af7336.jpeg",
+          "caption": "Balcony"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/72a7e539a/89756064/72a7e539a3139c442754904f5cf3215e_max_476x317.jpeg",
+          "url": "property-photo/72a7e539a/89756064/72a7e539a3139c442754904f5cf3215e.jpeg",
+          "caption": "Staircase"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/a72c8d023/89756064/a72c8d0233cdfd7b7e91a2c0f8456e9d_max_476x317.jpeg",
+          "url": "property-photo/a72c8d023/89756064/a72c8d0233cdfd7b7e91a2c0f8456e9d.jpeg",
+          "caption": "Reception"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/795e06a86/89756064/795e06a863c64c315fd8581c4b7baaaf_max_476x317.jpeg",
+          "url": "property-photo/795e06a86/89756064/795e06a863c64c315fd8581c4b7baaaf.jpeg",
+          "caption": "Kitchen"
+        }
+      ],
+      "mainImageSrc": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/9bd115062/89756064/9bd115062938929f6f167c2e43b68dcb_max_476x317.jpeg",
+      "mainMapImageSrc": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/9bd115062/89756064/9bd115062938929f6f167c2e43b68dcb_max_296x197.jpeg"
+    },
+    "formattedBranchName": " by Strutt & Parker - Lettings, Chelsea SW10",
+    "addedOrReduced": "Added today",
+    "formattedDistance": "",
+    "heading": "",
+    "propertyTypeFullDescription": "4 bedroom penthouse",
+    "displayStatus": "",
+    "isRecent": true,
+    "hasBrandPlus": true
+  },
+  {
+    "id": 89755938,
+    "bedrooms": 0,
+    "bathrooms": 1,
+    "numberOfImages": 5,
+    "numberOfFloorplans": 1,
+    "numberOfVirtualTours": 0,
+    "summary": "A bright studio flat located within easy reach of South Kensington and Chelsea.",
+    "displayAddress": "Pond House, \nPond Place, SW3",
+    "countryCode": "GB",
+    "location": {
+      "latitude": 51.49164,
+      "longitude": -0.170822
+    },
+    "images": [
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/640f656a7/89755938/640f656a77627fb28736b2de9107f07d_max_476x317.jpeg",
+        "url": "property-photo/640f656a7/89755938/640f656a77627fb28736b2de9107f07d.jpeg",
+        "caption": "Studio Area"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/c68d9a4a1/89755938/c68d9a4a19f3f595623dd0783ec10134_max_476x317.jpeg",
+        "url": "property-photo/c68d9a4a1/89755938/c68d9a4a19f3f595623dd0783ec10134.jpeg",
+        "caption": "Kitchen"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/e227e1a0d/89755938/e227e1a0d1e52704e996004628dba467_max_476x317.jpeg",
+        "url": "property-photo/e227e1a0d/89755938/e227e1a0d1e52704e996004628dba467.jpeg",
+        "caption": "Bathroom"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/f423b2954/89755938/f423b29548cd9ca34291dd71428d7b24_max_476x317.jpeg",
+        "url": "property-photo/f423b2954/89755938/f423b29548cd9ca34291dd71428d7b24.jpeg",
+        "caption": "Studio Area"
+      },
+      {
+        "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/b435ffa21/89755938/b435ffa2140af063c872f622c25d2f0f_max_476x317.jpeg",
+        "url": "property-photo/b435ffa21/89755938/b435ffa2140af063c872f622c25d2f0f.jpeg",
+        "caption": "Exterior"
+      }
+    ],
+    "propertySubType": "Flat",
+    "tenure": {
+      "tenureType": null
+    },
+    "letAvailableDate": "2026-08-03T00:00:00Z",
+    "listingUpdate": {
+      "listingUpdateReason": "new",
+      "listingUpdateDate": "2026-06-16T12:21:34Z"
+    },
+    "price": {
+      "amount": 1850,
+      "frequency": "monthly",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "\u00a31,850 pcm",
+          "displayPriceQualifier": ""
+        },
+        {
+          "displayPrice": "\u00a3427 pw",
+          "displayPriceQualifier": ""
+        }
+      ]
+    },
+    "premiumListing": false,
+    "featuredProperty": false,
+    "commercialSearchProminenceSelected": false,
+    "customer": {
+      "branchId": 51283,
+      "brandPlusLogoURI": "/partner-logo/27011-PRODUCTS_LOGO-1766056097.jpeg",
+      "contactTelephone": "020 3866 3794",
+      "branchDisplayName": "Chestertons, Chelsea",
+      "branchName": "Chelsea",
+      "brandTradingName": "Chestertons",
+      "branchLandingPageUrl": "/estate-agents/agent/Chestertons/Chelsea-51283.html",
+      "development": false,
+      "mediaServerUrl": "https://media.rightmove.co.uk:443",
+      "showReducedProperties": true,
+      "hasBrandPlus": true,
+      "commercial": false,
+      "showOnMap": true,
+      "enhancedListing": false,
+      "developmentContent": null,
+      "buildToRent": false,
+      "buildToRentBenefits": [],
+      "updateDate": "2026-03-26T21:01:29Z",
+      "brandPlusLogoUrl": "https://media.rightmove.co.uk:443/partner-logo/27011-PRODUCTS_LOGO-1766056097.jpeg",
+      "primaryBrandColour": "#6f2476"
+    },
+    "distance": null,
+    "transactionType": "rent",
+    "productLabel": {
+      "productLabelText": null,
+      "spotlightLabel": false
+    },
+    "commercial": false,
+    "development": false,
+    "residential": true,
+    "students": false,
+    "auction": false,
+    "feesApply": true,
+    "feesApplyText": "\nTENANCY INFORMATION<br />\n<br />\nClient money protection (CMP) provided by PropertyMark. <br />\nOmbudsman services provided by the Property Redress Scheme <br />\n<br />\nRules for how fees will be charged for Housing Act Tenancies are different to how fees will be charged for Non-Housing Act Tenancies (NHA). All our fees and charges are shown including VAT.<br />\n<br />\nHOUSING ACT TENANCIES<br />\n<br />\nHolding deposit Equivalent of one weeks rent.<br />\n<br />\nChanging tenancy documents once signed \u00a350, or any reasonable costs incurred if these are higher than \u00a350. This will include but is not limited to where you request to vary the terms of the tenancy agreement, request consent for a pet, or where one or more tenant wishes to be released from their contract by finding a replacement tenant, an additional tenant added or a tenant removed.<br />\n<br />\nDeposit: annual rent less than \u00a350,000 Equivalent to five weeks' rent / annual rent \u00a350,000 or more Equivalent to six weeks' rent<br />\n<br />\nEarly termination (at landlord s discretion) All costs incurred by the landlord for allowing early termination including the agent's existing or re-letting fees<br />\n<br />\nStamp Duty Land Tax Payable on tenancies where the rent exceeds \u00a3125,000<br />\n<br />\nLate, unpaid, returned rent payments 3% above the base rate of Bank of England per annum, calculated daily<br />\n<br />\nLost keys Any cost for the replacement of keys, fobs, security devices or associated items<br />\n<br />\nNON-HOUSING ACT TENANCIES (NHA)<br />\n<br />\nTenancy Agreement Fee: \u00a3360<br />\n<br />\nReference checks: \u00a360 per reference<br />\n<br />\nDeposit Usually equivalent to six weeks rent.<br />\n<br />\nRight to Rent: \u00a330 per person per check (as required)<br />\n<br />\nCheck-in and/or out from \u00a3120 to \u00a3500 approx. depending on the size of the property. Check your tenancy agreement to confirm who is responsible for paying this charge<br />\n<br />\nLate/unpaid/returned rent payments: \u00a330 per week late payment charge and 3% above the base rate of Bank of England per annum, calculated daily<br />\n<br />\nTenant Swap: \u00a3420 administration fee + references<br />\n<br />\nRenewal: \u00a3210 for each renewal.<br />\n<br />\nChanging tenancy documents once signed: \u00a3150 <br />\n<br />\nEarly termination (at landlord s discretion) All costs incurred by the landlord for allowing early termination including the agent's existing or re-letting fees<br />\n<br />\nStamp Duty Land Tax payable on tenancies where the rent exceeds \u00a3125,000\n",
+    "displaySize": "274 sq. ft.",
+    "showOnMap": true,
+    "propertyUrl": "/properties/89755938#/?channel=RES_LET",
+    "contactUrl": "/property-to-rent/contactBranch.html?propertyId=89755938",
+    "staticMapUrl": null,
+    "channel": "RENT",
+    "firstVisibleDate": "2026-06-16T12:16:04Z",
+    "keywords": [],
+    "tags": [],
+    "keywordMatchType": "no_keyword",
+    "saved": false,
+    "hidden": false,
+    "onlineViewingsAvailable": false,
+    "lozengeModel": {
+      "matchingLozenges": []
+    },
+    "streetView": {
+      "showStreetView": true
+    },
+    "enquiredTimestamp": null,
+    "updateDate": "2026-06-16T12:21:34Z",
+    "enquiryAddedTimestamp": null,
+    "enquiryCalledTimestamp": null,
+    "reviews": null,
+    "keyFeatures": [
+      {
+        "order": 1,
+        "description": "Contemporary flat with South facing views",
+        "htmlDescription": "Contemporary flat with South facing views"
+      },
+      {
+        "order": 2,
+        "description": "Studio room, open plan kitchen, shower room",
+        "htmlDescription": "Studio room, open plan kitchen, shower room"
+      },
+      {
+        "order": 3,
+        "description": "Wood flooring throughout",
+        "htmlDescription": "Wood flooring throughout"
+      },
+      {
+        "order": 4,
+        "description": "In close proximity to South Kensington tube station",
+        "htmlDescription": "In close proximity to South Kensington tube station"
+      }
+    ],
+    "enhancedListing": false,
+    "propertyImages": {
+      "images": [
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/640f656a7/89755938/640f656a77627fb28736b2de9107f07d_max_476x317.jpeg",
+          "url": "property-photo/640f656a7/89755938/640f656a77627fb28736b2de9107f07d.jpeg",
+          "caption": "Studio Area"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/c68d9a4a1/89755938/c68d9a4a19f3f595623dd0783ec10134_max_476x317.jpeg",
+          "url": "property-photo/c68d9a4a1/89755938/c68d9a4a19f3f595623dd0783ec10134.jpeg",
+          "caption": "Kitchen"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/e227e1a0d/89755938/e227e1a0d1e52704e996004628dba467_max_476x317.jpeg",
+          "url": "property-photo/e227e1a0d/89755938/e227e1a0d1e52704e996004628dba467.jpeg",
+          "caption": "Bathroom"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/f423b2954/89755938/f423b29548cd9ca34291dd71428d7b24_max_476x317.jpeg",
+          "url": "property-photo/f423b2954/89755938/f423b29548cd9ca34291dd71428d7b24.jpeg",
+          "caption": "Studio Area"
+        },
+        {
+          "srcUrl": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/b435ffa21/89755938/b435ffa2140af063c872f622c25d2f0f_max_476x317.jpeg",
+          "url": "property-photo/b435ffa21/89755938/b435ffa2140af063c872f622c25d2f0f.jpeg",
+          "caption": "Exterior"
+        }
+      ],
+      "mainImageSrc": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/640f656a7/89755938/640f656a77627fb28736b2de9107f07d_max_476x317.jpeg",
+      "mainMapImageSrc": "https://media.rightmove.co.uk:443/dir/crop/10:9-16:9/property-photo/640f656a7/89755938/640f656a77627fb28736b2de9107f07d_max_296x197.jpeg"
+    },
+    "formattedBranchName": " by Chestertons, Chelsea",
+    "addedOrReduced": "Added today",
+    "formattedDistance": "",
+    "heading": "",
+    "propertyTypeFullDescription": "Studio flat",
+    "displayStatus": "",
+    "isRecent": true,
+    "hasBrandPlus": true
+  }
+]

@@ -1,0 +1,2 @@
+# Golden-master immutable dataset archives land here (0444, read-only).
+# .db + manifest files are git-ignored — local-only. See ../BACKUP_STRATEGY.md §6

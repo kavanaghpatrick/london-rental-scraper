@@ -5,13 +5,32 @@
 > Nothing in this repo stores the live password, so no code change is required to
 > rotate — only the secret stores below.
 
+## WHEN to run this (trigger)
+
+Rotate **immediately before the rebuilt fresh-scrape dataset is synced to prod** —
+i.e. as part of bringing prod back online after the data-loss rebuild. Sequence
+(confirmed with serving; lead to OK):
+1. Fresh scrape rebuilds the local dataset (#41).
+2. **Rotate `POSTGRES_URL` (this runbook).**
+3. Run the non-destructive UPSERT sync (`scripts/sync_sqlite_to_postgres.py --execute
+   --i-have-rotated-the-secret`) to load the rebuilt data into the freshly-credentialed
+   prod. (That sync is now UPSERT + takes a fail-closed `pg_dump` backup first, so even
+   that load can't destroy anything.)
+
+> NOTE: rotation was previously framed as gated on "PITR recovery sign-off." That
+> recovery is **dead** (Neon Free tier, 6h window, expired — data permanently lost),
+> so that trigger will never fire. Don't wait on it. Rotation is needed regardless —
+> the current `POSTGRES_URL` is the very credential that allowed the unauthorized
+> `--execute` that truncated prod.
+
 ## Why rotate
 
 The live Neon database password is currently present in plaintext in a local,
 git-ignored env file (`dashboard/.env.prod`) and is also stored as the GitHub
-Actions secret `POSTGRES_URL` and as a Vercel project env var. Because it has
-been read during this audit and lives in a `.env.prod` file on disk, it should
-be treated as **potentially exposed** and rotated.
+Actions secret `POSTGRES_URL` and as a Vercel project env var. It has been read
+during this audit, lives in a `.env.prod` file on disk, AND is the credential that
+permitted the prod-truncating `--execute` — so it must be treated as **exposed** and
+rotated before prod is repopulated.
 
 Redacted for reference (never paste full values into chat, tickets, or commits):
 

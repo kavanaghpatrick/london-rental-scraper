@@ -54,6 +54,19 @@ output/*.pre_v*_backup
 output/*.csv
 output/rentals.db
 
+# Database backups — contain full prod/scraped data, must NEVER be committed (#38)
+output/backups/
+neon_backups/
+neon_*.sql.gz
+*.sql.gz
+*.dump
+dedupe_deleted_backup_*.csv
+output/deleted_backups/    # safe-delete guard backups (#37)
+# Golden-master immutable archives — full recovered dataset, keep local only (#38 L6)
+golden_master/*.db
+golden_master/*.manifest.txt
+golden_master/*.manifest.json
+
 # Keep analysis PNGs
 !output/*.png
 
@@ -88,3 +101,23 @@ archive/
 *.temp
 .vercel
 .env*.local
+
+# SQLite sidecar files (never commit WAL/SHM)
+*.db-wal
+*.db-shm
+# Coverage + TS build info
+.coverage
+*.tsbuildinfo
+# Working/scratch databases — DATA, never commit (#38)
+output/*.db
+output/**/*.db
+output/_validate*
+output/_git_recovery/*.db
+output/rentals_merged.db
+output/rentals_modeler_copy.db
+# DB backups / SQL dumps — full data copies, never commit (#38)
+*.bak
+output/*.bak
+output/*.sql
+output/rentals.db.*
+output/*_recovery*.sql

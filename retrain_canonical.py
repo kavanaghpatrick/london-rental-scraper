@@ -173,10 +173,36 @@ def main():
     with open(META_PATH, 'w') as f:
         json.dump(meta, f, indent=2, default=str)
 
+    # ── Emit the inference-stats sidecar IN THE SAME RUN ──────────────────────
+    # canonical_predict.build_features(inference=True) needs the training frequency
+    # maps (output/rental_model_canonical_inference.json) to fix the single-row
+    # postcode_freq/area_freq degeneration (task #30). Computing it here — from the
+    # SAME engineered `df` the model was just fit on — guarantees the freq maps can
+    # NEVER drift from the pkl. (A separate post-retrain step risks a fresh pkl +
+    # stale inference map → the £3,430 prime-market bug returns silently.)
+    INFERENCE_PATH = OUT / 'rental_model_canonical_inference.json'
+    pc_freq = {str(k): v / len(df) for k, v in df['postcode_district'].value_counts().items()}
+    area_freq = {str(k): v / len(df) for k, v in df['postcode_area'].value_counts().items()}
+    inference_stats = {
+        'canonical_version': CANON_VERSION,
+        'n_train': int(len(df)),
+        'postcode_freq': pc_freq,
+        'postcode_area_freq': area_freq,
+        'postcode_freq_default': float(min(pc_freq.values())),
+        'postcode_area_freq_default': float(min(area_freq.values())),
+        'floor_count_default': float(df['floor_count'].median()),
+        'note': ('Single-row inference injects postcode_freq/postcode_area_freq from these '
+                 'training maps (keyed on postcode_district / postcode_area) instead of the '
+                 'degenerate 1.0 recompute. Regenerated atomically with the pkl every retrain.'),
+    }
+    with open(INFERENCE_PATH, 'w') as f:
+        json.dump(inference_stats, f, indent=2)
+
     print(f"\nSaved canonical artifacts:")
     print(f"  {MODEL_PATH}")
     print(f"  {FEATURES_PATH}")
     print(f"  {META_PATH}")
+    print(f"  {INFERENCE_PATH}  (inference freq maps — regenerated with the pkl)")
     return meta
 
 

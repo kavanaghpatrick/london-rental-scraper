@@ -155,38 +155,53 @@ def analyze_duplicates(conn: sqlite3.Connection):
 def execute_deduplication(conn: sqlite3.Connection, groups: list, dry_run: bool = True):
     """Delete duplicate records, keeping the best one in each group."""
     cursor = conn.cursor()
-    deleted_count = 0
 
+    # Collect ALL ids to delete first (so the delta guard sees the full batch).
+    all_delete_ids = []
     for group in groups:
         records = [get_record_details(conn, rid) for rid in group['ids']]
         records = [r for r in records if r]
-
         if len(records) < 2:
             continue
-
-        # Score and sort - highest score first (keep)
         for r in records:
             r['score'] = score_record(r)
         records.sort(key=lambda x: -x['score'])
+        # Keep first (highest score), delete rest
+        all_delete_ids.extend(r['id'] for r in records[1:])
 
-        # Keep first, delete rest
-        keep_id = records[0]['id']
-        delete_ids = [r['id'] for r in records[1:]]
+    deleted_count = len(all_delete_ids)
 
-        if not dry_run:
-            # Also delete from price_history
-            for del_id in delete_ids:
-                cursor.execute('DELETE FROM price_history WHERE listing_id = ?', (del_id,))
-                cursor.execute('DELETE FROM listings WHERE id = ?', (del_id,))
-            deleted_count += len(delete_ids)
-        else:
-            deleted_count += len(delete_ids)
-
-    if not dry_run:
-        conn.commit()
-        print(f"\nDeleted {deleted_count} duplicate records")
-    else:
+    if dry_run:
         print(f"\nWould delete {deleted_count} duplicate records (dry run)")
+        return deleted_count
+
+    if not all_delete_ids:
+        print("\nNo duplicates to delete")
+        return 0
+
+    # === DESTRUCTIVE-OP GUARD (#37): delta-abort + backup before delete ===
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from _safe_delete import guarded_delete, SafeDeleteAborted
+    total = cursor.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+
+    def _do_delete(ids):
+        ph = ','.join('?' * len(ids))
+        cursor.execute(f'DELETE FROM price_history WHERE listing_id IN ({ph})', list(ids))
+        cursor.execute(f'DELETE FROM listings WHERE id IN ({ph})', list(ids))
+
+    try:
+        guarded_delete(
+            cursor, "listings", all_delete_ids,
+            total_rows=total, do_delete=_do_delete,
+            label="same-source dedupe",
+        )
+        conn.commit()
+        print(f"\nDeleted {deleted_count} duplicate records (backed up first)")
+    except SafeDeleteAborted as e:
+        conn.rollback()
+        print(f"\n[ABORTED] {e}")
+        raise SystemExit(1)
 
     return deleted_count
 
