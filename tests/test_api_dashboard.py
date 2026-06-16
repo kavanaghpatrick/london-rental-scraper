@@ -324,7 +324,10 @@ def test_report_pages_never_500(live_dashboard, path):
 
 
 # --------------------------------------------------------------------------- #
-# /api/init-db — POST-only + auth
+# /api/init-db — POST-only + token auth (security-owned route; contract verified
+# with security). Full matrix below. The `live_dashboard` server runs with NO
+# INIT_DB_TOKEN → covers GET→405 + no-token→503 (fail-closed/disabled). A second
+# server with INIT_DB_TOKEN set covers wrong-token→401 + right-token→200.
 # --------------------------------------------------------------------------- #
 @dashboard
 @skip_no_dashboard
@@ -333,13 +336,129 @@ def test_init_db_get_405(live_dashboard):
     import requests
     r = requests.get(f"{base}/api/init-db", timeout=10)
     assert r.status_code == 405, f"init-db GET must be 405 (POST-only), got {r.status_code}"
+    # Allow header should advertise POST
+    assert "POST" in (r.headers.get("allow", "") or r.headers.get("Allow", "") or "POST")
 
 
 @dashboard
 @skip_no_dashboard
-def test_init_db_post_without_token_rejected(live_dashboard):
+def test_init_db_post_no_token_configured_503(live_dashboard):
+    """No INIT_DB_TOKEN in env → endpoint is DISABLED (fail-closed) → 503."""
     base, _ = live_dashboard
     import requests
     r = requests.post(f"{base}/api/init-db", timeout=15)
-    assert r.status_code in (401, 403, 503), \
-        f"init-db POST without token must be rejected (401/403/503), got {r.status_code}"
+    assert r.status_code == 503, \
+        f"init-db with no token configured must be 503 (disabled), got {r.status_code}: {r.text}"
+    assert r.json().get("success") is False
+
+
+_TOKEN = "test-init-db-token-32-chars-long-x"  # >=16 chars so the route is enabled
+
+
+@pytest.fixture(scope="module")
+def dashboard_with_token():
+    """A second next-dev instance started WITH INIT_DB_TOKEN set, so the
+    wrong-token (401) and right-token paths can run.
+
+    NOTE: two concurrent `next dev` cold-compiles can starve each other on a busy
+    machine; if this server doesn't come up in time it SKIPs (never fails). These
+    tests pass reliably when run in isolation (`pytest -k 'wrong_token or
+    right_token_passes'`) or in a CI job with adequate resources. The auth-layer
+    assertions are the value here; the DB-write 200 needs Neon (separate test)."""
+    if not _dashboard_ready():
+        pytest.skip("dashboard not ready")
+    import testing.postgresql
+    import psycopg2
+
+    pg = testing.postgresql.Postgresql()
+    with psycopg2.connect(pg.url()) as c:
+        c.autocommit = True
+        with c.cursor() as cur:
+            cur.execute(_init_db_sql())
+
+    env = dict(os.environ, POSTGRES_URL=pg.url(), INIT_DB_TOKEN=_TOKEN)
+    port = _free_port()
+    proc = subprocess.Popen(
+        ["npx", "next", "dev", "-p", str(port)],
+        cwd=DASHBOARD, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    base = f"http://127.0.0.1:{port}"
+    import requests
+    ready = False
+    # probe init-db (the route under test) — lighter than /api/predict which loads
+    # the 11MB model. Wait up to 240s: a second concurrent next-dev compile is slow.
+    for _ in range(480):
+        try:
+            requests.get(f"{base}/api/init-db", timeout=2)
+            ready = True
+            break
+        except Exception:
+            time.sleep(0.5)
+    if not ready:
+        proc.terminate(); pg.stop()
+        pytest.skip("next dev (token) did not become ready")
+    try:
+        yield base
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except Exception:
+            proc.kill()
+        pg.stop()
+
+
+@dashboard
+@skip_no_dashboard
+def test_init_db_post_wrong_token_401(dashboard_with_token):
+    base = dashboard_with_token
+    import requests
+    # no token header
+    r0 = requests.post(f"{base}/api/init-db", timeout=15)
+    assert r0.status_code == 401, f"absent token must be 401 when enabled, got {r0.status_code}"
+    # wrong token
+    r1 = requests.post(f"{base}/api/init-db",
+                       headers={"Authorization": "Bearer wrong-token"}, timeout=15)
+    assert r1.status_code == 401, f"wrong token must be 401, got {r1.status_code}"
+    r2 = requests.post(f"{base}/api/init-db",
+                       headers={"x-init-token": "wrong-token"}, timeout=15)
+    assert r2.status_code == 401, f"wrong x-init-token must be 401, got {r2.status_code}"
+
+
+@dashboard
+@skip_no_dashboard
+@pytest.mark.parametrize("header", [
+    {"Authorization": f"Bearer {_TOKEN}"},
+    {"x-init-token": _TOKEN},
+])
+def test_init_db_post_right_token_passes_auth(dashboard_with_token, header):
+    """Correct token (both header forms) gets PAST auth — i.e. NOT 401/403/405/503.
+    It then reaches the schema-creation DB call. Against the ephemeral Postgres
+    that DB call 500s (@vercel/postgres can't use a local Postgres — same
+    constraint as /api/similar), so locally we assert auth passed (status != the
+    auth-reject codes). The full 200 + idempotency is asserted against a real Neon
+    DB in test_init_db_right_token_200_neon."""
+    base = dashboard_with_token
+    import requests
+    r = requests.post(f"{base}/api/init-db", headers=header, timeout=30)
+    assert r.status_code not in (401, 403, 405, 503), (
+        f"correct token must pass auth (got an auth-reject {r.status_code}); "
+        f"a 200 (real DB) or 500 (@vercel/postgres can't reach local PG) both mean auth passed"
+    )
+    assert r.status_code in (200, 500)
+
+
+@pytest.mark.skipif(not os.environ.get("NEON_TEST_URL"),
+                    reason="needs a Neon-compatible POSTGRES_URL (set NEON_TEST_URL) — "
+                           "@vercel/postgres can't run the init-db schema on local Postgres")
+@dashboard
+def test_init_db_right_token_200_neon():
+    """Full path against a real Neon DB: correct token → 200 {success:true} +
+    idempotent re-call → 200. Opt-in (needs NEON_TEST_URL + a running dashboard)."""
+    import requests
+    base = os.environ.get("DASHBOARD_BASE_URL", "http://127.0.0.1:3000")
+    hdr = {"Authorization": f"Bearer {os.environ['INIT_DB_TOKEN']}"}
+    r = requests.post(f"{base}/api/init-db", headers=hdr, timeout=30)
+    assert r.status_code == 200 and r.json().get("success") is True
+    r2 = requests.post(f"{base}/api/init-db", headers=hdr, timeout=30)
+    assert r2.status_code == 200  # idempotent

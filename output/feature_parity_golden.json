@@ -194,7 +194,7 @@
         "has_fourth_plus": 0,
         "has_roof_terrace": 0
       },
-      "prediction_pcm": 11189.33,
+      "prediction_pcm": 11382.71,
       "features": {
         "bedrooms": 2.0,
         "bathrooms": 2.0,
@@ -218,8 +218,8 @@
         "log_center_distance": 1.1714499941393983,
         "center_distance_inv": 0.3099172371325569,
         "is_prime_postcode": 1.0,
-        "postcode_freq": 0.0023314552166310474,
-        "postcode_area_freq": 0.9356906936079269,
+        "postcode_freq": 0.0016118200134318335,
+        "postcode_area_freq": 0.9544660846205507,
         "postcode_adjustment": 1.0,
         "is_social_housing": 0.0,
         "is_ultra_luxury_address": 1.0,
@@ -361,7 +361,7 @@
         "has_fourth_plus": 0,
         "has_roof_terrace": 0
       },
-      "prediction_pcm": 4862.4,
+      "prediction_pcm": 4826.62,
       "features": {
         "bedrooms": 2.0,
         "bathrooms": 1.0,
@@ -385,8 +385,8 @@
         "log_center_distance": 1.4791602953786143,
         "center_distance_inv": 0.2278289170793235,
         "is_prime_postcode": 1.0,
-        "postcode_freq": 0.8803186322129396,
-        "postcode_area_freq": 0.9356906936079269,
+        "postcode_freq": 0.9148421759570181,
+        "postcode_area_freq": 0.9544660846205507,
         "postcode_adjustment": 1.0,
         "is_social_housing": 0.0,
         "is_ultra_luxury_address": 0.0,
@@ -528,7 +528,7 @@
         "has_fourth_plus": 0,
         "has_roof_terrace": 0
       },
-      "prediction_pcm": 4799.46,
+      "prediction_pcm": 4892.47,
       "features": {
         "bedrooms": 2.0,
         "bathrooms": 1.0,
@@ -552,8 +552,8 @@
         "log_center_distance": 1.4791602953786143,
         "center_distance_inv": 0.2278289170793235,
         "is_prime_postcode": 1.0,
-        "postcode_freq": 0.8803186322129396,
-        "postcode_area_freq": 0.9356906936079269,
+        "postcode_freq": 0.9148421759570181,
+        "postcode_area_freq": 0.9544660846205507,
         "postcode_adjustment": 1.0,
         "is_social_housing": 0.0,
         "is_ultra_luxury_address": 0.0,
@@ -695,7 +695,7 @@
         "has_fourth_plus": 0,
         "has_roof_terrace": 0
       },
-      "prediction_pcm": 11885.58,
+      "prediction_pcm": 11377.32,
       "features": {
         "bedrooms": 2.0,
         "bathrooms": 2.0,
@@ -719,8 +719,8 @@
         "log_center_distance": 1.1714499941393983,
         "center_distance_inv": 0.3099172371325569,
         "is_prime_postcode": 1.0,
-        "postcode_freq": 0.0023314552166310474,
-        "postcode_area_freq": 0.9356906936079269,
+        "postcode_freq": 0.0016118200134318335,
+        "postcode_area_freq": 0.9544660846205507,
         "postcode_adjustment": 1.0,
         "is_social_housing": 0.0,
         "is_ultra_luxury_address": 1.0,
@@ -862,7 +862,7 @@
         "has_fourth_plus": 0,
         "has_roof_terrace": 0
       },
-      "prediction_pcm": 6758.2,
+      "prediction_pcm": 6305.43,
       "features": {
         "bedrooms": 3.0,
         "bathrooms": 2.0,
@@ -886,8 +886,8 @@
         "log_center_distance": 1.5556873880267577,
         "center_distance_inv": 0.2110442634702697,
         "is_prime_postcode": 1.0,
-        "postcode_freq": 0.010102972605401205,
-        "postcode_area_freq": 0.9356906936079269,
+        "postcode_freq": 0.007521826729348556,
+        "postcode_area_freq": 0.9544660846205507,
         "postcode_adjustment": 1.0,
         "is_social_housing": 0.0,
         "is_ultra_luxury_address": 0.0,
@@ -1029,7 +1029,7 @@
         "has_fourth_plus": 0,
         "has_roof_terrace": 0
       },
-      "prediction_pcm": 1947.39,
+      "prediction_pcm": 1886.81,
       "features": {
         "bedrooms": 1.0,
         "bathrooms": 1.0,
@@ -1053,8 +1053,8 @@
         "log_center_distance": 1.5206772265037947,
         "center_distance_inv": 0.21856381960889948,
         "is_prime_postcode": 0.0,
-        "postcode_freq": 0.0038857586943850785,
-        "postcode_area_freq": 0.047600544006217216,
+        "postcode_freq": 0.002686366689053056,
+        "postcode_area_freq": 0.03331094694425789,
         "postcode_adjustment": 1.0,
         "is_social_housing": 0.0,
         "is_ultra_luxury_address": 0.0,
@@ -1196,7 +1196,7 @@
         "has_fourth_plus": 0,
         "has_roof_terrace": 0
       },
-      "prediction_pcm": 27635.44,
+      "prediction_pcm": 29775.01,
       "features": {
         "bedrooms": 5.0,
         "bathrooms": 5.0,
@@ -1220,8 +1220,8 @@
         "log_center_distance": 1.2417566398289857,
         "center_distance_inv": 0.2888763203231348,
         "is_prime_postcode": 1.0,
-        "postcode_freq": 0.010102972605401205,
-        "postcode_area_freq": 0.9356906936079269,
+        "postcode_freq": 0.007118871725990598,
+        "postcode_area_freq": 0.9544660846205507,
         "postcode_adjustment": 1.13,
         "is_social_housing": 0.0,
         "is_ultra_luxury_address": 1.0,

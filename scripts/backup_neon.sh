@@ -132,7 +132,14 @@ fi
 # --- validate: non-empty + gunzip-decodable + contains SQL ---
 if [[ ! -s "${TMP}" ]]; then rm -f "${TMP}"; die "dump is empty — failing."; fi
 if ! gzip -t "${TMP}" 2>/dev/null; then rm -f "${TMP}"; die "dump is not valid gzip — failing."; fi
-if ! gunzip -c "${TMP}" | head -c 4096 | grep -qiE 'PostgreSQL database dump|CREATE |COPY |INSERT '; then
+# Capture the head into a var FIRST. Piping `gunzip | head -c 4096 | grep -q`
+# directly inside `if !` under `set -o pipefail` is a false-failure trap: on any
+# real-size dump, head closes the pipe after 4 KiB, gunzip gets SIGPIPE (141), and
+# pipefail propagates that as the pipeline's status even though grep matched —
+# aborting a perfectly good backup with "no recognizable SQL content". Command
+# substitution + `|| true` isolates the SIGPIPE so only grep's result gates.
+SQL_HEAD="$(gunzip -c "${TMP}" 2>/dev/null | head -c 4096 || true)"
+if ! printf '%s' "${SQL_HEAD}" | grep -qiE 'PostgreSQL database dump|CREATE |COPY |INSERT '; then
   rm -f "${TMP}"; die "dump has no recognizable SQL content — failing."
 fi
 
