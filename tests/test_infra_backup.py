@@ -212,6 +212,30 @@ def test_neon_backup_installs_pg17():
     )
 
 
+def test_neon_backup_puts_pg17_ahead_on_path():
+    """neon-backup.yml must put /usr/lib/postgresql/17/bin AHEAD on PATH.
+
+    REGRESSION GUARD (run 27683500906): installing postgresql-client-17 does NOT
+    repoint the unversioned /usr/bin/pg_dump — that's postgresql-common's pg_wrapper,
+    which on the runner (ships client-16) still resolves to 16. So bare `pg_dump`
+    stayed 16 and the --check-major gate failed the job. The fix puts the versioned
+    bindir ahead on PATH, persisted to later steps via $GITHUB_PATH so
+    backup_neon.sh's bare pg_dump resolves to 17. Lock that so it can't silently
+    regress back to relying on the (wrong) pg_wrapper-points-to-newest assumption.
+    """
+    yml = NEON_BACKUP_YML.read_text()
+    assert "/usr/lib/postgresql/17/bin" in yml, (
+        "neon-backup.yml must reference the versioned pg17 bindir "
+        "(/usr/lib/postgresql/17/bin) — bare pg_dump is the pg_wrapper and may stay 16."
+    )
+    # Must persist that dir to subsequent steps so the later 'Run backup' step (which
+    # calls backup_neon.sh's bare pg_dump) gets pg17 too.
+    assert "GITHUB_PATH" in yml, (
+        "neon-backup.yml must append /usr/lib/postgresql/17/bin to $GITHUB_PATH so "
+        "pg17 persists to the backup step (not just the install step)."
+    )
+
+
 def test_backup_script_preflight_check():
     """`backup_neon.sh --check` honours its exit-0 contract with a matching client.
 

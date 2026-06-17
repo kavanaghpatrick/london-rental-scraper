@@ -36,13 +36,19 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install PostgreSQL 17 client (pg_dump) from PGDG
-        # Neon server is 17.x; Ubuntu-noble's stock `postgresql-client` is 16.x and
-        # pg_dump REFUSES to dump a newer server ("server version mismatch") — which
-        # broke this backup DAILY. Pull client 17 from the official PGDG apt repo.
-        # $(lsb_release -cs) keeps the repo correct when ubuntu-latest rolls forward
-        # (no hardcoded "noble"). The unversioned pg_dump symlink points at the
-        # highest installed major (17), so the script's bare `pg_dump` resolves to 17
-        # with no PATH change. (#7 / Problem 2 — diff per docs/research_infra.md §1.1)
+        # Neon server is 17.x; Ubuntu's stock `postgresql-client` is 16.x and pg_dump
+        # REFUSES to dump a newer server ("server version mismatch") — which broke this
+        # backup DAILY. Pull client 17 from the official PGDG apt repo. $(lsb_release -cs)
+        # keeps the repo correct when ubuntu-latest rolls forward (no hardcoded "noble").
+        #
+        # GOTCHA (run 27683500906): installing postgresql-client-17 does NOT repoint the
+        # unversioned /usr/bin/pg_dump. That's postgresql-common's `pg_wrapper`, and on
+        # the runner (which ships client-16) it still resolves to 16 — so bare `pg_dump`
+        # stayed 16 and the --check-major gate correctly failed the job. FIX: put the
+        # versioned bindir (/usr/lib/postgresql/17/bin) AHEAD on PATH. $GITHUB_PATH
+        # persists it to LATER steps (so backup_neon.sh's bare pg_dump is 17); `export`
+        # makes it effective in THIS step too (GITHUB_PATH doesn't apply to the current
+        # step), so the version assert below sees 17. (#7 / Problem 2 — §1.1 + PATH fix)
         run: |
           sudo apt-get update
           sudo apt-get install -y curl ca-certificates
@@ -54,6 +60,9 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
+          # Put pg17 ahead of the pg_wrapper for THIS step and all SUBSEQUENT steps.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
           pg_dump --version   # expect 17.x
           # Fail the job EARLY (not at dump time) if the wrong major is on PATH.
           python3 scripts/pg_version.py --check-major 17
