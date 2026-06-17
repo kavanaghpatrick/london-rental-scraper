@@ -33,6 +33,19 @@ import retrain_canonical as rc
 OUT = Path('output/rental_model_canonical_inference.json')
 
 
+def _assert_default_shape(stats: dict) -> None:
+    """Fail LOUDLY before writing if the freq-default invariant is violated. The reader
+    (canonical_predict) and the JS predictor both key off a NUMERIC top-level
+    `*_default` that equals min(map). A None default or a nested in-map 'default' is the
+    exact shape that crashed np.log1p / broke JS↔Python parity — never write it.
+    Shared with retrain_canonical (the SECOND writer) so both stay shape-identical."""
+    for base in ('postcode_freq', 'postcode_area_freq'):
+        fmap, dflt = stats[base], stats[f'{base}_default']
+        assert isinstance(dflt, float), f"{base}_default must be float, got {type(dflt).__name__}"
+        assert dflt == float(min(fmap.values())), f"{base}_default must equal min({base}.values())"
+        assert 'default' not in fmap, f"{base} map must not embed a nested 'default' key"
+
+
 def main(db='output/rentals.db'):
     df = rc.load_recency_independent(db)
     df = rc.v20.engineer_features_v20(df)
@@ -59,6 +72,8 @@ def main(db='output/rentals.db'):
                  'these maps (keyed on postcode_district / postcode_area) instead of the '
                  'degenerate 1.0 recompute. floor_count default = training median.'),
     }
+
+    _assert_default_shape(stats)  # invariant: numeric sibling defaults, no nested 'default'
 
     OUT.parent.mkdir(exist_ok=True)
     with open(OUT, 'w') as f:

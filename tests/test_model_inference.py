@@ -163,6 +163,51 @@ def test_unseen_postcode_default_is_numeric_no_none_reaches_model(cp):
     assert math.isfinite(pred) and pred > 0, f"unseen-postcode prediction not sane: £{pred}"
 
 
+def test_unseen_postcode_freq_is_numeric_even_with_broken_stats(cp):
+    """Defence in depth: even if inference.json were CORRUPT — a None in-map 'default'
+    and NO top-level postcode_freq_default key (the exact buggy shape from the original
+    CI red) — build_features must NOT let None/object reach np.log1p. The reader's
+    to_numeric(errors='coerce')+fillna makes the unseen postcode_freq a finite float and
+    predict() returns a finite £. Guards the reader independently of the on-disk artifact."""
+    import math as _math
+    import numpy as np
+    # Inject a deliberately broken stats blob straight into the cache (bypasses disk):
+    # an EXPLICIT None top-level default. That makes the reader's `.map(get(k, None))`
+    # propagate None into postcode_freq → an OBJECT-dtype column — the precise shape that
+    # crashed np.log1p in the original CI red. build_features must coerce it to a finite
+    # float (to_numeric+fillna) so nothing non-numeric reaches the model.
+    saved = cp._CACHE.get('inference')
+    cp._CACHE['inference'] = {
+        'postcode_freq': {'SW3': 0.9},
+        'postcode_freq_default': None,           # explicit None default → propagates
+        'postcode_area_freq': {'SW': 0.95},
+        'postcode_area_freq_default': None,
+    }
+    try:
+        row = {
+            'bedrooms': 2, 'bathrooms': 1, 'size_sqft': 900,
+            'postcode': 'ZZ9 9ZZ', 'postcode_normalized': 'ZZ9', 'area': 'Nowhere',
+            'property_type': 'flat', 'property_type_std': 'flat',
+            'address': '1 Unseen Road', 'source': 'rightmove', 'agent_brand': 'unknown',
+            'latitude': 51.49, 'longitude': -0.168, 'let_type': 'long',
+            'features': '', 'description': '', 'floor_count': 0,
+            'has_basement': 0, 'has_ground': 0, 'has_first_floor': 0,
+            'has_second_floor': 0, 'has_third_floor': 0, 'has_fourth_plus': 0,
+            'has_roof_terrace': 0,
+        }
+        X, _ = cp.build_features(pd.DataFrame([row]))
+        pf = X.iloc[0]['postcode_freq']
+        assert isinstance(float(pf), float) and _math.isfinite(float(pf)), (
+            f"broken-stats unseen postcode_freq not a finite float: {pf!r}"
+        )
+        assert str(X['postcode_freq'].dtype) != 'object', "postcode_freq is object-dtype under broken stats"
+        pred = float(cp.predict(pd.DataFrame([row]))[0])
+        assert _math.isfinite(pred) and pred > 0, f"broken-stats prediction not finite/positive: £{pred}"
+    finally:
+        # Restore so the broken blob never leaks into other tests (module-scoped cache).
+        cp._CACHE['inference'] = saved
+
+
 # ── REGRESSION: coordless-row distance dtype (the REAL np.log1p CI crash) ────
 
 def test_coordless_row_distance_is_numeric_no_log1p_crash(cp):
@@ -202,6 +247,29 @@ def test_coordless_row_distance_is_numeric_no_log1p_crash(cp):
         "coordless row must use the neutral median default distance, not 0 (city centre)"
     )
     assert float(row['tube_distance_km']) == pytest.approx(v20.DEFAULT_TUBE_DISTANCE_KM, abs=1e-6)
+
+
+def test_coordless_prediction_not_inflated(cp):
+    """Guards the SKEW (not just the crash): an unknown-location (coord-less) property
+    must NOT be scored as if it sat at the city centre. The rejected CITY_CENTER fix gave
+    center_distance_km=0 → center_distance_inv=1.0 (max centrality) → an inflated £ on the
+    LEAST-informative rows. With the neutral training-median default, a coord-less request
+    must price at or BELOW the same property pinned to the city centre (dist≈0)."""
+    base = dict(
+        bedrooms=2, bathrooms=1, size_sqft=900, postcode='ZZ9 9ZZ',
+        postcode_normalized='ZZ9', area='Nowhere', property_type='flat',
+        property_type_std='flat', address='1 Unseen Road', source='rightmove',
+        agent_brand='unknown', let_type='long', features='', description='', floor_count=0,
+        has_basement=0, has_ground=0, has_first_floor=0, has_second_floor=0,
+        has_third_floor=0, has_fourth_plus=0, has_roof_terrace=0,
+    )
+    coordless = cp.predict_one(**base, latitude=0, longitude=0)        # neutral default dist
+    at_centre = cp.predict_one(**base, latitude=51.5074, longitude=-0.1278)  # dist≈0 (CITY_CENTER)
+    assert coordless < at_centre, (
+        f"coord-less prediction £{coordless:.0f} is NOT below the city-centre price "
+        f"£{at_centre:.0f} — the CITY_CENTER max-centrality skew regressed"
+    )
+    assert math.isfinite(coordless) and coordless > 0
 
 
 # ── CONTRACT: gen_inference_stats writer output shape ───────────────────────

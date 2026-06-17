@@ -195,6 +195,12 @@ def main():
                  'training maps (keyed on postcode_district / postcode_area) instead of the '
                  'degenerate 1.0 recompute. Regenerated atomically with the pkl every retrain.'),
     }
+    # Same freq-default invariant the OTHER writer (gen_inference_stats.py) enforces —
+    # one shared assertion so the two writers can never drift in shape. Fails loudly
+    # rather than writing a None/nested-'default' artifact that crashes np.log1p / breaks
+    # JS↔Python parity.
+    import gen_inference_stats as _gis
+    _gis._assert_default_shape(inference_stats)
     with open(INFERENCE_PATH, 'w') as f:
         json.dump(inference_stats, f, indent=2)
 
