@@ -40,6 +40,13 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
+      # Node is needed for the post-retrain JS<->Python parity gate (_fixture_diff.mjs),
+      # which blocks the model commit if a retrain desyncs the served JS predictor (#14).
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -327,7 +334,27 @@ jobs:
           assert os.path.getsize('chrome-extension/api/model.json') > 1024, 'model.json not written'
           print(f'chrome export verified: {n} features')
           PY
+
+          # --- #14: regenerate the FULL matched artifact set so a retrain can't drift ---
+          # The retrain rewrote inference.json (new freqs / default). Re-bake the JS
+          # predictor's hardcoded POSTCODE_FREQ maps from it + re-vendor the dashboard copy,
+          # then regenerate the golden parity fixture from the new model — so the served JS
+          # map, the vendored predictor, and the golden all move WITH the model. Without this
+          # the daily retrain desyncs them (the gap that clobbered the matched set, fa669cd).
+          echo "Re-baking JS freq maps + re-vendoring (sync_js_freq_maps)..."
+          python3 scripts/sync_js_freq_maps.py 2>&1 | tee -a model_output.txt
+          echo "Regenerating golden parity fixture from the new model..."
+          python3 gen_feature_parity_golden.py 2>&1 | tee -a model_output.txt
         timeout-minutes: 30
+
+      - name: Verify JS<->Python parity (gate — blocks the model commit on any desync)
+        run: |
+          # Fail the job (so the Commit step below is SKIPPED) if the retrain left the served
+          # JS predictor inconsistent with the Python golden / inference.json. The safety net
+          # that prevents the daily auto-update from EVER pushing a desynced model (#14).
+          node chrome-extension/_fixture_diff.mjs
+          python3 scripts/sync_js_freq_maps.py --check
+          echo "JS<->Python parity verified (0/0) — matched artifact set is consistent"
 
       - name: Commit canonical model files
         run: |
@@ -343,6 +370,11 @@ jobs:
           # Inference stats (freq maps) — REQUIRED alongside the pkl or single-row
           # predict silently regresses to the £3,430 degenerate bug. Not gitignored.
           git add output/rental_model_canonical_inference.json
+          # #14: the re-baked JS predictor + its vendored copy + the regenerated golden —
+          # committed ATOMICALLY with the model so the served matched set never drifts.
+          git add chrome-extension/xgboost.js
+          git add dashboard/src/app/api/predict/xgboost.predictor.js
+          git add output/feature_parity_golden.json
 
           # Only commit if there are changes
           if git diff --staged --quiet; then
