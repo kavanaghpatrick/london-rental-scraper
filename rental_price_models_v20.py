@@ -247,6 +247,19 @@ POSTCODE_CENTROIDS = {
 
 CITY_CENTER = (51.5074, -0.1278)
 
+# Neutral fallback distances for rows that resolve to NO usable coordinates (no
+# lat/long AND no POSTCODE_CENTROIDS match — e.g. an unseen district at single-row
+# inference). Using the TRAINING-frame medians treats an unknown location as
+# "typically-distant", NOT as sitting exactly at the city centre (which a
+# CITY_CENTER/0 km fallback would imply, spuriously inflating central-premium
+# features). These constants are the medians of center_distance_km / tube_distance_km
+# over the canonical training frame (deterministic loader+filters). The full training
+# frame has real coords for every row, so this never changes the train path; it only
+# makes a coord-less inference row numeric+neutral instead of an all-None object
+# column (which crashed np.log1p). The JS predictor mirrors these EXACT constants.
+DEFAULT_CENTER_DISTANCE_KM = 3.3892584524370477
+DEFAULT_TUBE_DISTANCE_KM = 0.6075240563353417
+
 AMENITY_FEATURES = [
     'has_balcony', 'has_terrace', 'has_garden', 'has_porter',
     'has_gym', 'has_pool', 'has_parking', 'has_lift', 'has_ac',
@@ -775,10 +788,24 @@ def engineer_features_v20(df):
     df['tube_distance_km'] = df.apply(lambda r: get_nearest_tube_distance(r['lat_filled'], r['lon_filled']), axis=1)
     df['center_distance_km'] = df.apply(lambda r: get_distance_to_center(r['lat_filled'], r['lon_filled']), axis=1)
 
-    median_tube = df['tube_distance_km'].median()
-    median_center = df['center_distance_km'].median()
-    df['tube_distance_km'] = df['tube_distance_km'].fillna(median_tube)
-    df['center_distance_km'] = df['center_distance_km'].fillna(median_center)
+    # Coerce to numeric FIRST. A row with no usable coords yields None from the distance
+    # helpers; a frame where EVERY row is coord-less is then an object-dtype column whose
+    # median() is NaN and whose .fillna(NaN) is a no-op — leaving object dtype that
+    # crashes np.log1p below (the unseen/coord-less single-row inference bug). to_numeric
+    # makes it float (None→NaN) so the fill is real.
+    df['tube_distance_km'] = pd.to_numeric(df['tube_distance_km'], errors='coerce')
+    df['center_distance_km'] = pd.to_numeric(df['center_distance_km'], errors='coerce')
+    # Fill EVERY missing distance with the FIXED neutral default constant (the training
+    # median, baked once). We deliberately do NOT use the per-call frame median: that
+    # would make a coord-less row's distance depend on whatever ELSE is in the batch
+    # (frame-median in a multi-row call vs the constant in a single-row call) — a
+    # train/inference + batch/single skew. A fixed constant is CONSISTENT across train,
+    # batch and single-row inference, is what the JS predictor mirrors EXACTLY, and is a
+    # neutral "typically-distant" prior (not 0 km / city-centre, which would inflate
+    # central-premium features). On the full training frame every row has real coords, so
+    # this fill is inert there and the trained model is unchanged.
+    df['tube_distance_km'] = df['tube_distance_km'].fillna(DEFAULT_TUBE_DISTANCE_KM)
+    df['center_distance_km'] = df['center_distance_km'].fillna(DEFAULT_CENTER_DISTANCE_KM)
 
     df['log_center_distance'] = np.log1p(df['center_distance_km'])
     df['log_tube_distance'] = np.log1p(df['tube_distance_km'])

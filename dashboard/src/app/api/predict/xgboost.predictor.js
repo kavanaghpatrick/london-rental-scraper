@@ -128,6 +128,13 @@ const XGBFeatures = {
   PRIME_POSTCODES: ['SW1', 'SW3', 'SW7', 'SW10', 'W1', 'W8', 'W11', 'NW3', 'NW8'],
   CITY_CENTER: { lat: 51.5074, lon: -0.1278 },
 
+  // Neutral fallback distances for a coord-less request (no latitude/longitude). MUST
+  // equal Python rental_price_models_v20.DEFAULT_{CENTER,TUBE}_DISTANCE_KM (the training
+  // medians) so Python↔JS stay byte-parity on coord-less rows. We do NOT fall back to
+  // CITY_CENTER (distance 0): an unknown location is "typically-distant", not central.
+  DEFAULT_CENTER_DISTANCE_KM: 3.3892584524370477,
+  DEFAULT_TUBE_DISTANCE_KM: 0.6075240563353417,
+
   // === V16/V20 SOCIAL HOUSING DETECTION ===
   // Social housing estates (from V16 investigation)
   SOCIAL_ESTATE_PATTERNS: [
@@ -894,6 +901,10 @@ const XGBFeatures = {
     // property_type is the raw type. Use _std first, then property_type. (propertyType
     // camelCase kept ONLY as a final legacy fallback for old in-page callers.)
     const propertyType = data.property_type_std || data.property_type || data.propertyType || 'flat';
+    // A request is "coord-less" when it carries no usable latitude (Python treats
+    // lat==0/NaN the same). Capture this BEFORE any city-centre coalesce so we can
+    // apply the neutral DEFAULT_* distances (mirroring Python) instead of distance 0.
+    const hasCoords = !!data.latitude && !!data.longitude;
     const lat = data.latitude || this.CITY_CENTER.lat;
     const lon = data.longitude || this.CITY_CENTER.lon;
     const description = data.description || '';
@@ -910,11 +921,15 @@ const XGBFeatures = {
     const pageUrl = data.pageUrl || '';
     const address = data.address || '';  // V16: need address for premium detection
 
-    // Calculate distances
-    const tubeDist = Math.min(...Object.values(this.TUBE_STATIONS).map(
-      s => this.haversine(lat, lon, s.lat, s.lon)
-    ));
-    const centerDist = this.haversine(lat, lon, this.CITY_CENTER.lat, this.CITY_CENTER.lon);
+    // Calculate distances. Coord-less requests use the neutral training-median defaults
+    // (matching Python rental_price_models_v20: a row that resolves to no coords is
+    // filled with DEFAULT_{CENTER,TUBE}_DISTANCE_KM), NOT 0 km / city-centre.
+    const tubeDist = hasCoords
+      ? Math.min(...Object.values(this.TUBE_STATIONS).map(s => this.haversine(lat, lon, s.lat, s.lon)))
+      : this.DEFAULT_TUBE_DISTANCE_KM;
+    const centerDist = hasCoords
+      ? this.haversine(lat, lon, this.CITY_CENTER.lat, this.CITY_CENTER.lon)
+      : this.DEFAULT_CENTER_DISTANCE_KM;
     const centerInv = 1 / (1 + centerDist);
 
     // Parse amenities from description

@@ -108,6 +108,40 @@ SAMPLES = [
         'features': '', 'description': 'magnificent house, gym, pool, lift, air conditioning, roof terrace',
         'floor_count': 4, 'has_first_floor': 1, 'has_second_floor': 1, 'has_third_floor': 1,
     },
+    {
+        # UNSEEN-postcode + REAL coords (task #6): a district NOT in the training freq
+        # maps must fall back to the DEFAULT frequency on BOTH sides — Python's top-level
+        # postcode_freq_default and JS's in-map POSTCODE_FREQ['default']. Real coords keep
+        # this sample isolated to the default-FREQ branch.
+        '_label': 'unseen_postcode_default_freq',
+        'bedrooms': 2, 'bathrooms': 1, 'size_sqft': 900,
+        'postcode': 'ZZ9 9ZZ', 'postcode_normalized': 'ZZ9', 'area': 'Nowhere',
+        'property_type': 'flat', 'property_type_std': 'flat',
+        'address': '1 Unseen Road', 'source': 'rightmove', 'agent_brand': 'unknown',
+        # Real coords ~8 km out (deliberately NOT ~3.39 km, so its computed distance is
+        # visibly distinct from the coord-less DEFAULT and this sample exercises the
+        # real-coords path while still hitting the unseen-district freq default).
+        'latitude': 51.44, 'longitude': -0.02, 'let_type': 'long',
+        'features': '', 'description': '',
+        'floor_count': 0,
+    },
+    {
+        # COORDLESS + unseen-postcode (task #6): THE row that crashed CI
+        # (np.log1p(object) at v20:783 — all-None distance column). latitude=longitude=0
+        # with an unseen district (no POSTCODE_CENTROIDS hit) must fall back to
+        # CITY_CENTER on BOTH sides → center_distance_km = 0, IDENTICAL to JS
+        # (xgboost.js: `lat = data.latitude || CITY_CENTER.lat`). This sample gates the
+        # distance-dtype fix AND the coordless JS↔Python geo-distance parity (which the
+        # 7 coord-bearing samples were blind to).
+        '_label': 'coordless_unseen_postcode',
+        'bedrooms': 2, 'bathrooms': 1, 'size_sqft': 900,
+        'postcode': 'ZZ9 9ZZ', 'postcode_normalized': 'ZZ9', 'area': 'Nowhere',
+        'property_type': 'flat', 'property_type_std': 'flat',
+        'address': '1 Unseen Road', 'source': 'rightmove', 'agent_brand': 'unknown',
+        'latitude': 0, 'longitude': 0, 'let_type': 'long',
+        'features': '', 'description': '',
+        'floor_count': 0,
+    },
 ]
 
 REQUIRED_INPUT_FIELDS = [

@@ -15,7 +15,17 @@ Marker convention (see pytest.ini):
 import os
 from pathlib import Path
 
+import pandas as pd
 import pytest
+
+# Make local pytest match CI's pandas behaviour. Newer pandas (CI) does NOT silently
+# downcast object-dtype columns on .fillna(); pandas 2.3.x locally DOES (emitting a
+# FutureWarning), which masked the unseen/coordless-row np.log1p(object) crash
+# (rental_price_models_v20 distance block). Turning the future behaviour on here means
+# a coordless single-row inference reproduces the CI TypeError locally instead of
+# passing silently. See tests/test_model_inference.py::test_coordless_row_* and
+# the np-log1p-distance-dtype-bug finding (task #6).
+pd.set_option('future.no_silent_downcasting', True)
 
 # The canonical DB path the data-validation tests read (matches
 # tests/test_scrape_validation.py's DB_PATH resolution).
