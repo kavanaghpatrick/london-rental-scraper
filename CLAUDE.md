@@ -213,7 +213,13 @@ CREATE TABLE price_history (
 
 **Problem**: Rightmove is an aggregator - properties appear both on Rightmove AND on agent sites (Savills, Knight Frank, Foxtons). Same property = duplicate records.
 
-**Solution**: `dedupe_cross_source.py`
+**Solution**: ONE structural-fingerprint identity core, used everywhere.
+
+- `scripts/dedupe_postgres.py` is the **core**: `group_cross_source_clusters(rows)` /
+  `find_cross_source_duplicate_ids(rows)`. Pure, DB-agnostic (caller supplies row dicts).
+  The daily-scrape "Clean duplicate listings" step and the `dedupe_cross_source.py` CLI
+  **both** route through it — there is no second identity rule.
+- `dedupe_cross_source.py` is the **CLI/adapter** over that core:
 
 ```bash
 # Analyze duplicates (dry-run)
@@ -228,17 +234,25 @@ python3 dedupe_cross_source.py --merge --execute
 # Mark duplicates with canonical_id
 python3 dedupe_cross_source.py --mark --execute
 
-# Remove duplicates (keep best record)
+# Remove duplicates (keep best record) — routed through scripts/_safe_delete.py guard
 python3 dedupe_cross_source.py --remove --execute
 ```
 
-**Duplicate Detection Criteria**:
-- Same postcode district (SW1, W8, etc.)
-- Price within 5%
+**Duplicate Detection Criteria** (structural, NOT fuzzy string similarity):
+- Same `address_fingerprint` (PRD-002: flat/unit + street number + street + postcode,
+  with a vague-address fallback so distinct flats on a number-less street don't collide)
 - Same number of bedrooms
-- Address similarity > 85%
+- Price within 5% of the cluster median (sanity gate)
+- Cross-source only: a cluster must span ≥2 distinct sources (same-source relists are
+  `scripts/dedupe_same_source.py`'s job)
 
-**Source Priority** (for choosing canonical record):
+> Retired (#5/#10): the old fuzzy `address_similarity` (SequenceMatcher > 0.85) +
+> transitive union-find path. On the real DB it over-clustered distinct same-street
+> properties and proposed deleting 39.5% of active listings; the structural key lands at
+> ~0.5%. The `SOURCE_PRIORITY` constant and the fingerprint primitive are now single-sourced
+> (no per-module copies) to prevent the divergence that caused the bug.
+
+**Source Priority** (for choosing canonical record — defined once in `dedupe_cross_source.SOURCE_PRIORITY`, imported by the core):
 1. savills (best sqft)
 2. knightfrank
 3. foxtons

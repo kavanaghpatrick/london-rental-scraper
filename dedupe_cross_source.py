@@ -20,9 +20,7 @@ Usage:
 
 import sqlite3
 import argparse
-import re
 from collections import defaultdict
-from difflib import SequenceMatcher
 
 DB_PATH = 'output/rentals.db'
 
@@ -36,71 +34,44 @@ SOURCE_PRIORITY = {
 }
 
 
-def normalize_address(address: str) -> str:
-    """Normalize address for comparison."""
-    if not address:
-        return ''
-
-    # Lowercase
-    addr = address.lower().strip()
-
-    # Remove common suffixes
-    addr = re.sub(r'\s+(flat|apartment|apt|unit)\s*\d*', '', addr)
-
-    # Normalize street types
-    replacements = {
-        ' street': ' st',
-        ' road': ' rd',
-        ' avenue': ' ave',
-        ' lane': ' ln',
-        ' court': ' ct',
-        ' gardens': ' gdns',
-        ' square': ' sq',
-        ' terrace': ' terr',
-        ' place': ' pl',
-    }
-    for old, new in replacements.items():
-        addr = addr.replace(old, new)
-
-    # Remove extra whitespace
-    addr = ' '.join(addr.split())
-
-    # Extract just street name and postcode for matching
-    # Pattern: number + street name + postcode
-    match = re.search(r'(\d+[-\d]*)\s+([^,]+)', addr)
-    if match:
-        number = match.group(1)
-        street = match.group(2).strip()
-        return f"{number} {street}"
-
-    return addr
-
-
-def address_similarity(addr1: str, addr2: str) -> float:
-    """Calculate similarity between two addresses."""
-    norm1 = normalize_address(addr1)
-    norm2 = normalize_address(addr2)
-
-    if not norm1 or not norm2:
-        return 0.0
-
-    # Exact match after normalization
-    if norm1 == norm2:
-        return 1.0
-
-    # Check if one contains the other
-    if norm1 in norm2 or norm2 in norm1:
-        return 0.9
-
-    # Fuzzy match
-    return SequenceMatcher(None, norm1, norm2).ratio()
+# NOTE: the old fuzzy normalize_address() + address_similarity() (SequenceMatcher)
+# identity has been RETIRED (#10). Cross-source identity now comes from the single
+# structural-fingerprint core in scripts/dedupe_postgres.py, which find_duplicates()
+# below delegates to. This removes the divergent fuzzy path that caused the 39.5%
+# over-delete (#5).
 
 
 def find_duplicates(conn, threshold=0.85):
-    """Find potential duplicate properties across sources."""
-    cursor = conn.cursor()
+    """Find potential duplicate properties across sources.
 
-    # Get all listings with relevant fields
+    DELEGATES to the single structural-fingerprint identity core
+    (scripts/dedupe_postgres.group_cross_source_clusters) so there is ONE
+    cross-source dedupe rule everywhere (#5/#10). The old fuzzy SequenceMatcher
+    path that over-clustered distinct same-street properties (39.5% over-delete)
+    has been retired.
+
+    `threshold` is accepted for backwards-compatible call sites but is no longer
+    used — identity is now address_fingerprint + bedrooms + price±5%, not a
+    free-text similarity ratio.
+
+    Returns the same pairwise shape the existing CLI consumers
+    (analyze/merge/mark/remove) expect: a list of
+    {record1, record2, similarity} dicts. A structural cluster of N members is
+    expanded into N-1 pairs, each pairing the canonical (best) record with one
+    other member; `similarity` is 1.0 because a fingerprint match is exact.
+    """
+    # Lazy import to avoid a module-level import cycle: dedupe_postgres imports
+    # SOURCE_PRIORITY from this module at its top, so importing it here (inside
+    # the function) keeps both import orders clean.
+    import os
+    import sys
+    _scripts = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts')
+    if _scripts not in sys.path:
+        sys.path.insert(0, _scripts)
+    from dedupe_postgres import group_cross_source_clusters
+
+    cursor = conn.cursor()
+    # property_id is required by the fingerprint service's vague-address fallback.
     cursor.execute('''
         SELECT id, source, property_id, address, postcode, price_pcm,
                bedrooms, bathrooms, size_sqft, url
@@ -108,73 +79,47 @@ def find_duplicates(conn, threshold=0.85):
         WHERE address != '' OR postcode != ''
         ORDER BY source, id
     ''')
+    rows = cursor.fetchall()
+    print(f"Analyzing {len(rows)} listings for cross-source duplicates...")
 
-    listings = cursor.fetchall()
-    print(f"Analyzing {len(listings)} listings for cross-source duplicates...")
+    # Adapt DB rows -> the row dicts group_cross_source_clusters expects.
+    listings = [
+        {
+            'id': r[0], 'source': r[1], 'property_id': r[2], 'address': r[3],
+            'postcode': r[4], 'price_pcm': r[5], 'bedrooms': r[6],
+            'size_sqft': r[8],
+        }
+        for r in rows
+    ]
 
-    # Group by postcode for efficient comparison
-    by_postcode = defaultdict(list)
-    for row in listings:
-        postcode = row[4] or ''
-        # Extract district (SW1, W8, etc.)
-        district = re.match(r'^([A-Z]{1,2}\d{1,2})', postcode.upper())
-        key = district.group(1) if district else 'UNKNOWN'
-        by_postcode[key].append(row)
+    def _rec(m):
+        return {
+            'id': m['id'], 'source': m['source'], 'property_id': m['property_id'],
+            'address': m['address'], 'postcode': m['postcode'],
+            'price_pcm': m['price_pcm'], 'bedrooms': m['bedrooms'],
+            'size_sqft': m['size_sqft'],
+        }
 
     duplicates = []
-
-    for district, group in by_postcode.items():
-        if len(group) < 2:
-            continue
-
-        # Compare all pairs within district
-        for i, row1 in enumerate(group):
-            for row2 in group[i+1:]:
-                # Skip same source
-                if row1[1] == row2[1]:
-                    continue
-
-                # Check price similarity (within 5%)
-                price1, price2 = row1[5] or 0, row2[5] or 0
-                if price1 > 0 and price2 > 0:
-                    price_diff = abs(price1 - price2) / max(price1, price2)
-                    if price_diff > 0.05:
-                        continue
-
-                # Check bedrooms match
-                beds1, beds2 = row1[6], row2[6]
-                if beds1 and beds2 and beds1 != beds2:
-                    continue
-
-                # Check address similarity
-                addr_sim = address_similarity(row1[3], row2[3])
-                if addr_sim < threshold:
-                    continue
-
-                # This is a duplicate!
-                duplicates.append({
-                    'record1': {
-                        'id': row1[0],
-                        'source': row1[1],
-                        'property_id': row1[2],
-                        'address': row1[3],
-                        'postcode': row1[4],
-                        'price_pcm': row1[5],
-                        'bedrooms': row1[6],
-                        'size_sqft': row1[8],
-                    },
-                    'record2': {
-                        'id': row2[0],
-                        'source': row2[1],
-                        'property_id': row2[2],
-                        'address': row2[3],
-                        'postcode': row2[4],
-                        'price_pcm': row2[5],
-                        'bedrooms': row2[6],
-                        'size_sqft': row2[8],
-                    },
-                    'similarity': addr_sim,
-                })
+    for cluster in group_cross_source_clusters(listings):
+        # Canonical = highest source priority, then has-sqft, then lowest id —
+        # the same rule find_cross_source_duplicate_ids keeps.
+        canonical = max(
+            cluster,
+            key=lambda m: (
+                SOURCE_PRIORITY.get(m['source'], 0),
+                1 if (m.get('size_sqft') or 0) > 0 else 0,
+                -m['id'],
+            ),
+        )
+        for m in cluster:
+            if m['id'] == canonical['id']:
+                continue
+            duplicates.append({
+                'record1': _rec(canonical),
+                'record2': _rec(m),
+                'similarity': 1.0,  # structural fingerprint match is exact
+            })
 
     return duplicates
 
