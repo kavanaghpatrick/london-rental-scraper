@@ -5,6 +5,7 @@ Outputs a compact JSON file with key properties for matching.
 """
 
 import json
+import re
 import sqlite3
 import sys
 import os
@@ -77,11 +78,45 @@ def export_listings():
                 amenities.append(amenity)
         return amenities
 
-    def get_postcode_district(postcode):
-        """Extract postcode district (e.g., SW3 from SW3 4AA)."""
-        if not postcode:
-            return ''
-        return postcode.split()[0] if ' ' in postcode else postcode
+    # A UK postcode is "OUTWARD INWARD" where the inward code is always a digit
+    # followed by two letters (e.g. "9HD"). The outward code IS the district we
+    # want (e.g. "SW3", "W8", "SW1X"). A bare district has no inward code.
+    _INWARD_RE = re.compile(r'[0-9][A-Z]{2}$')              # trailing inward code
+    _DISTRICT_RE = re.compile(r'^[A-Z]{1,2}[0-9][0-9A-Z]?$')  # a clean outward code
+    # Full postcode embedded anywhere in free text (for address backfill).
+    _FULL_PC_RE = re.compile(r'\b([A-Z]{1,2}[0-9][0-9A-Z]?)\s*[0-9][A-Z]{2}\b')
+
+    def get_postcode_district(postcode, address=''):
+        """Extract the postcode district (e.g. 'SW3' from 'SW3 4AA').
+
+        Handles three shapes the DB actually contains:
+          - spaced full postcode  "SW3 6SN" -> "SW3"
+          - space-less full postcode "SW36SN" -> "SW3" (strip the inward code;
+            a naive split-on-space left these as garbage districts before)
+          - bare district          "SW3" / "W8" / "SW1X" -> unchanged
+        Falls back to the LAST full postcode found in the address when the
+        postcode field is missing/unusable. Returns '' if nothing district-like
+        is recoverable (do NOT guess a district from a bare token in free text).
+        """
+        if postcode:
+            pc = re.sub(r'\s+', ' ', str(postcode).strip().upper())
+            if ' ' in pc:
+                out = pc.split(' ')[0]
+                if _DISTRICT_RE.match(out):
+                    return out
+            elif _DISTRICT_RE.match(pc):
+                return pc  # already a clean district
+            else:
+                stripped = _INWARD_RE.sub('', pc)  # "SW36SN" -> "SW3"
+                if _DISTRICT_RE.match(stripped):
+                    return stripped
+        # Backfill from a full postcode embedded in the address (last one wins —
+        # the postcode is usually at the end of the address string).
+        if address:
+            matches = _FULL_PC_RE.findall(address.upper())
+            if matches and _DISTRICT_RE.match(matches[-1]):
+                return matches[-1]
+        return ''
 
     # Build compact export
     listings = {}
@@ -97,7 +132,7 @@ def export_listings():
         record = {
             'u': row_dict['url'],
             'a': row_dict['address'] or '',
-            'p': get_postcode_district(row_dict['postcode']),
+            'p': get_postcode_district(row_dict['postcode'], row_dict.get('address') or ''),
             'b': row_dict['bedrooms'] or 0,
             'ba': row_dict['bathrooms'] or 1,
             's': row_dict['size_sqft'] or 0,

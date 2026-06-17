@@ -468,7 +468,7 @@
         size_sqft: sizeSqft,
         size_source: sizeSource,
         amenities_detected: amenitiesDetected,
-        postcode_district: postcode.split(' ')[0],
+        postcode_district: normalizeDistrict(postcode),  // '' when no real postcode -> comps suppressed
         beds: beds,
         baths: baths,
         predictor_source: 'server',  // drives the UI "v20 · Live" label
@@ -501,8 +501,9 @@
       .filter(([k, v]) => v)
       .map(([k]) => k.replace('has_', ''));
 
-    // Extract postcode district for similar properties search
-    const postcodeDistrict = postcode.split(' ')[0];
+    // Extract postcode district for similar properties search ('' when there is
+    // no real postcode, which suppresses comps rather than mislocating them).
+    const postcodeDistrict = normalizeDistrict(postcode);
 
     return {
       asking_price: askingPrice,
@@ -1104,9 +1105,24 @@
     if (data.address?.outcode) {
       return data.address.outcode + (data.address.incode ? ' ' + data.address.incode : '');
     }
+    // Pull a postcode out of the free-text address. UK postcodes sit at the END
+    // of an address, so prefer the LAST match and anchor to a valid outward code
+    // (district) so "A12 Building" doesn't read as a postcode. Match an optional
+    // inward code too (digit + 2 letters), e.g. "SW10 9HD".
     const addr = data.address?.displayAddress || '';
-    const match = addr.match(/([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d?[A-Z]{0,2})/i);
-    return match ? match[1] : 'SW3';
+    const re = /\b([A-Z]{1,2}[0-9][0-9A-Z]?)(\s*[0-9][A-Z]{2})?\b/gi;
+    let last = null, m;
+    while ((m = re.exec(addr)) !== null) last = m;
+    if (last) {
+      const outward = last[1].toUpperCase();
+      return outward + (last[2] ? ' ' + last[2].trim().toUpperCase() : '');
+    }
+    // No real postcode found. Return null (NOT a silent 'SW3' default) so similar
+    // comps are SUPPRESSED rather than mislocated to Chelsea — the call site at
+    // displayResult guards `if (r.postcode_district && r.beds)`. The model's own
+    // missing-postcode handling lives in xgboost.js (which defaults to SW3 for the
+    // prediction only); that is intentionally left untouched.
+    return null;
   }
 
   function extractLetType(data) {
@@ -1597,10 +1613,31 @@
     return similarListingsCache || {};
   }
 
+  // Normalize a postcode (or already-extracted district) down to its outward
+  // district code, e.g. "SW10 9HD" -> "SW10", "NW16BU" (no space) -> "NW1",
+  // "sw3" -> "SW3". Returns '' if nothing district-like is present. Kept in sync
+  // with scripts/export_similar_listings.py so the current-property district and
+  // the exported `p` field compare like-for-like.
+  function normalizeDistrict(pc) {
+    if (!pc) return '';
+    const m = pc.toUpperCase().match(/^([A-Z]{1,2}[0-9][0-9A-Z]?)/);
+    return m ? m[1] : '';
+  }
+
   async function findSimilarProperties(fairValue, postcodeDistrict, beds, baths, amenities, limit = 3) {
     /**
-     * Find similar properties based on model price, location, beds, baths.
-     * Scoring: price (40pts), location (30pts), beds (15pts), baths (10pts), amenities (5pts)
+     * Find similar comps for the current property.
+     *
+     * Location is a HARD GATE, not a soft bonus (see SIMILAR_PROPERTIES_DEBUG.md):
+     *   tier 0 = same postcode district (e.g. SW10)
+     *   tier 1 = same postcode area only (e.g. SW*) — used to backfill if there
+     *            aren't enough same-district comps
+     *   anything outside the area, or with an unknown/empty district, is DISCARDED.
+     * Within each tier we rank by a price/beds/baths/amenities similarity score,
+     * but a same-district comp ALWAYS outranks a same-area one (tier0 first),
+     * so a wrong-location comp can never reach the top results. This trades
+     * "always 3 comps" for "never a comp from the wrong place" — thin districts
+     * return fewer, or zero, comps rather than garbage.
      */
     const listings = await loadSimilarListings();
     if (!listings || Object.keys(listings).length === 0) {
@@ -1609,37 +1646,45 @@
     }
 
     const currentUrl = window.location.href;
-    const postcodeArea = postcodeDistrict.match(/^([A-Z]+)/i)?.[1]?.toUpperCase() || '';
+    const targetDistrict = normalizeDistrict(postcodeDistrict);
+    const targetArea = targetDistrict.match(/^([A-Z]+)/)?.[1] || '';
     const targetAmenities = new Set(amenities || []);
 
-    const candidates = [];
+    // tier0 = same district, tier1 = same area (different district)
+    const tier0 = [];
+    const tier1 = [];
 
     for (const [id, listing] of Object.entries(listings)) {
       // Skip current property
       if (listing.u && currentUrl.includes(listing.u)) continue;
       if (!listing.pr) continue;
 
-      let score = 0;
       const listingPrice = listing.pr;
-      const listingDistrict = listing.p || '';
+      const listingDistrict = normalizeDistrict(listing.p);
       const listingBeds = listing.b || 0;
       const listingBaths = listing.ba || 1;
       const listingAmenities = new Set(listing.am || []);
 
-      // Price similarity (0-40 points)
+      // --- HARD LOCATION GATE (must run before scoring) ---
+      // tier 0: exact district. tier 1: same area-prefix (guard against an empty
+      // listingDistrict, which would make startsWith('') match everything).
+      let tier;
+      if (targetDistrict && listingDistrict === targetDistrict) {
+        tier = 0;
+      } else if (targetArea && listingDistrict && listingDistrict.startsWith(targetArea)) {
+        tier = 1;
+      } else {
+        continue; // outside the area, or unknown district -> not a comp
+      }
+
+      // Price similarity (0-40 points). >50% off is never a comp.
       const priceDiff = Math.abs(listingPrice - fairValue) / fairValue;
+      let score = 0;
       if (priceDiff <= 0.1) score += 40;
       else if (priceDiff <= 0.2) score += 30;
       else if (priceDiff <= 0.3) score += 20;
       else if (priceDiff <= 0.5) score += 10;
-      else continue; // Skip if price > 50% different
-
-      // Location similarity (0-30 points)
-      if (listingDistrict === postcodeDistrict) {
-        score += 30;
-      } else if (listingDistrict && postcodeArea && listingDistrict.startsWith(postcodeArea)) {
-        score += 15;
-      }
+      else continue;
 
       // Beds similarity (0-15 points)
       const bedsDiff = Math.abs(listingBeds - beds);
@@ -1647,7 +1692,8 @@
       else if (bedsDiff === 1) score += 8;
       else if (bedsDiff === 2) score += 3;
 
-      // Baths similarity (0-10 points)
+      // Baths similarity (0-10 points). NOTE: exported `ba` is the default 1 for
+      // ~half of listings, so this is a weak tie-breaker, not a gate.
       const bathsDiff = Math.abs(listingBaths - baths);
       if (bathsDiff === 0) score += 10;
       else if (bathsDiff === 1) score += 5;
@@ -1659,25 +1705,26 @@
         if (total > 0) score += 5 * (overlap / total);
       }
 
-      // Only include if minimum threshold met
-      if (score >= 30) {
-        candidates.push({
-          url: listing.u,
-          address: listing.a || 'Property',
-          price: listingPrice,
-          beds: listingBeds,
-          baths: listingBaths,
-          postcode: listingDistrict,
-          sqft: listing.s,
-          score: Math.round(score * 10) / 10
-        });
-      }
+      const candidate = {
+        url: listing.u,
+        address: listing.a || 'Property',
+        price: listingPrice,
+        beds: listingBeds,
+        baths: listingBaths,
+        postcode: listingDistrict,
+        sqft: listing.s,
+        score: Math.round(score * 10) / 10
+      };
+      (tier === 0 ? tier0 : tier1).push(candidate);
     }
 
-    // Sort by score descending, return top matches
-    candidates.sort((a, b) => b.score - a.score);
-    console.log(`[RFV] Found ${candidates.length} similar properties, returning top ${limit}`);
-    return candidates.slice(0, limit);
+    // Rank within each tier by score, then take same-district first, backfilling
+    // with same-area only if we don't have `limit` same-district comps.
+    tier0.sort((a, b) => b.score - a.score);
+    tier1.sort((a, b) => b.score - a.score);
+    const result = tier0.concat(tier1).slice(0, limit);
+    console.log(`[RFV] Similar: ${tier0.length} same-district + ${tier1.length} same-area for ${targetDistrict || '?'}, returning top ${result.length}`);
+    return result;
   }
 
   // ============================================
@@ -1881,7 +1928,7 @@
 
     const params = new URLSearchParams({
       address: address,
-      postcode: postcode,
+      postcode: postcode || '',  // extractPostcode may return null (no real postcode)
       beds: result.beds || 2,
       sqft: result.size_sqft || 0,
       price: result.asking_price,
