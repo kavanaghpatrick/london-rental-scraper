@@ -31,10 +31,14 @@
 #   scripts/backup_neon.sh || { echo "Backup failed — aborting load"; exit 1; }
 #   python3 scripts/sync_sqlite_to_postgres.py --execute --i-have-rotated-the-secret
 #
-# REQUIRES: pg_dump (PostgreSQL 16 client) + gzip.
-#   macOS:  brew install libpq && brew link --force libpq   # provides pg_dump
-#           (or: brew install postgresql@16)
-#   Debian/Ubuntu (CI): sudo apt-get install -y postgresql-client
+# REQUIRES: pg_dump whose MAJOR matches the Neon server (17) + gzip.
+#   pg_dump CANNOT dump a server NEWER than itself — it aborts with
+#   "server version mismatch". The Neon prod server is 17.x, so the client must
+#   be 17.x too (NEON_SERVER_MAJOR, default 17). --check enforces this up front.
+#   macOS:  brew install postgresql@17                      # provides pg_dump 17
+#   Debian/Ubuntu (CI): add the PGDG repo, then
+#                       sudo apt-get install -y postgresql-client-17
+#   (plain `postgresql-client` on Ubuntu installs 16 — the bug this guards.)
 #
 set -euo pipefail
 
@@ -43,6 +47,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BACKUP_DIR="${NEON_BACKUP_DIR:-${REPO_DIR}/output/backups/neon}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
+# Expected Neon server major. pg_dump's major MUST equal this or it aborts with
+# "server version mismatch" at dump time. Configurable so it's not a magic
+# constant and tracks a future Neon upgrade. (#7 / Problem 2)
+NEON_SERVER_MAJOR="${NEON_SERVER_MAJOR:-17}"
 
 # --- args ---
 CHECK_ONLY=0
@@ -97,20 +105,49 @@ redact_url() {
 # --- preflight: tools present ---
 command -v gzip >/dev/null 2>&1 || die "gzip not found."
 if ! command -v pg_dump >/dev/null 2>&1; then
-  die "pg_dump not found. Install the PostgreSQL 16 client:
-       macOS:  brew install libpq && brew link --force libpq
-       Debian: sudo apt-get install -y postgresql-client"
+  die "pg_dump not found. Install the PostgreSQL ${NEON_SERVER_MAJOR} client (must match the Neon server major):
+       macOS:  brew install postgresql@${NEON_SERVER_MAJOR}
+       Debian: add the PGDG repo, then sudo apt-get install -y postgresql-client-${NEON_SERVER_MAJOR}"
 fi
 
 RAW_URL="$(resolve_url || true)"
 [[ -n "${RAW_URL}" ]] || die "No Postgres URL. Set POSTGRES_URL (prod value lives in dashboard/.env.prod) or pass --url."
 PG_URL="$(to_direct_endpoint "$(clean_url "${RAW_URL}")")"
-log "pg_dump: $(pg_dump --version 2>/dev/null | head -1)"
+PG_DUMP_VERSION_LINE="$(pg_dump --version 2>/dev/null | head -1)"
+log "pg_dump: ${PG_DUMP_VERSION_LINE}"
 log "target:  $(redact_url "${PG_URL}")"
 case "${RAW_URL}" in *-pooler.*) log "note: rewrote '-pooler' → direct endpoint for pg_dump compatibility";; esac
 
+# --- preflight: pg_dump MAJOR must match the Neon server major (#7 / Problem 2) ---
+# pg_dump refuses to dump a server NEWER than itself ("server version mismatch").
+# Surface that HERE — before any dump and without a live connection — so CI and a
+# pre-destructive-op guard fail loudly and EARLY instead of at dump time. The real
+# dump-time check below stays as the backstop. Single source of truth: scripts/
+# pg_version.py (also unit-tested). Falls back to an inline parse if Python is absent.
+check_pg_dump_major() {
+  local helper="${SCRIPT_DIR}/pg_version.py" actual="" py=""
+  for py in python3 python; do command -v "$py" >/dev/null 2>&1 && break; py=""; done
+  if [[ -n "$py" && -f "$helper" ]]; then
+    if "$py" "$helper" --check-major "${NEON_SERVER_MAJOR}" >/dev/null 2>&1; then
+      return 0
+    fi
+    actual="$("$py" "$helper" --print-major 2>/dev/null || true)"
+  else
+    # Inline fallback: first integer after "PostgreSQL)" in the version line.
+    actual="$(printf '%s' "${PG_DUMP_VERSION_LINE}" | sed -nE 's/.*PostgreSQL\) ([0-9]+).*/\1/p')"
+    [[ -n "$actual" && "$actual" == "${NEON_SERVER_MAJOR}" ]] && return 0
+  fi
+  die "pg_dump major (${actual:-unknown}) != Neon server major (${NEON_SERVER_MAJOR}). \
+pg_dump CANNOT dump a newer server — it aborts with 'server version mismatch'. \
+Install the matching client:
+       macOS:  brew install postgresql@${NEON_SERVER_MAJOR}
+       Debian (PGDG): sudo apt-get install -y postgresql-client-${NEON_SERVER_MAJOR}
+       (Override the expected major with NEON_SERVER_MAJOR if the Neon server changed.)"
+}
+check_pg_dump_major
+
 if [[ "${CHECK_ONLY}" -eq 1 ]]; then
-  log "preflight OK (--check): tools present, URL resolved. No dump taken."
+  log "preflight OK (--check): pg_dump major matches Neon server (${NEON_SERVER_MAJOR}), URL resolved. No dump taken."
   exit 0
 fi
 

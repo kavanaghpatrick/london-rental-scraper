@@ -33,13 +33,30 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Install PostgreSQL 16 client (pg_dump)
+      - name: Install PostgreSQL 17 client (pg_dump) from PGDG
+        # Neon server is 17.x; Ubuntu-noble's stock `postgresql-client` is 16.x and
+        # pg_dump REFUSES to dump a newer server ("server version mismatch") — which
+        # broke this backup DAILY. Pull client 17 from the official PGDG apt repo.
+        # $(lsb_release -cs) keeps the repo correct when ubuntu-latest rolls forward
+        # (no hardcoded "noble"). The unversioned pg_dump symlink points at the
+        # highest installed major (17), so the script's bare `pg_dump` resolves to 17
+        # with no PATH change. (#7 / Problem 2 — diff per docs/research_infra.md §1.1)
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client
-          pg_dump --version
+          sudo apt-get install -y curl ca-certificates
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          pg_dump --version   # expect 17.x
+          # Fail the job EARLY (not at dump time) if the wrong major is on PATH.
+          python3 scripts/pg_version.py --check-major 17
 
       - name: Guard — POSTGRES_URL must be set
         env:
@@ -63,7 +80,7 @@ jobs:
 
       - name: Upload dump as artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: neon-backup-${{ github.run_id }}
           path: neon_backups/neon_*.sql.gz
