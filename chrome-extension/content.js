@@ -229,7 +229,7 @@
       tryAgain();
     }, 750);
 
-    log(' SPA initial-render retry armed (Chestertons)');
+    log(' SPA initial-render retry armed for', currentSite);
   }
 
   // Start navigation detection
@@ -315,6 +315,11 @@
       injectLoadingState('Analyzing property...');
 
       const result = await analyzeProperty(propertyData, askingPrice);
+      if (!result) {
+        // analyzeProperty already injected a specific error (e.g. model not loaded).
+        isRunning = false;
+        return;
+      }
       displayResult(result, result.size_source);
 
       isRunning = false;
@@ -326,6 +331,17 @@
   }
 
   async function analyzeProperty(propertyData, askingPrice) {
+    // FIX C: the shared feature builder (xgboost.js -> window.XGBFeatures) is required
+    // by BOTH the server-request path (extractFloors/parseAmenities) and the in-browser
+    // fallback (buildFeatures + XGBoostPredictor). If xgboost.js failed to load/parse,
+    // these globals are undefined and the first deref below would throw a bare
+    // TypeError. Fail fast with a clear message and return null (caller stops cleanly).
+    if (!window.XGBFeatures || !window.XGBoostPredictor) {
+      logError(' XGBFeatures/XGBoostPredictor not available — xgboost.js failed to load');
+      injectError('Model failed to load');
+      return null;
+    }
+
     // Extract all available data
     const beds = propertyData.bedrooms || 1;
     const baths = propertyData.bathrooms || 1;

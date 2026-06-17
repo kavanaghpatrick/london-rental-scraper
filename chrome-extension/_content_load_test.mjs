@@ -145,9 +145,32 @@ check('content.js IIFE loads without throwing on Rightmove',
   threwRM === null,
   threwRM ? `${threwRM.name}: ${threwRM.message}` : '');
 
+// --- FIX B static guard: SPA retry armed on any property page, not Chestertons-gated.
+check('SPA retry helper exists',
+  /function scheduleSpaRetry\s*\(/.test(SRC));
+check('SPA retry is armed via isPropertyPage(), not gated to a single site',
+  /if \(isPropertyPage\(window\.location\.href\)\) \{\s*scheduleSpaRetry\(\);/.test(SRC),
+  'init() must arm the retry on any property page when extraction returns null');
+check('SPA retry is bounded (retry cap + deadline)',
+  /MAX_RETRIES\s*=/.test(SRC) && /DEADLINE_MS\s*=/.test(SRC),
+  'retry must be bounded so it cannot spin forever');
+
+// --- FIX C static guard: window.XGBFeatures guarded BEFORE first deref in analyzeProperty.
+const analyzeBody = SRC.match(/async function analyzeProperty\([^)]*\)\s*\{([\s\S]*?)\n  \}/);
+check('analyzeProperty() body found', !!analyzeBody);
+if (analyzeBody) {
+  const body = analyzeBody[1];
+  const guardIdx = body.search(/if \(!window\.XGBFeatures \|\| !window\.XGBoostPredictor\)/);
+  const firstDerefIdx = body.search(/window\.XGBFeatures\.\w/);
+  check('analyzeProperty guards window.XGBFeatures with injectError before first use',
+    guardIdx !== -1 && /injectError\('Model failed to load'\)/.test(body) &&
+      (firstDerefIdx === -1 || guardIdx < firstDerefIdx),
+    'the !window.XGBFeatures guard must come before the first window.XGBFeatures.* deref');
+}
+
 console.log('');
 if (failures === 0) {
-  console.log('=== PASS: content.js load + recursion guards green ===');
+  console.log('=== PASS: content.js load + recursion + FIX B/C guards green ===');
   process.exit(0);
 } else {
   console.log(`=== FAIL: ${failures} check(s) failed ===`);
