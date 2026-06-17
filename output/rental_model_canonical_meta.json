@@ -1,17 +1,17 @@
 {
   "canonical_version": "v20",
-  "trained_at": "2026-06-17T10:51:16",
+  "trained_at": "2026-06-16T15:49:38",
   "db_source": "output/rentals.db (frozen snapshot, last scrape 2026-01-16)",
   "train_filter": "recency-independent (no is_active) per DATA_LAYER_CONTRACT.md \u00a75",
-  "n_samples": 8734,
+  "n_samples": 7445,
   "n_features": 135,
   "target": "log1p(price_pcm), inverse expm1 at predict",
   "cv_metrics_5fold": {
-    "R2": 0.7860448360443115,
-    "RMSE": 3157.691086854444,
-    "MAE": 1476.484130859375,
-    "MAPE": 19.18872745422561,
-    "Median_APE": 14.72968456746327
+    "R2": 0.7921324968338013,
+    "RMSE": 3267.3271951244797,
+    "MAE": 1507.218505859375,
+    "MAPE": 19.127298142041052,
+    "Median_APE": 14.812410053453947
   },
   "xgb_params": {
     "objective": "reg:absoluteerror",
