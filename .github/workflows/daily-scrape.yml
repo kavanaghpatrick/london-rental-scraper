@@ -32,10 +32,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -232,113 +232,73 @@ jobs:
               print(f"Error: {e}")
           EOF
 
-      - name: Clean duplicate listings (address similarity)
+      - name: Clean duplicate listings (cross-source, fingerprint identity)
         run: |
           python3 << 'EOF'
           import os
           import psycopg2
-          from difflib import SequenceMatcher
-          from collections import defaultdict
 
           url = os.environ.get('POSTGRES_URL')
           if not url:
               print("POSTGRES_URL not set")
               exit(0)
 
-          # Source priority (lower = better, agents have better data)
-          SOURCE_PRIORITY = {'savills': 1, 'knightfrank': 2, 'foxtons': 3, 'chestertons': 4, 'rightmove': 5}
-
-          def normalize_addr(addr):
-              if not addr: return ''
-              addr = addr.lower()
-              for word in ['london', 'uk', ',', '.']:
-                  addr = addr.replace(word, ' ')
-              return ' '.join(addr.split())
+          # Cross-source dedupe identity lives in ONE tested, importable module
+          # (scripts/dedupe_postgres.py) keyed on the structural address_fingerprint
+          # — NOT the old inline fuzzy union-find that over-deleted 39.5% (#5).
+          # The actual DELETE goes through scripts/_safe_delete.guarded_delete, which
+          # keeps the 10% delta-abort guard and writes a CSV backup before deleting.
+          from dedupe_postgres import find_cross_source_duplicate_ids
+          from _safe_delete import guarded_delete, SafeDeleteAborted
 
           conn = psycopg2.connect(url)
           cur = conn.cursor()
 
-          # Get all active listings
           cur.execute("""
-              SELECT id, source, address, postcode, price_pcm, bedrooms, size_sqft,
-                     SPLIT_PART(postcode, ' ', 1) as district
+              SELECT id, source, property_id, address, postcode, price_pcm, bedrooms, size_sqft
               FROM listings WHERE is_active = 1 AND price_pcm > 0 ORDER BY id
           """)
+          cols = ['id', 'source', 'property_id', 'address', 'postcode',
+                  'price_pcm', 'bedrooms', 'size_sqft']
+          rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+          print(f"Checking {len(rows)} active listings for cross-source duplicates...")
 
-          listings = [{'id': r[0], 'source': r[1], 'address': r[2], 'postcode': r[3],
-                       'price_pcm': r[4], 'bedrooms': r[5], 'size_sqft': r[6],
-                       'district': r[7], 'norm_addr': normalize_addr(r[2])} for r in cur.fetchall()]
+          to_delete = find_cross_source_duplicate_ids(rows)
 
-          print(f"Checking {len(listings)} active listings for duplicates...")
+          if not to_delete:
+              print("✅ No cross-source duplicates found")
+              conn.close()
+              raise SystemExit(0)
 
-          # Union-Find for clustering
-          parent = {l['id']: l['id'] for l in listings}
-          def find(x):
-              if parent[x] != x: parent[x] = find(parent[x])
-              return parent[x]
-          def union(x, y):
-              px, py = find(x), find(y)
-              if px != py: parent[px] = py
+          # Total rows for the delta guard (whole table, matches the standalone scripts).
+          cur.execute("SELECT COUNT(*) FROM listings")
+          total = cur.fetchone()[0]
 
-          # Compare listings (same district, beds, price within 5%, address >70% similar)
-          for i, a in enumerate(listings):
-              for b in listings[i+1:]:
-                  if a['district'] != b['district']: continue
-                  if a['bedrooms'] != b['bedrooms']: continue
-                  if abs(a['price_pcm'] - b['price_pcm']) > 0.05 * max(a['price_pcm'], b['price_pcm']): continue
-                  if SequenceMatcher(None, a['norm_addr'], b['norm_addr']).ratio() > 0.70:
-                      union(a['id'], b['id'])
+          def _do_delete(ids):
+              ph = ','.join(['%s'] * len(ids))
+              cur.execute(f"DELETE FROM price_history WHERE listing_id IN ({ph})", list(ids))
+              cur.execute(f"DELETE FROM listings WHERE id IN ({ph})", list(ids))
 
-          # Group and identify deletions
-          clusters = defaultdict(list)
-          for l in listings: clusters[find(l['id'])].append(l)
-
-          to_delete = []
-          for members in clusters.values():
-              if len(members) < 2: continue
-              # Sort by: has sqft, source priority, id
-              members.sort(key=lambda x: (0 if x['size_sqft'] and x['size_sqft'] > 0 else 1,
-                                          SOURCE_PRIORITY.get(x['source'], 9), x['id']))
-              to_delete.extend([m['id'] for m in members[1:]])
-
-          if to_delete:
-              # === DESTRUCTIVE-OP GUARDS (#37) ===
-              # This DELETE runs against PROD every scrape. A clustering bug (bad
-              # union-find / over-loose similarity) could nuke a large slice of prod.
-              # So: (1) ABORT if the delete exceeds a safe fraction of active rows;
-              # (2) BACK UP the to-be-deleted rows to a CSV artifact BEFORE deleting,
-              # so any over-deletion is recoverable.
-              import csv, datetime
-              total_active = len(listings)
-              pct = len(to_delete) / total_active if total_active else 0
-              MAX_DELETE_FRACTION = 0.10  # dedupe should retire a small slice, never >10%
-              if pct > MAX_DELETE_FRACTION:
-                  print(f"::error::Dedupe DELETE aborted: would remove {len(to_delete)}/{total_active} "
-                        f"({pct*100:.1f}%) active listings — exceeds {MAX_DELETE_FRACTION*100:.0f}% safety "
-                        f"threshold. Likely a clustering bug. NOT deleting. Investigate before re-running.")
-                  conn.close()
-                  raise SystemExit(1)
-
-              # Backup the doomed rows (full row + their price_history) to a CSV artifact.
-              ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-              backup_path = f"dedupe_deleted_backup_{ts}.csv"
-              ph = ','.join(['%s'] * len(to_delete))
-              cur.execute(f"SELECT * FROM listings WHERE id IN ({ph})", to_delete)
-              cols = [d[0] for d in cur.description]
-              with open(backup_path, 'w', newline='') as f:
-                  w = csv.writer(f); w.writerow(cols); w.writerows(cur.fetchall())
-              print(f"Backed up {len(to_delete)} to-be-deleted listings to {backup_path} (uploaded as artifact)")
-
-              cur.execute(f"DELETE FROM price_history WHERE listing_id IN ({ph})", to_delete)
-              cur.execute(f"DELETE FROM listings WHERE id IN ({ph})", to_delete)
+          try:
+              backup = guarded_delete(
+                  cur, "listings", to_delete,
+                  total_rows=total, do_delete=_do_delete,
+                  label="daily-scrape cross-source dedupe",
+              )
               conn.commit()
-              print(f"✅ Removed {len(to_delete)} duplicate listings ({pct*100:.1f}% of active, under "
-                    f"{MAX_DELETE_FRACTION*100:.0f}% guard; backup at {backup_path})")
-          else:
-              print("✅ No duplicates found")
+              print(f"✅ Removed {len(to_delete)} cross-source duplicates "
+                    f"({len(to_delete)/total*100:.2f}% of listings; backup -> {backup})")
+          except SafeDeleteAborted as e:
+              conn.rollback()
+              print(f"::error::{e}")
+              conn.close()
+              raise SystemExit(1)
 
           conn.close()
           EOF
+        env:
+          # Make scripts/ and the repo root importable for the heredoc above.
+          PYTHONPATH: ${{ github.workspace }}/scripts:${{ github.workspace }}
 
       - name: Retrain CANONICAL model (v20) after scrape
         run: |
@@ -429,7 +389,7 @@ jobs:
       # No static files needed - data is fetched fresh from Postgres on each load
 
       - name: Upload logs artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: scrape-logs-${{ github.run_id }}
@@ -438,7 +398,7 @@ jobs:
             scrape_output.txt
             ocr_output.txt
             model_output.txt
-            dedupe_deleted_backup_*.csv
+            output/deleted_backups/*.csv
           retention-days: 7
 
       - name: Create summary
@@ -487,7 +447,7 @@ jobs:
     if: failure()
     steps:
       - name: Create issue on failure
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const title = `Scrape failed: ${new Date().toISOString().split('T')[0]}`;
