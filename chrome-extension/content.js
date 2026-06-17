@@ -19,12 +19,17 @@
   // Set to false for production builds to reduce console noise
   const DEBUG = true;
 
-  // Debug logging helper - only logs when DEBUG is true
+  // Debug logging helper - only logs when DEBUG is true.
+  // NOTE: these MUST delegate to console.*, not to themselves. A previous version
+  // called log()/logError() recursively, which threw "Maximum call stack size
+  // exceeded" on the very first log('Script loaded!') below — at top level in this
+  // IIFE, outside any try/catch — aborting the entire content script before init()
+  // ever ran. That made the plugin fail to load on every site.
   function log(...args) {
-    if (DEBUG) log('', ...args);
+    if (DEBUG) console.log('[RentFairValue]', ...args);
   }
   function logError(...args) {
-    logError('', ...args); // Always log errors
+    console.error('[RentFairValue]', ...args); // Always log errors
   }
 
   log('Script loaded!');
@@ -74,6 +79,11 @@
   // Track current URL for SPA navigation detection
   let lastUrl = window.location.href;
   let isRunning = false;
+  // Guards the SPA initial-render retry loop (see scheduleSpaRetry). Declared up
+  // here — alongside the other state — because init() runs synchronously below,
+  // BEFORE the scheduleSpaRetry definition is reached; a `let` declared next to
+  // that function would be in its temporal-dead-zone when init() first calls it.
+  let spaRetryActive = false;
 
   // Main execution
   init();
@@ -156,6 +166,72 @@
     }
   }
 
+  // ============================================
+  // SPA INITIAL-RENDER RETRY (safe for all sites)
+  // ============================================
+  // On a FRESH page load of an agent SPA (Chestertons is the known case), the content
+  // script fires at document_idle BEFORE React has rendered the price/beds/etc., so the
+  // first extraction comes back empty. The URL-watcher only re-fires on URL *changes*,
+  // so without this the plugin would silently never render on a direct hit/refresh.
+  // This watches the DOM for the listing to render and re-runs init() once data is
+  // found, bounded by both a retry cap and a wall-clock deadline so it can't spin
+  // forever. It calls the SAME per-site extractors, so it's a no-op for sites that
+  // already succeeded (they never reach the null branch that arms this) and harmless
+  // for a site that genuinely has no data (it just times out and disconnects).
+  // (spaRetryActive is declared with the other state vars above, to avoid a TDZ
+  // error when init() calls this synchronously during initial load.)
+  function scheduleSpaRetry() {
+    if (spaRetryActive) return; // one retry loop at a time
+    spaRetryActive = true;
+
+    const MAX_RETRIES = 20;          // hard cap on re-extraction attempts
+    const DEADLINE_MS = 15000;       // give up ~15s after load
+    const startedAt = Date.now();
+    let attempts = 0;
+    let settleTimer = null;
+    let poll = null;
+
+    const stop = () => {
+      spaRetryActive = false;
+      if (settleTimer) clearTimeout(settleTimer);
+      if (poll) clearInterval(poll);
+      try { observer.disconnect(); } catch (e) {}
+    };
+
+    const tryAgain = () => {
+      if (!spaRetryActive) return;
+      attempts++;
+      if (attempts > MAX_RETRIES || Date.now() - startedAt > DEADLINE_MS) {
+        log(' SPA retry giving up after', attempts, 'attempts');
+        stop();
+        return;
+      }
+      // Only re-run when not already running and the page still looks right.
+      if (isRunning || !isPropertyPage(window.location.href)) return;
+      if (extractPropertyData()) {
+        log(' SPA retry: data is ready, re-running init()');
+        stop();
+        init();
+      }
+    };
+
+    // React often renders in bursts; debounce mutations so we extract once it settles.
+    const observer = new MutationObserver(() => {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(tryAgain, 400);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Also poll on a timer as a backstop (covers renders that don't mutate <body>
+    // subtree in a way the observer catches, e.g. text-node-only updates).
+    poll = setInterval(() => {
+      if (!spaRetryActive) { clearInterval(poll); return; }
+      tryAgain();
+    }, 750);
+
+    log(' SPA initial-render retry armed (Chestertons)');
+  }
+
   // Start navigation detection
   setupNavigationDetection();
 
@@ -176,6 +252,19 @@
       if (!propertyData) {
         log(' No property data found');
         isRunning = false;
+        // SPA sites (Chestertons especially) render the listing AFTER this content
+        // script fires at document_idle, so a fresh-load extraction can legitimately
+        // come back empty. Schedule a bounded, observer-driven retry instead of
+        // giving up — once the listing renders this re-enters init() and renders.
+        //
+        // SAFE FOR ALL SITES: the retry just re-calls the same per-site extractor.
+        // Rightmove/Knight Frank/Savills that already succeeded never reach here;
+        // if one legitimately has no data (e.g. a static Rightmove page truly
+        // missing __NEXT_DATA__) the retry simply times out within its budget and
+        // disconnects — no behavior change, no per-site extractor touched.
+        if (isPropertyPage(window.location.href)) {
+          scheduleSpaRetry();
+        }
         return;
       }
 
@@ -645,6 +734,21 @@
   // ============================================
 
   function extractPropertyDataChestertons() {
+    // Chestertons is a React SPA: the price/beds/baths/type are NOT in the initial
+    // server HTML — they render client-side after the content script fires at
+    // document_idle. So (a) guard the whole extraction in try/catch — a single
+    // throwing selector must not abort the UI render — and (b) treat "no price" as
+    // "not rendered yet" and return null, so the SPA retry logic re-fires extraction
+    // once React has populated the DOM (rather than emitting a half-baked object).
+    try {
+      return extractPropertyDataChestertonsImpl();
+    } catch (e) {
+      logError(' Chestertons extraction threw:', e);
+      return null;
+    }
+  }
+
+  function extractPropertyDataChestertonsImpl() {
     log(' Extracting Chestertons data from DOM');
     const data = { _source: 'chestertons' };
 
@@ -771,7 +875,14 @@
     }
 
     log(' Chestertons extracted:', data);
-    return Object.keys(data).length > 2 ? data : null; // Need more than just _source and customer
+    // Readiness gate: the React SPA renders price last. Require a price before we
+    // consider the page "ready" — otherwise return null so the caller's bounded
+    // retry waits for the next render tick instead of erroring on a missing price.
+    if (!data.prices?.primaryPrice) {
+      log(' Chestertons price not rendered yet — treating as not-ready');
+      return null;
+    }
+    return data;
   }
 
   // ============================================
