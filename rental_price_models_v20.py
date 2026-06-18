@@ -300,6 +300,9 @@ def parse_amenities(features_str, description_str=''):
     if description_str and not pd.isna(description_str):
         text += str(description_str).lower()
 
+    # FIX 3 (correctness): handle BOTH features JSON shapes. ~67% of rows store
+    # `features` as a LIST (e.g. ["Balcony","Lift"]) which the dict-only parser
+    # silently skipped; the rest store a DICT ({"has_balcony": true, ...}). Parse both.
     try:
         if features_str and not pd.isna(features_str):
             parsed = json.loads(features_str)
@@ -307,6 +310,10 @@ def parse_amenities(features_str, description_str=''):
                 for key in AMENITY_FEATURES:
                     if parsed.get(key):
                         amenities[key] = 1
+            elif isinstance(parsed, list):
+                # Fold the list items into the text channel so the keyword matchers
+                # below pick them up (single source of amenity keyword logic).
+                text += ' ' + ' '.join(str(item).lower() for item in parsed) + ' '
     except (json.JSONDecodeError, TypeError):
         pass
 
@@ -497,6 +504,97 @@ def has_refurb_keywords(description):
     return 1 if any(kw in desc for kw in keywords) else 0
 
 
+# ==================== AREA ENCODING (TAIL-ACCURACY FIX 2) ====================
+# The `area` neighborhood text (Mayfair / Knightsbridge / Belgravia / Fulham, ~98.8%
+# populated, 23 distinct values) was read into the frame then EXPLICITLY DROPPED and
+# never featurized. It carries strong price-level signal (median ppsf ~7.5 in
+# Knightsbridge vs ~4.25 in Battersea, ANOVA eta^2 ~0.10 on log-price) that the model
+# needs for the prime/expensive tail. We add TWO leak-safe encodings:
+#   - area_freq:  count(area)/N  — pure frequency, like postcode_freq. No target.
+#   - area_te:    out-of-fold target-mean of log1p(price) with global-prior smoothing.
+# Both are reproducible as STATIC maps for inference/serving (the JS predictor mirrors
+# them as frozen dicts; see the gated-ship runbook).
+
+# FIX 2 master switch. OFF by default: on the current data the `area` features add no
+# out-of-fold lift (they slightly reduce CV R²) and are the hardest serving-parity risk
+# (OOF target encoding -> frozen static map in JS). The leak-safe machinery is kept so a
+# future pass can flip this to True AFTER cleaning the `area` text and demonstrating lift,
+# then mirror the baked maps to xgboost.js. When True: area_freq + area_te are emitted and
+# selected, and the inference sidecar carries the area maps.
+AREA_ENABLED = False
+
+# Internal KFold for the OOF area target encoding. MUST match the CV/serving contract:
+# KFold(5, shuffle, random_state=42) — the same split family used everywhere here.
+_AREA_TE_FOLDS = 5
+_AREA_TE_SEED = 42
+_AREA_TE_SMOOTH = 20.0   # shrink small areas toward the global prior
+
+
+def normalize_area(area):
+    """Canonicalize the free-text `area` into a stable key (case/separator-insensitive).
+
+    'South-Kensington', 'south kensington', "St John's Wood" all collapse to one key so
+    the frequency/target maps don't split a neighborhood across spelling variants. Empty
+    / missing -> '' (its own bucket; it is a real ~1.4% slice with its own price level).
+    """
+    if area is None or (isinstance(area, float) and pd.isna(area)):
+        return ''
+    s = str(area).strip().lower()
+    if s in ('', 'nan', 'none'):
+        return ''
+    # unify separators and strip punctuation that varies between sources
+    s = s.replace('-', ' ').replace('_', ' ')
+    s = re.sub(r"[^\w\s]", '', s)        # drop apostrophes etc. (st john's -> st johns)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
+def compute_area_target_encoding_oof(area_key, y, n_splits=_AREA_TE_FOLDS,
+                                     seed=_AREA_TE_SEED, smooth=_AREA_TE_SMOOTH):
+    """Out-of-fold, smoothed target encoding of log1p(price) by area_key — LEAK-FREE.
+
+    For each fold, the encoding for the held-out rows is computed ONLY from the other
+    folds (each area's mean log-price, shrunk toward the global mean by `smooth`). A row
+    therefore NEVER sees its own target. Returns a float Series aligned to `area_key`.
+
+    NOTE: this is the TRAINING-time (OOF) encoding. The INFERENCE-time map is the
+    full-train smoothed mean per area, baked into the inference sidecar and injected by
+    canonical_predict.build_features — applying the full-train map to the SAME training
+    rows would be the classic target leak, so training uses OOF and inference uses the
+    baked map.
+    """
+    from sklearn.model_selection import KFold
+    area_key = pd.Series(area_key).reset_index(drop=True)
+    yl = np.log1p(pd.Series(np.asarray(y, dtype=float)).reset_index(drop=True))
+    global_mean = float(yl.mean())
+    out = np.full(len(area_key), global_mean, dtype=float)
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    for tr, va in kf.split(area_key):
+        tr_df = pd.DataFrame({'k': area_key.iloc[tr].values, 'y': yl.iloc[tr].values})
+        agg = tr_df.groupby('k')['y'].agg(['mean', 'count'])
+        # smoothed mean: (count*mean + smooth*global) / (count + smooth)
+        smoothed = (agg['count'] * agg['mean'] + smooth * global_mean) / (agg['count'] + smooth)
+        m = smoothed.to_dict()
+        out[va] = [m.get(k, global_mean) for k in area_key.iloc[va].values]
+    return pd.Series(out, index=pd.RangeIndex(len(area_key)))
+
+
+def build_area_target_map(area_key, y, smooth=_AREA_TE_SMOOTH):
+    """Full-train smoothed area->log-price map for INFERENCE (baked into the sidecar).
+
+    Same smoothing as the OOF encoder; used ONLY to score new rows whose target is
+    unknown (single-row / batch inference, and the JS predictor's static map). Never
+    applied back onto the training rows (those get the OOF values).
+    """
+    area_key = pd.Series(area_key).reset_index(drop=True)
+    yl = np.log1p(pd.Series(np.asarray(y, dtype=float)).reset_index(drop=True))
+    global_mean = float(yl.mean())
+    df = pd.DataFrame({'k': area_key.values, 'y': yl.values})
+    agg = df.groupby('k')['y'].agg(['mean', 'count'])
+    smoothed = (agg['count'] * agg['mean'] + smooth * global_mean) / (agg['count'] + smooth)
+    return {str(k): float(v) for k, v in smoothed.to_dict().items()}, global_mean
+
+
 # ==================== DATA LOADING ====================
 
 def load_and_clean_data():
@@ -527,7 +625,7 @@ def load_and_clean_data():
         print(f"Loaded from Postgres")
         df['property_type_std'] = df['property_type'].fillna('flat').str.lower()
         df['let_type'] = 'long'
-        df['postcode_normalized'] = df['postcode'].str.extract(r'^([A-Z]+\d+[A-Z]?)', expand=False)
+        df['postcode_normalized'] = df['postcode'].str.extract(r'^([A-Z]{1,2}\d{1,2}[A-Z]?)(?=\s|\d|$)', expand=False)  # FIX 1: anchored district regex
         df['agent_brand'] = df['agent_name'].fillna('').apply(
             lambda x: next((a for a in PREMIUM_AGENTS if a.lower() in x.lower()), 'unknown')
         )
@@ -536,7 +634,7 @@ def load_and_clean_data():
             SELECT
                 bedrooms, bathrooms, size_sqft,
                 postcode, area, property_type, address,
-                price_pcm, latitude, longitude, features, description, source,
+                price_pcm, latitude, longitude, features, summary, description, source,
                 property_type_std, let_type, postcode_normalized,
                 postcode_inferred, agent_brand,
                 floor_count, has_roof_terrace, has_basement, has_ground,
@@ -574,8 +672,10 @@ def load_and_clean_data():
     df_clean = df_clean[~short_let_mask]
     print(f"After excluding short lets: {len(df_clean)} ({before_short_let - len(df_clean)} removed)")
 
-    # Dedupe cross-source
-    df_clean['postcode_district'] = df_clean['postcode'].str.extract(r'^([A-Z]+\d+[A-Z]?)', expand=False)
+    # Dedupe cross-source. FIX 1: boundary-anchored district regex so the dedupe key
+    # matches the feature district key exactly (no-space postcodes -> outward code, not
+    # a junk fragment). Mirrors engineer_features_v20's _PC_RE.
+    df_clean['postcode_district'] = df_clean['postcode'].str.extract(r'^([A-Z]{1,2}\d{1,2}[A-Z]?)(?=\s|\d|$)', expand=False)
     source_priority = {'savills': 0, 'knightfrank': 1, 'chestertons': 2, 'foxtons': 3, 'rightmove': 4}
     df_clean['source_rank'] = df_clean['source'].map(source_priority).fillna(5)
     df_clean = df_clean.sort_values('source_rank')
@@ -658,7 +758,59 @@ def engineer_features_v20(df):
     print(f"  Prime streets: {df['is_prime_street'].sum()}")
 
     # ========== POSTCODE FEATURES (V16 + V19) ==========
-    df['postcode_district'] = df['postcode_normalized'].fillna('SW3')
+    # TAIL-ACCURACY FIX 1 (district recovery): the previous
+    #   df['postcode_district'] = df['postcode_normalized'].fillna('SW3')
+    # CLOBBERED the real district. `postcode_normalized` is only ~0.5-8% populated
+    # in the DB, so .fillna('SW3') collapsed the data to ~40 districts / >90% SW3
+    # (empirically 101→40 districts, 8.7%→93.1% SW3). That killed the entire
+    # postcode feature family (postcode_freq, the pc_* one-hots, is_prime_postcode,
+    # postcode_area, pc_type_ppsf) which the model needs to price the prime/expensive
+    # tail — driving the >£10k under-pricing and <£2k over-pricing.
+    #
+    # Recover the real district with a priority cascade that is IDENTICAL at train
+    # and inference time (no target dependence → no leakage):
+    #   1. an already-correct `postcode_district` set by the loader from raw postcode
+    #      (retrain_canonical.load_recency_independent:87 / load_and_clean:578)
+    #   2. else parse raw `postcode` (~85% populated) via the boundary-anchored _PC_RE
+    #   3. else parse `postcode_normalized`
+    #   4. else 'UNKNOWN' sentinel (rows with NO usable postcode — its own neutral
+    #      low-freq bucket; NOT 'SW3', which would re-contaminate the prime district)
+    # FIX 1 (regex correctness): use a BOUNDARY-ANCHORED outward-code regex, NOT the
+    # greedy ^([A-Z]+\d+[A-Z]?). The greedy form mis-parses no-space postcodes — e.g.
+    # 'SW72ED'->'SW72E', 'NW87HY'->'NW87H' — fragmenting the district family into ~124
+    # junk one-off districts on the real DB (vs 71 clean ones here). The lookahead
+    # (?=\s|\d|$) terminates the outward code at a space, the start of the inward-code
+    # digit, or end-of-string, so 'SW72ED'->'SW7' while real sub-districts 'SW1X' / 'W1K'
+    # / 'EC1A' are preserved. No target dependence -> no leakage; identical at inference.
+    _PC_RE = r'^([A-Z]{1,2}\d{1,2}[A-Z]?)(?=\s|\d|$)'
+
+    def _norm_district(val):
+        m = re.match(_PC_RE, str(val).strip().upper())
+        return m.group(1) if m else None
+
+    # Start from any district the loader already computed from raw postcode.
+    if 'postcode_district' in df.columns:
+        district = df['postcode_district'].where(df['postcode_district'].notna(), None)
+        district = district.apply(lambda v: _norm_district(v) if v not in (None, '', 'nan') else None)
+    else:
+        district = pd.Series([None] * len(df), index=df.index)
+
+    # Fallback 1: parse raw postcode for any row still missing a district.
+    if 'postcode' in df.columns:
+        raw = df['postcode'].apply(_norm_district)
+        district = district.where(district.notna(), raw)
+    # Fallback 2: parse postcode_normalized.
+    if 'postcode_normalized' in df.columns:
+        norm = df['postcode_normalized'].apply(_norm_district)
+        district = district.where(district.notna(), norm)
+    # Fallback 3: rows with NO parseable postcode in either field (~12% of the DB) get a
+    # neutral 'UNKNOWN' sentinel, NOT 'SW3'. The old code defaulted these to SW3, dumping
+    # every location-less row into the most prime district and contaminating its
+    # frequency / prime / pc_* signal — a smaller version of the exact bug FIX 1 removes.
+    # 'UNKNOWN' forms its own low-frequency bucket: is_prime_postcode=0, its own
+    # postcode_area, and a distinct (low) postcode_freq, so unknown-location rows no longer
+    # masquerade as prime SW3. Reproducible identically at inference time (no target).
+    df['postcode_district'] = district.fillna('UNKNOWN')
     df['postcode_adjustment'] = df['postcode_district'].apply(get_postcode_adjustment)
     df['postcode_area'] = df['postcode_district'].str.extract(r'^([A-Z]+)', expand=False).fillna('SW')
     df['is_prime_postcode'] = df['postcode_district'].apply(
@@ -723,9 +875,19 @@ def engineer_features_v20(df):
     print(f"  Basement flats: {df['is_basement_flat'].sum()}")
 
     # ========== CONDITION FEATURES (V16 + V18) ==========
+    # TAIL-ACCURACY FIX 3 (text source): the `description` column is ~100% EMPTY in the
+    # DB; the real free text lives in `summary` (rightmove + savills 100%, knightfrank
+    # partial) and, for foxtons/chestertons, in `description`. The text extractors below
+    # (furnished / refurb / amenities) previously read ONLY `description` and so fired on
+    # almost nothing. Build ONE combined text blob from summary + description and drive
+    # all text extraction from it.
     df['description'] = df['description'].fillna('')
+    if 'summary' not in df.columns:
+        df['summary'] = ''
+    df['summary'] = df['summary'].fillna('')
+    df['text_blob'] = (df['summary'].astype(str) + ' ' + df['description'].astype(str)).str.strip()
 
-    # V18 furnished detection
+    # V18 furnished detection (now reads the combined text blob)
     def detect_furnished(desc):
         if not desc or pd.isna(desc):
             return 0, 0, 0
@@ -738,13 +900,13 @@ def engineer_features_v20(df):
             return 1, 0, 0
         return 0, 0, 0
 
-    furnished_data = df['description'].apply(detect_furnished)
+    furnished_data = df['text_blob'].apply(detect_furnished)
     df['is_furnished_explicit'] = furnished_data.apply(lambda x: x[0])
     df['is_unfurnished'] = furnished_data.apply(lambda x: x[1])
     df['is_part_furnished'] = furnished_data.apply(lambda x: x[2])
 
-    # V16 refurbishment
-    df['has_refurb_keywords'] = df['description'].apply(has_refurb_keywords)
+    # V16 refurbishment (now reads the combined text blob)
+    df['has_refurb_keywords'] = df['text_blob'].apply(has_refurb_keywords)
 
     # Let type
     df['let_type'] = df['let_type'].fillna('unknown')
@@ -753,7 +915,9 @@ def engineer_features_v20(df):
     print(f"  Has refurb keywords: {df['has_refurb_keywords'].sum()}")
 
     # ========== AMENITY FEATURES ==========
-    amenity_dicts = df.apply(lambda r: parse_amenities(r['features'], r.get('description', '')), axis=1)
+    # FIX 3: pass the combined summary+description text (text_blob) instead of the
+    # ~empty description, so keyword amenity detection actually fires.
+    amenity_dicts = df.apply(lambda r: parse_amenities(r['features'], r.get('text_blob', '')), axis=1)
     amenity_df = pd.DataFrame(amenity_dicts.tolist())
     for col in AMENITY_FEATURES:
         df[col] = amenity_df[col].values
@@ -859,13 +1023,71 @@ def engineer_features_v20(df):
     area_counts = df['postcode_area'].value_counts()
     df['postcode_area_freq'] = df['postcode_area'].map(area_counts) / len(df)
 
+    # ========== AREA (NEIGHBORHOOD) ENCODING — TAIL-ACCURACY FIX 2 ==========
+    # FIX 2: the `area` text (Knightsbridge/Belgravia/Fulham…, 98%+ populated) was read
+    # then DROPPED and never featurized. We now featurize it with a LEAK-FREE FREQUENCY
+    # encoding (count/N), mirroring the established postcode_freq pattern exactly — NEVER
+    # a target mean on the same rows. Three columns are produced:
+    #   area_key  : canonicalized neighborhood key (case/separator-insensitive). Intermediate
+    #               only — a STRING, must never reach XGBoost (excluded at line ~876 / never
+    #               added to feature_cols).
+    #   area_freq : pure frequency = value_counts(area_key)/len(df). ALWAYS computed now so
+    #               the column exists for the inference-stats writers and canonical_predict's
+    #               baked-map override. LEAK-FREE (count/total, no price). NOTE: it is
+    #               DELIBERATELY NOT SELECTED into the model — measured CV shows it is
+    #               collinear with the recovered postcode family and slightly REDUCES R²
+    #               (0.8314 -> 0.8277) with no tail lift; see get_feature_columns_v20.
+    #   area_te   : OOF smoothed target encoding of log-price. LEAK-SAFE (strictly
+    #               out-of-fold; never sees its own row's target) but also unselected. Only
+    #               computed when AREA_ENABLED — it is the hardest serving-parity risk (an
+    #               OOF map that must be frozen for the JS predictor) and is kept dormant
+    #               until area text is cleaned and a real lift is demonstrated.
+    df['area_key'] = df['area'].apply(normalize_area) if 'area' in df.columns \
+        else pd.Series([''] * len(df), index=df.index)
+
+    # area_freq: always-on, leak-free frequency encoding (count/N).
+    area_key_counts = df['area_key'].value_counts()
+    df['area_freq'] = df['area_key'].map(area_key_counts) / len(df)
+
+    if AREA_ENABLED:
+        # OOF target encoding — only when a real target is present (training frames). A
+        # single-row / inference frame has price_pcm == 0, so we emit the global-prior
+        # placeholder that canonical_predict overrides from the baked map. Strictly
+        # out-of-fold => a row never sees its own target (leak-free); the full-train map
+        # is applied ONLY to unseen inference rows, never back onto the training rows.
+        _y = pd.to_numeric(df['price_pcm'], errors='coerce') if 'price_pcm' in df.columns \
+            else pd.Series([0] * len(df), index=df.index)
+        _has_target = (_y.fillna(0) > 0)
+        if int(_has_target.sum()) >= _AREA_TE_FOLDS:
+            te = compute_area_target_encoding_oof(df['area_key'].values, _y.fillna(_y[_y > 0].median()))
+            df['area_te'] = te.values
+        else:
+            df['area_te'] = float(np.log1p(_y[_y > 0]).mean()) if int(_has_target.sum()) > 0 else 0.0
+
     # Property type numeric
     type_map = {'studio': 0, 'flat': 1, 'apartment': 1, 'maisonette': 2, 'house': 3, 'penthouse': 4, 'town house': 3}
     df['property_type_num'] = df['property_type_std'].map(type_map).fillna(1)
 
-    # One-hot encode top postcodes
-    top_postcodes = ['SW3', 'SW7', 'W8', 'W2', 'SW5', 'SW11', 'SW10', 'NW8', 'W11',
-                     'SW1X', 'NW3', 'SW1W', 'W14', 'NW1', 'W10']
+    # One-hot encode top postcodes.
+    # TAIL-ACCURACY FIX 1 (cont.): with the real district recovered above, refresh
+    # the prime one-hot list from the ACTUAL top districts. The previous static list
+    # omitted the Mayfair codes (W1K/W1J/W1S) and other genuinely-prime, high-rent
+    # districts (SW1W, SW6, W1H/W1U) — exactly the >£10k stock the model was
+    # under-pricing. These are frequency/identity dummies (no target dependence →
+    # no leakage). Ordering is irrelevant to XGBoost and the pc_* columns are picked
+    # up generically by the c.startswith('pc_') filter in get_feature_columns_v20.
+    # Data-driven top-30 by REAL frequency once line ~804 recovers the district via the
+    # boundary-anchored regex (verified against rentals_modeler_copy.db). Includes the
+    # Mayfair codes (W1J/W1K/W1G) the original stale top-15 omitted plus other genuinely
+    # prime, high-rent districts (SW1W, SW6, W1H/W1U) — exactly the >£10k stock the model
+    # was under-pricing. Frequency/identity dummies (no target dependence -> no leakage);
+    # one-hot ordering is irrelevant to XGBoost, and the pc_* columns are picked up
+    # generically by the c.startswith('pc_') filter in get_feature_columns_v20.
+    top_postcodes = [
+        'SW7', 'SW3', 'NW8', 'W8', 'SW5', 'W2', 'NW3', 'SW1X', 'SW6', 'NW1',
+        'SW10', 'W11', 'SW1W', 'SW11', 'W14', 'W1H', 'W1U', 'W1K', 'W10', 'W1W',
+        'W1J', 'W6', 'SW1P', 'W1G', 'SW18', 'W12', 'SW1V', 'SW15', 'W1T', 'SW19',
+    ]
     for pc in top_postcodes:
         df[f'pc_{pc}'] = (df['postcode_district'] == pc).astype(int)
 
@@ -873,7 +1095,8 @@ def engineer_features_v20(df):
     df = pd.get_dummies(df, columns=['property_type_std'], prefix='type', drop_first=False, dtype=int)
 
     feature_count = len([c for c in df.columns if c not in
-                        ['price_pcm', 'ppsf', 'features', 'description', 'postcode', 'area',
+                        ['price_pcm', 'ppsf', 'features', 'description', 'summary', 'text_blob',
+                         'postcode', 'area', 'area_key',
                          'property_type', 'address', 'postcode_normalized', 'agent_brand',
                          'let_type', 'postcode_district', 'postcode_area', 'source',
                          'latitude', 'longitude', 'lat_filled', 'lon_filled', 'postcode_inferred']])
@@ -901,6 +1124,17 @@ def get_feature_columns_v20(df):
         'tube_distance_km', 'log_tube_distance',
         'center_distance_km', 'log_center_distance', 'center_distance_inv',
         'is_prime_postcode', 'postcode_freq', 'postcode_area_freq',
+        # FIX 2 (area) DELIBERATELY NOT SELECTED. `area_freq` IS computed (leak-free
+        # frequency, count/N — see engineer_features_v20) and available for the inference
+        # sidecar, but it is collinear with the now-recovered postcode_district /
+        # postcode_area / pc_type_ppsf family and adds NO lift: measured KFold(5) CV with
+        # the anchored-regex district recovery is R²=0.8314 WITHOUT area vs R²=0.8277 WITH
+        # area_freq selected (a regression), and the >£10k / <£2k tail bias barely moves
+        # (-14.1%/+16.5% -> -13.9%/+16.3%). The OOF `area_te` is likewise unselected and is
+        # the single hardest parity risk to mirror to the JS predictor (OOF map -> frozen
+        # static map). So the leak-safe machinery stays dormant and FIX 1 ships alone.
+        # 'area_freq', 'area_te',   # re-enable once area text is cleaned + a lift is shown,
+                                     #   then mirror the static maps to xgboost.js.
         'postcode_adjustment',  # V16
 
         # V16 + V19 detection features

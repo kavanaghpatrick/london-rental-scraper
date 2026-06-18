@@ -13,10 +13,10 @@ retrain_canonical) and persists the frequency maps + sensible defaults to
 canonical_predict.build_features() loads this and overrides the degenerate single-row
 freq features so single-property estimates match the trained model.
 
-NOTE: these freqs include the `postcode_normalized.fillna('SW3')` artifact (86.7% of
-rows have null postcode_normalized → bucketed as SW3 → SW3 freq≈0.88). The model was
-FIT on that, so inference must reproduce it as-is to match — we deliberately do NOT
-"correct" it here.
+NOTE: as of the tail-accuracy fix (FIX 1), engineer_features_v20 recovers the REAL
+postcode_district from raw `postcode` (no longer the `postcode_normalized.fillna('SW3')`
+artifact). These freqs therefore reflect the real district distribution the model is now
+fit on (SW3 ≈ 0.08, not 0.88). Inference reproduces these exact maps to match training.
 
 Usage:  python3 gen_inference_stats.py   ->  output/rental_model_canonical_inference.json
 """
@@ -70,8 +70,21 @@ def main(db='output/rentals.db'):
         'floor_count_default': float(df['floor_count'].median()),  # 0 (median/mode; 56% are 0)
         'note': ('Single-row inference must inject postcode_freq/postcode_area_freq from '
                  'these maps (keyed on postcode_district / postcode_area) instead of the '
-                 'degenerate 1.0 recompute. floor_count default = training median.'),
+                 'degenerate recompute. floor_count default = training median.'),
     }
+
+    # FIX 2 (GATED): neighborhood `area` maps — only when the area features are selected.
+    #   area_freq_map        : count(area_key)/N  (mirrors engineer_features_v20.area_freq)
+    #   area_target_encoding : full-train smoothed log-price map (the INFERENCE map;
+    #     training rows use the OOF encoding — see compute_area_target_encoding_oof).
+    if rc.v20.AREA_ENABLED:
+        area_key_counts = df['area_key'].value_counts()
+        area_freq_map = {str(k): v / N for k, v in area_key_counts.items()}
+        area_te_map, area_te_global = rc.v20.build_area_target_map(df['area_key'].values, df['price_pcm'].values)
+        stats['area_freq'] = area_freq_map
+        stats['area_freq_default'] = float(min(area_freq_map.values()))
+        stats['area_target_encoding'] = area_te_map
+        stats['area_te_default'] = float(area_te_global)
 
     _assert_default_shape(stats)  # invariant: numeric sibling defaults, no nested 'default'
 
@@ -85,6 +98,10 @@ def main(db='output/rentals.db'):
           f"W11={pc_freq.get('W11',0):.4f}); default={stats['postcode_freq_default']:.5f}")
     print(f"  postcode_area_freq: {len(area_freq)} areas (SW={area_freq.get('SW',0):.4f}); "
           f"default={stats['postcode_area_freq_default']:.5f}")
+    if rc.v20.AREA_ENABLED:
+        print(f"  area_freq: {len(stats['area_freq'])} neighborhoods; default={stats['area_freq_default']:.5f}")
+        print(f"  area_target_encoding: {len(stats['area_target_encoding'])} neighborhoods; "
+              f"global_prior(log)={stats['area_te_default']:.4f}")
     print(f"  floor_count_default={stats['floor_count_default']}")
     return stats
 

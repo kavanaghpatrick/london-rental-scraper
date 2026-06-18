@@ -140,6 +140,7 @@ def build_features(df: pd.DataFrame, inference: bool = True):
         if stats:
             pcd = engineered.get('postcode_district')
             pca = engineered.get('postcode_area')
+            akey = engineered.get('area_key')
             if pcd is not None and 'postcode_freq' in feature_cols:
                 fmap = stats.get('postcode_freq', {})
                 fdef = stats.get('postcode_freq_default', 0.0)
@@ -148,6 +149,18 @@ def build_features(df: pd.DataFrame, inference: bool = True):
                 amap = stats.get('postcode_area_freq', {})
                 adef = stats.get('postcode_area_freq_default', 0.0)
                 engineered['postcode_area_freq'] = pca.astype(str).map(lambda k: amap.get(k, adef))
+            # FIX 2: neighborhood `area` overrides. The engineered frame's area_freq is a
+            # degenerate per-frame recompute and area_te is a global-prior placeholder
+            # (no target at inference); inject the baked training maps so a single-property
+            # estimate matches how the model was trained.
+            if akey is not None and 'area_freq' in feature_cols:
+                afmap = stats.get('area_freq', {})
+                afdef = stats.get('area_freq_default', 0.0)
+                engineered['area_freq'] = akey.astype(str).map(lambda k: afmap.get(k, afdef))
+            if akey is not None and 'area_te' in feature_cols:
+                temap = stats.get('area_target_encoding', {})
+                tedef = stats.get('area_te_default', 0.0)
+                engineered['area_te'] = akey.astype(str).map(lambda k: temap.get(k, tedef))
 
     X = engineered[feature_cols].copy()
     for c in X.columns:
@@ -217,6 +230,11 @@ def predict_one(**kwargs) -> float:
         'latitude': kwargs.get('latitude', 0),
         'longitude': kwargs.get('longitude', 0),
         'features': kwargs.get('features', ''),
+        # FIX 3: the real free text lives in `summary` (description is ~empty in the DB).
+        # Pass it through so single-row inference is not text-blind vs training, which now
+        # drives all text extractors off COALESCE(summary, description). Defaults to '' so
+        # callers that omit it still work (engineer_features_v20 tolerates a missing column).
+        'summary': kwargs.get('summary', ''),
         'description': kwargs.get('description', ''),
         'source': kwargs.get('source', 'rightmove'),
         'let_type': kwargs.get('let_type', 'long'),

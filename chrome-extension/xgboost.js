@@ -277,9 +277,16 @@ const XGBFeatures = {
     'Canary Wharf': { lat: 51.5033, lon: -0.0181 },
   },
 
-  // Postcode one-hot features (matching features.json)
-  POSTCODE_FEATURES: ['pc_SW3', 'pc_SW7', 'pc_W8', 'pc_W2', 'pc_SW5', 'pc_SW11', 'pc_SW10',
-                      'pc_NW8', 'pc_W11', 'pc_SW1X', 'pc_NW3', 'pc_SW1W', 'pc_W14', 'pc_NW1', 'pc_W10'],
+  // Postcode one-hot features (matching features.json).
+  // TAIL-ACCURACY FIX 1: data-driven top-30 districts (mirrors rental_price_models_v20
+  // top_postcodes, ~line 1086). Now INCLUDES the Mayfair codes (W1K/W1J/W1G) and other
+  // genuinely-prime high-rent districts (SW1W, SW6, W1H/W1U, ...) the stale top-15 omitted
+  // — exactly the >£10k tail the model was under-pricing. Order is irrelevant (one-hot).
+  POSTCODE_FEATURES: ['pc_SW7', 'pc_SW3', 'pc_NW8', 'pc_W8', 'pc_SW5', 'pc_W2', 'pc_NW3',
+                      'pc_SW1X', 'pc_SW6', 'pc_NW1', 'pc_SW10', 'pc_W11', 'pc_SW1W', 'pc_SW11',
+                      'pc_W14', 'pc_W1H', 'pc_W1U', 'pc_W1K', 'pc_W10', 'pc_W1W', 'pc_W1J',
+                      'pc_W6', 'pc_SW1P', 'pc_W1G', 'pc_SW18', 'pc_W12', 'pc_SW1V', 'pc_SW15',
+                      'pc_W1T', 'pc_SW19'],
 
   // Property type one-hot features (matching features.json V20 model)
   PROPERTY_TYPE_FEATURES: ['type_apartment', 'type_detached', 'type_duplex',
@@ -342,10 +349,10 @@ const XGBFeatures = {
   // These MUST match the maps canonical_predict injects at inference — a single-row
   // recompute degenerates to 1.0, so the model expects these precomputed values.
   // Do NOT replace with naive population guesses; regenerate from inference.json on retrain.
-  POSTCODE_FREQ: { 'SW3': 0.9271811312113579, 'W11': 0.014082894435539272, 'W8': 0.007785665216395695, 'SW7': 0.006411724295855278, 'SW1X': 0.006068239065720174, 'NW3': 0.0042363178383329515, 'SW1': 0.0042363178383329515, 'NW8': 0.0034348523013510417, 'SW11': 0.0033203572246393405, 'SW10': 0.003091367071215938, 'NW1': 0.0024043966109457294, 'W2': 0.002289901534234028, 'SW5': 0.0021754064575223264, 'SW18': 0.001488435997252118, 'SW1W': 0.0013739409205404168, 'SW1P': 0.0010304556904053126, 'SW13': 0.0010304556904053126, 'SW15': 0.0009159606136936112, 'SW1V': 0.0008014655369819098, 'W1U': 0.0008014655369819098, 'W1G': 0.0006869704602702084, 'W1K': 0.000572475383558507, 'W14': 0.000572475383558507, 'W1H': 0.000572475383558507, 'W1J': 0.0003434852301351042, 'SW19': 0.0003434852301351042, 'SW17': 0.0003434852301351042, 'W1F': 0.0002289901534234028, 'W1T': 0.0002289901534234028, 'SW1H': 0.0002289901534234028, 'SW1E': 0.0002289901534234028, 'SW14': 0.0002289901534234028, 'SW12': 0.0002289901534234028, 'NW11': 0.0002289901534234028, 'SW1Y': 0.0002289901534234028, 'W10': 0.0001144950767117014, 'W12': 0.0001144950767117014, 'W1B': 0.0001144950767117014, 'W1W': 0.0001144950767117014, 'SW1A': 0.0001144950767117014, 'default': 0.0001144950767117014 },
+  POSTCODE_FREQ: { 'UNKNOWN': 0.12252418240442192, 'SW7': 0.08671119299861815, 'SW3': 0.08406264394288346, 'NW8': 0.06794104099493321, 'W8': 0.05435283279594657, 'NW3': 0.05412252418240442, 'SW5': 0.0490557346844772, 'W2': 0.04640718562874251, 'NW1': 0.04329801934592354, 'SW1X': 0.0421464762782128, 'SW6': 0.04157070474435744, 'SW10': 0.03707968678028558, 'W11': 0.028327959465684015, 'SW1W': 0.027521879318286504, 'SW11': 0.025103638876093966, 'W14': 0.02199447259327499, 'W1H': 0.017157991708889913, 'W1J': 0.016582220175034548, 'W1U': 0.01531552280055274, 'W1K': 0.013357899585444496, 'W10': 0.009212344541685858, 'W1W': 0.008636573007830493, 'SW1P': 0.00852141870105942, 'W6': 0.00713956701980654, 'W1G': 0.006563795485951175, 'SW18': 0.0052970981114693685, 'SW1V': 0.005066789497927222, 'W12': 0.004951635191156149, 'SW19': 0.004375863657300783, 'W1': 0.00426070935052971, 'SW15': 0.00426070935052971, 'W1T': 0.003454629203132197, 'SW13': 0.0029940119760479044, 'SW12': 0.002878857669276831, 'NW11': 0.002878857669276831, 'W1B': 0.0026485490557346843, 'W1S': 0.002418240442192538, 'SW1E': 0.0023030861354214646, 'E14': 0.0016121602947950253, 'SW14': 0.0016121602947950253, 'NW6': 0.0014970059880239522, 'SW1': 0.0013818516812528789, 'SW17': 0.0012666973744818056, 'SW1H': 0.0012666973744818056, 'E1W': 0.0011515430677107323, 'W9': 0.0011515430677107323, 'NW2': 0.0010363887609396592, 'SW1A': 0.0008060801473975126, 'W1F': 0.0008060801473975126, 'W1D': 0.0006909258406264394, 'SW1Y': 0.0006909258406264394, 'W13': 0.0003454629203132197, 'N6': 0.00023030861354214648, 'NW5': 0.00023030861354214648, 'SE1': 0.00023030861354214648, 'E16': 0.00023030861354214648, 'W1X': 0.00011515430677107324, 'B8': 0.00011515430677107324, 'NW10': 0.00011515430677107324, 'SW8': 0.00011515430677107324, 'GU25': 0.00011515430677107324, 'EC3R': 0.00011515430677107324, 'E1': 0.00011515430677107324, 'WC2N': 0.00011515430677107324, 'TW8': 0.00011515430677107324, 'SW16': 0.00011515430677107324, 'TW9': 0.00011515430677107324, 'default': 0.00011515430677107324 },
 
   // Postcode area frequency = v20 TRAINING frequencies (same source as POSTCODE_FREQ).
-  POSTCODE_AREA_FREQ: { 'SW': 0.9610716739180215, 'W': 0.02862376917792535, 'NW': 0.010304556904053125, 'default': 0.010304556904053125 },
+  POSTCODE_AREA_FREQ: { 'SW': 0.43620451404882543, 'W': 0.2658912943344081, 'NW': 0.17111929986181484, 'UNKNOWN': 0.12252418240442192, 'E': 0.0031091662828189775, 'TW': 0.00023030861354214648, 'SE': 0.00023030861354214648, 'N': 0.00023030861354214648, 'WC': 0.00011515430677107324, 'EC': 0.00011515430677107324, 'GU': 0.00011515430677107324, 'B': 0.00011515430677107324, 'default': 0.00011515430677107324 },
 
   // Size quintile boundaries (from training data)
   SIZE_QUINTILES: [0, 484, 635, 818, 1141, Infinity],  // Q1-Q5 boundaries
@@ -780,42 +787,112 @@ const XGBFeatures = {
     return this.PRESTIGE_TIER_MULTIPLIER[tier] || 1.0;
   },
 
-  // Parse amenities from description (matching Python exactly). For empty/missing
-  // text, still return the FULL set of has_* keys = 0 (Python returns {f:0 ...}).
-  // Returning {} here would make downstream sums (premium_amenity_count) NaN.
-  parseAmenities(text) {
-    const t = (text || '').toLowerCase();
+  // Parse amenities (mirrors Python parse_amenities(features_str, description_str)).
+  // FIX 3 (correctness): handle BOTH the `features` JSON AND the combined text channel:
+  //   - features DICT  {"has_balcony": true, ...} -> seed the matching has_* key
+  //   - features LIST  ["Balcony","Lift", ...]    -> fold items into the keyword text
+  // then OR (max) in the keyword matchers over (features-text + summary/description blob).
+  // Python folds str(features_str) into the lowercased text BEFORE JSON-parsing, so even a
+  // non-JSON / list features string contributes via keyword matching. For empty/missing
+  // inputs we still return the FULL set of has_* keys = 0 (Python returns {f:0 ...});
+  // returning {} would make downstream sums (premium_amenity_count) NaN.
+  parseAmenities(featuresStr, text) {
+    // text channel = lowercased features string (always) + free text blob.
+    let t = '';
+    if (featuresStr != null) {
+      if (typeof featuresStr === 'string') {
+        if (featuresStr !== '') t += featuresStr.toLowerCase() + ' ';
+      } else {
+        // structured object/array passed directly (non-string): stringify for keywords too
+        try { t += JSON.stringify(featuresStr).toLowerCase() + ' '; } catch (_) { /* noop */ }
+      }
+    }
+    if (text) t += String(text).toLowerCase();
+
+    // Seed has_* keys from a features DICT (e.g. {"has_balcony": true}); fold a LIST
+    // (e.g. ["Balcony"]) into the keyword text channel.
+    const seed = {};
+    if (featuresStr != null && featuresStr !== '') {
+      let parsed = null;
+      if (typeof featuresStr === 'string') {
+        try { parsed = JSON.parse(featuresStr); } catch (_) { parsed = null; }
+      } else if (typeof featuresStr === 'object') {
+        parsed = featuresStr;
+      }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const k of Object.keys(parsed)) {
+          if (k.startsWith('has_') && parsed[k]) seed[k] = 1;
+        }
+      } else if (Array.isArray(parsed)) {
+        t += ' ' + parsed.map(item => String(item).toLowerCase()).join(' ') + ' ';
+      }
+    }
+    const mx = (k, v) => Math.max(seed[k] || 0, v);
     return {
-      has_balcony: t.includes('balcony') ? 1 : 0,
-      has_terrace: (t.includes('terrace') && !t.includes('roof terrace')) ? 1 : 0,
-      has_roof_terrace: t.includes('roof terrace') ? 1 : 0,
-      has_garden: t.includes('garden') ? 1 : 0,
-      has_porter: (t.includes('porter') || t.includes('concierge')) ? 1 : 0,
-      has_gym: (t.includes('gym') || t.includes('fitness')) ? 1 : 0,
-      has_pool: (t.includes('pool') || t.includes('swimming')) ? 1 : 0,  // Added 'swimming'
-      has_parking: (t.includes('parking') || t.includes('garage')) ? 1 : 0,  // Added 'garage'
-      has_lift: (t.includes('lift') || t.includes('elevator')) ? 1 : 0,
-      has_ac: (t.includes('air con') || t.includes('a/c') || t.includes('air-con') || t.includes('aircon')) ? 1 : 0,  // Added 'aircon'
-      has_high_ceilings: t.includes('high ceiling') ? 1 : 0,
-      has_view: t.includes('view') ? 1 : 0,  // Removed space prefix to match Python
-      has_modern: (t.includes('modern') || t.includes('contemporary')) ? 1 : 0,  // Added 'contemporary'
-      has_period: (t.includes('period') || t.includes('victorian') || t.includes('georgian')) ? 1 : 0,  // Added 'georgian'
-      // Python's parse_amenities does NOT derive has_furnished from free text — it
-      // only reads it from the structured `features` JSON. Match that: keep it 0 here
-      // (furnished status is captured separately by is_furnished_explicit/is_unfurnished).
-      has_furnished: 0,
+      has_balcony: mx('has_balcony', t.includes('balcony') ? 1 : 0),
+      has_terrace: mx('has_terrace', (t.includes('terrace') && !t.includes('roof terrace')) ? 1 : 0),
+      has_roof_terrace: mx('has_roof_terrace', t.includes('roof terrace') ? 1 : 0),
+      has_garden: mx('has_garden', t.includes('garden') ? 1 : 0),
+      has_porter: mx('has_porter', (t.includes('porter') || t.includes('concierge')) ? 1 : 0),
+      has_gym: mx('has_gym', t.includes('gym') ? 1 : 0),  // Python: 'gym' only (no 'fitness')
+      has_pool: mx('has_pool', (t.includes('pool') || t.includes('swimming')) ? 1 : 0),
+      has_parking: mx('has_parking', (t.includes('parking') || t.includes('garage')) ? 1 : 0),
+      has_lift: mx('has_lift', (t.includes('lift') || t.includes('elevator')) ? 1 : 0),
+      has_ac: mx('has_ac', (t.includes('air con') || t.includes('a/c') || t.includes('aircon')) ? 1 : 0),
+      has_high_ceilings: mx('has_high_ceilings', t.includes('high ceiling') ? 1 : 0),
+      has_view: mx('has_view', t.includes('view') ? 1 : 0),
+      has_modern: mx('has_modern', (t.includes('modern') || t.includes('contemporary')) ? 1 : 0),
+      has_period: mx('has_period', (t.includes('period') || t.includes('victorian') || t.includes('georgian')) ? 1 : 0),
+      // Python keyword matchers never set has_furnished; it is ONLY set from a features
+      // DICT ({"has_furnished": true}). Mirror that: seed-or-0, no keyword.
+      has_furnished: seed['has_furnished'] || 0,
     };
   },
 
-  // Extract postcode district properly (handles SW1X, SW1W, NW3, W8, etc.)
-  extractPostcodeDistrict(postcode) {
-    if (!postcode) return 'SW3';
-    // Get outcode (part before space)
-    const outcode = postcode.split(' ')[0].toUpperCase();
-    // For districts like SW1X, SW1W, W1K - keep the full outcode
-    // Match pattern: letters + digits + optional letter (e.g., SW1X, NW3, W8, EC1)
-    const match = outcode.match(/^([A-Z]{1,2}\d{1,2}[A-Z]?)$/);
-    return match ? match[1] : outcode;
+  // Extract postcode district properly (handles SW1X, SW1W, NW3, W8, etc.).
+  // TAIL-ACCURACY FIX 1: mirror Python rental_price_models_v20._norm_district EXACTLY —
+  // mirror the CANONICAL SERVING district cascade EXACTLY — i.e. what
+  // canonical_predict.build_features (the live /api/predict path) actually feeds the
+  // model, NOT the idealized FE-only result. That cascade has TWO stages:
+  //   (1) A pre-step in build_features sets postcode_district from
+  //       (postcode_normalized ?? postcode) using the OLD GREEDY outward-code regex
+  //       ^([A-Z]+\d+[A-Z]?)  — e.g. 'NW87HY'->'NW87H', 'SW72ED'->'SW72E', 'W8 5AA'->'W8'.
+  //   (2) engineer_features_v20 then re-normalizes that via the BOUNDARY-ANCHORED
+  //       _norm_district ^([A-Z]{1,2}\d{1,2}[A-Z]?)(?=\s|\d|$), with fallbacks to the
+  //       raw postcode then postcode_normalized, then an 'UNKNOWN' sentinel.
+  // The two stages interact: a no-space 'NW87HY' is greedily mangled to 'NW87H' FIRST,
+  // and _norm_district('NW87H') terminates at end-of-string -> 'NW87H' (a junk low-freq
+  // district), whereas _norm_district('NW87HY') applied directly would backtrack to 'NW8'.
+  // To stay byte-equal to the served model we must reproduce BOTH stages, in order — not
+  // just the clean boundary regex. UNKNOWN (no parseable postcode) is the sentinel for
+  // location-less rows (NOT 'SW3', which would contaminate the prime district).
+  _greedyOutcode(val) {
+    if (val == null) return null;
+    const s = String(val).trim().toUpperCase();
+    if (s === '' || s === 'NAN') return null;
+    const m = s.match(/^([A-Z]+\d+[A-Z]?)/);
+    return m ? m[1] : null;  // pandas .str.extract -> NaN (None) when no match
+  },
+  _normDistrict(val) {
+    if (val == null) return null;
+    const s = String(val).trim().toUpperCase();
+    if (s === '' || s === 'NAN') return null;
+    const m = s.match(/^([A-Z]{1,2}\d{1,2}[A-Z]?)(?=\s|\d|$)/);
+    return m ? m[1] : null;
+  },
+  // postcode = raw postcode field; postcodeNormalized = the postcode_normalized field
+  // (optional — the serving request / page extractor may carry it).
+  extractPostcodeDistrict(postcode, postcodeNormalized) {
+    const pc = (postcode == null || postcode === '') ? null : postcode;
+    const pn = (postcodeNormalized == null || postcodeNormalized === '') ? null : postcodeNormalized;
+    // Stage 1: build_features pre-step — greedy outcode from (normalized ?? postcode).
+    const src = (pn != null) ? pn : pc;
+    const preDistrict = (src != null) ? this._greedyOutcode(src) : null;
+    // Stage 2: engineer cascade — _norm_district(preDistrict), then fallbacks.
+    let district = (preDistrict != null) ? this._normDistrict(preDistrict) : null;
+    if (district == null && pc != null) district = this._normDistrict(pc);       // fallback 1: raw postcode
+    if (district == null && pn != null) district = this._normDistrict(pn);       // fallback 2: normalized
+    return district != null ? district : 'UNKNOWN';                              // fallback 3: sentinel
   },
 
   // Generate postcode one-hot encoding
@@ -895,8 +972,12 @@ const XGBFeatures = {
     const beds = data.bedrooms || 1;
     const baths = data.bathrooms || 1;
     const sqft = data.size_sqft || (beds * 450);
-    const postcode = data.postcode || 'SW3';
-    const postcodeDistrict = this.extractPostcodeDistrict(postcode);
+    // FIX 1: mirror the canonical serving district-recovery cascade (build_features
+    // greedy pre-step on postcode_normalized??postcode, THEN the boundary-anchored
+    // _norm_district + fallbacks). A postcode-less request resolves to the 'UNKNOWN'
+    // sentinel, NOT a 'SW3' default — empty postcode no longer masquerades as prime SW3.
+    const postcode = data.postcode || '';
+    const postcodeDistrict = this.extractPostcodeDistrict(postcode, data.postcode_normalized);
     // Canonical type signal is property_type_std (what Python's FE one-hots + maps on);
     // property_type is the raw type. Use _std first, then property_type. (propertyType
     // camelCase kept ONLY as a final legacy fallback for old in-page callers.)
@@ -908,6 +989,15 @@ const XGBFeatures = {
     const lat = data.latitude || this.CITY_CENTER.lat;
     const lon = data.longitude || this.CITY_CENTER.lon;
     const description = data.description || '';
+    // FIX 3 (text source): the `description` column is ~100% EMPTY in the DB; the real
+    // free text lives in `summary` (rightmove + savills) and, for some sources, description.
+    // Mirror Python's combined text_blob = (summary + ' ' + description).strip() and drive
+    // ALL text extraction (amenities / furnished / refurb) off it, so has_refurb/is_furnished
+    // actually fire. `features` is the structured amenity JSON (dict OR list) — passed to
+    // parseAmenities for the FIX-3 list-format parsing.
+    const summary = data.summary || '';
+    const textBlob = (String(summary) + ' ' + String(description)).trim();
+    const featuresInput = (data.features != null) ? data.features : '';
     const ocrText = data.ocrText || '';
     // IMPORTANT: the canonical inference path (modeler's build_features / the golden
     // fixture) yields is_premium_agent=0 even when agent_brand is a premium agent — at
@@ -933,7 +1023,7 @@ const XGBFeatures = {
     const centerInv = 1 / (1 + centerDist);
 
     // Parse amenities from description
-    const amenities = this.parseAmenities(description);
+    const amenities = this.parseAmenities(featuresInput, textBlob);
     const amenityScore = Object.values(amenities).reduce((a, b) => a + b, 0);
     const isPrime = this.PRIME_POSTCODES.some(p => postcodeDistrict.startsWith(p)) ? 1 : 0;
 
@@ -1018,7 +1108,7 @@ const XGBFeatures = {
     const isPenthouse = this.isPenthouse(propertyType, address);
     const isGardenFlat = this.isGardenFlat(address);
     const isBasementFlat = this.isBasementFlat(address);
-    const hasRefurbKeywords = this.hasRefurbKeywords(description);
+    const hasRefurbKeywords = this.hasRefurbKeywords(textBlob);
 
     // === V19 MEWS DETECTION (before V17 type detection) ===
     const isMews = this.isMews(propertyType, address);
@@ -1035,7 +1125,7 @@ const XGBFeatures = {
     const pcTypeExpectedPrice = pcTypePpsf * sqft;
 
     // === V18 FURNISHED FEATURES ===
-    const furnishedStatus = this.detectFurnishedStatus(description);
+    const furnishedStatus = this.detectFurnishedStatus(textBlob);
     const isFurnishedExplicit = furnishedStatus.furnished;
     const isUnfurnished = furnishedStatus.unfurnished;
     const isPartFurnished = furnishedStatus.partFurnished;

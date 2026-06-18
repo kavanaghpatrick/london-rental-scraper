@@ -53,7 +53,7 @@ def load_recency_independent(db_path):
         SELECT
             bedrooms, bathrooms, size_sqft,
             postcode, area, property_type, address,
-            price_pcm, latitude, longitude, features, description, source,
+            price_pcm, latitude, longitude, features, summary, description, source,
             property_type_std, let_type, postcode_normalized,
             postcode_inferred, agent_brand,
             floor_count, has_roof_terrace, has_basement, has_ground,
@@ -83,8 +83,11 @@ def load_recency_independent(db_path):
     df = df[~short].copy()
     print(f"After short-let/serviced exclusion: {len(df)}")
 
-    # Cross-source dedupe (identical to v20)
-    df['postcode_district'] = df['postcode'].str.extract(r'^([A-Z]+\d+[A-Z]?)', expand=False)
+    # Cross-source dedupe (identical to v20). FIX 1: boundary-anchored district regex,
+    # matching engineer_features_v20._PC_RE, so no-space postcodes (SW72ED) collapse to
+    # the real outward code (SW7) not a junk fragment (SW72E). engineer_features_v20
+    # starts from THIS postcode_district, so the keys must agree.
+    df['postcode_district'] = df['postcode'].str.extract(r'^([A-Z]{1,2}\d{1,2}[A-Z]?)(?=\s|\d|$)', expand=False)
     source_priority = {'savills': 0, 'knightfrank': 1, 'chestertons': 2, 'foxtons': 3, 'rightmove': 4}
     df['source_rank'] = df['source'].map(source_priority).fillna(5)
     df = df.sort_values('source_rank')
@@ -193,8 +196,17 @@ def main():
         'floor_count_default': float(df['floor_count'].median()),
         'note': ('Single-row inference injects postcode_freq/postcode_area_freq from these '
                  'training maps (keyed on postcode_district / postcode_area) instead of the '
-                 'degenerate 1.0 recompute. Regenerated atomically with the pkl every retrain.'),
+                 'degenerate recompute. Regenerated atomically with the pkl.'),
     }
+    # FIX 2 (GATED): only emit the neighborhood `area` maps when the area features are
+    # actually selected. Must match gen_inference_stats EXACTLY when enabled.
+    if v20.AREA_ENABLED:
+        area_freq_map = {str(k): v / len(df) for k, v in df['area_key'].value_counts().items()}
+        area_te_map, area_te_global = v20.build_area_target_map(df['area_key'].values, df['price_pcm'].values)
+        inference_stats['area_freq'] = area_freq_map
+        inference_stats['area_freq_default'] = float(min(area_freq_map.values()))
+        inference_stats['area_target_encoding'] = area_te_map
+        inference_stats['area_te_default'] = float(area_te_global)
     # Same freq-default invariant the OTHER writer (gen_inference_stats.py) enforces —
     # one shared assertion so the two writers can never drift in shape. Fails loudly
     # rather than writing a None/nested-'default' artifact that crashes np.log1p / breaks
