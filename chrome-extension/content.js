@@ -750,6 +750,123 @@
   // CHESTERTONS EXTRACTION
   // ============================================
 
+  // FIX #4: Subject-anchored extraction for Chestertons.
+  // Chestertons is a Next.js app; the listing data lives in the RSC "flight" stream
+  // (self.__next_f.push([...]) chunks inside <script> tags). The page often contains
+  // MANY property objects (the similar-listings carousel), so a first-match-wins
+  // innerText regex (e.g. /\d+\s*bed/) can latch onto the WRONG unit — that is exactly
+  // how the trigger listing (a 3-bed) was mis-read as a 1-bed.
+  //
+  // We instead select the SUBJECT property object by the NUMERIC property id from the
+  // URL (/properties/<NUMID>/lettings/<REF>). The stream carries the subject as
+  // "property":{"id":<NUMID>,...} and that same object holds bedrooms / bathrooms /
+  // propertyType / postcode / squareFeetInternal. NOTE (from verification): the URL
+  // <REF> is NOT a usable anchor — "reference":"<REF>" is not present as a field, and
+  // <REF> appears 100s of times (in photo URLs etc.). Only the numeric id is reliable.
+  //
+  // Content scripts run in an ISOLATED world and cannot read the page's `self.__next_f`
+  // directly, so we scan the serialized <script> tag text instead. The flight payload is
+  // string-escaped (\" / \\), so we unescape a copy before searching.
+  // Returns { bedrooms, bathrooms, propertyType, postcode, squareFeetInternal } (any
+  // field may be undefined/null) or null if the subject object can't be found.
+  function extractChestertonsSubjectFromFlight() {
+    try {
+      // Numeric property id from the URL: /properties/<NUMID>/lettings/<REF>
+      const idMatch = window.location.pathname.match(/\/properties\/(\d+)\/lettings\//);
+      if (!idMatch) {
+        log(' Chestertons flight: no numeric property id in URL');
+        return null;
+      }
+      const numId = idMatch[1];
+
+      // Gather all flight-stream script text. self.__next_f.push(...) chunks only.
+      let combined = '';
+      for (const script of document.querySelectorAll('script')) {
+        const t = script.textContent || '';
+        if (t.indexOf('__next_f') !== -1) combined += t + '\n';
+      }
+      if (!combined) {
+        log(' Chestertons flight: no __next_f script chunks found');
+        return null;
+      }
+
+      // The payload is string-escaped inside the push() argument. Unescape a copy so
+      // the JSON object delimiters ({ } " :) are real. Order matters: \\" -> " first,
+      // then \\\\ -> \  (do NOT reorder, or escaped backslashes corrupt the quotes).
+      const text = combined.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+
+      // Anchor on the SUBJECT: "property":{"id":<NUMID>
+      const anchor = '"property":{"id":' + numId;
+      const at = text.indexOf(anchor);
+      if (at === -1) {
+        log(' Chestertons flight: subject anchor not found for id ' + numId);
+        return null;
+      }
+
+      // Extract the balanced { ... } object that starts right after "property":
+      const objStart = at + '"property":'.length; // points at '{'
+      let depth = 0, inStr = false, esc = false, end = -1;
+      for (let k = objStart; k < text.length; k++) {
+        const c = text[k];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (c === '\\') esc = true;
+          else if (c === '"') inStr = false;
+        } else {
+          if (c === '"') inStr = true;
+          else if (c === '{') depth++;
+          else if (c === '}') {
+            depth--;
+            if (depth === 0) { end = k + 1; break; }
+          }
+        }
+      }
+      if (end === -1) {
+        log(' Chestertons flight: unbalanced subject object');
+        return null;
+      }
+
+      const objStr = text.slice(objStart, end);
+      let obj;
+      try {
+        obj = JSON.parse(objStr);
+      } catch (e) {
+        // Fall back to field-level regex on the (subject-scoped) object string so a
+        // single malformed nested value doesn't lose the whole extraction.
+        log(' Chestertons flight: JSON.parse failed, using field regex: ' + e);
+        const num = (f) => {
+          const m = objStr.match(new RegExp('"' + f + '":\\s*(\\d+)'));
+          return m ? parseInt(m[1], 10) : undefined;
+        };
+        const str = (f) => {
+          const m = objStr.match(new RegExp('"' + f + '":\\s*"([^"]*)"'));
+          return m ? m[1] : undefined;
+        };
+        return {
+          bedrooms: num('bedrooms'),
+          bathrooms: num('bathrooms'),
+          propertyType: str('propertyType'),
+          postcode: str('postcode'),
+          squareFeetInternal: num('squareFeetInternal'),
+        };
+      }
+
+      return {
+        bedrooms: typeof obj.bedrooms === 'number' ? obj.bedrooms : undefined,
+        bathrooms: typeof obj.bathrooms === 'number' ? obj.bathrooms : undefined,
+        propertyType: typeof obj.propertyType === 'string' ? obj.propertyType : undefined,
+        postcode: typeof obj.postcode === 'string' ? obj.postcode : undefined,
+        // squareFeetInternal is often null for the subject (only the carousel comps
+        // tend to carry it); read it ONLY from this subject object, never globally.
+        squareFeetInternal: (typeof obj.squareFeetInternal === 'number' && obj.squareFeetInternal > 0)
+          ? obj.squareFeetInternal : undefined,
+      };
+    } catch (e) {
+      logError(' Chestertons flight extraction threw:', e);
+      return null;
+    }
+  }
+
   function extractPropertyDataChestertons() {
     // Chestertons is a React SPA: the price/beds/baths/type are NOT in the initial
     // server HTML — they render client-side after the content script fires at
@@ -825,27 +942,63 @@
       }
     }
 
-    // Bedrooms/Bathrooms - regex on page text (more reliable than DOM selectors)
-    const bedsMatch = pageText.match(/(\d+)\s*(?:bed(?:room)?s?)/i);
-    if (bedsMatch) {
-      data.bedrooms = parseInt(bedsMatch[1], 10);
-    }
-    const bathsMatch = pageText.match(/(\d+)\s*(?:bath(?:room)?s?)/i);
-    if (bathsMatch) {
-      data.bathrooms = parseInt(bathsMatch[1], 10);
+    // FIX #4: Prefer the SUBJECT property object from the RSC flight stream, anchored on
+    // the numeric URL id. This avoids the first-match-wins innerText regexes below
+    // latching onto the WRONG unit on multi-unit / similar-listings carousel pages
+    // (the trigger 3-bed was mis-read as a 1-bed that way). Falls back to the regexes
+    // when the flight stream is unavailable (older render path / structure change).
+    const subject = extractChestertonsSubjectFromFlight();
+    if (subject) {
+      log(' Chestertons subject (flight): beds=' + subject.bedrooms +
+          ', baths=' + subject.bathrooms + ', type=' + subject.propertyType +
+          ', sqft=' + subject.squareFeetInternal + ', postcode=' + subject.postcode);
     }
 
-    // Size - look for sqft pattern
-    const sizeMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i);
-    if (sizeMatch) {
-      const sqft = parseInt(sizeMatch[1].replace(/,/g, ''), 10);
-      if (sqft >= 100 && sqft <= 50000) { // Validate reasonable range
-        data.sizings = [{ minimumSize: sqft, unit: 'sqft' }];
+    // Bedrooms/Bathrooms - subject object first, else regex on page text.
+    if (subject && Number.isFinite(subject.bedrooms)) {
+      data.bedrooms = subject.bedrooms;
+    } else {
+      const bedsMatch = pageText.match(/(\d+)\s*(?:bed(?:room)?s?)/i);
+      if (bedsMatch) {
+        data.bedrooms = parseInt(bedsMatch[1], 10);
+      }
+    }
+    if (subject && Number.isFinite(subject.bathrooms)) {
+      data.bathrooms = subject.bathrooms;
+    } else {
+      const bathsMatch = pageText.match(/(\d+)\s*(?:bath(?:room)?s?)/i);
+      if (bathsMatch) {
+        data.bathrooms = parseInt(bathsMatch[1], 10);
       }
     }
 
-    // Postcode from address
-    if (data.address?.displayAddress) {
+    // Size - read sqft ONLY from the subject object (its squareFeetInternal). Do NOT
+    // scrape squareFeetInternal globally: the page carries ~18 of them and only ~1 is
+    // the subject's (the rest are carousel comps) — wrong-property hazard. The subject's
+    // value is often null; when it is, leave data.sizings unset so analyzeProperty falls
+    // back to estimateSqft and flags size_source='estimated' (FIX #1 then neutralizes the
+    // verdict). The old innerText /sqft/ regex is kept ONLY as a last resort when the
+    // flight stream is entirely unavailable.
+    if (subject && Number.isFinite(subject.squareFeetInternal) && subject.squareFeetInternal > 0) {
+      data.sizings = [{ minimumSize: subject.squareFeetInternal, unit: 'sqft' }];
+    } else if (!subject) {
+      const sizeMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i);
+      if (sizeMatch) {
+        const sqft = parseInt(sizeMatch[1].replace(/,/g, ''), 10);
+        if (sqft >= 100 && sqft <= 50000) { // Validate reasonable range
+          data.sizings = [{ minimumSize: sqft, unit: 'sqft' }];
+        }
+      }
+    }
+
+    // Postcode - subject object first (full postcode incl. incode), else parse from address.
+    if (subject && subject.postcode) {
+      data.address = data.address || {};
+      const parts = subject.postcode.trim().split(/\s+/);
+      data.address.outcode = parts[0] || '';
+      data.address.incode = parts[1] || '';
+      data.address.postcode = subject.postcode.trim();
+    } else if (data.address?.displayAddress) {
       const pcMatch = data.address.displayAddress.match(/([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})/i);
       if (pcMatch) {
         const parts = pcMatch[1].split(/\s+/);
@@ -857,14 +1010,18 @@
     // Agent name
     data.customer = { companyName: 'Chestertons' };
 
-    // Property type from page text
-    const textLower = pageText.toLowerCase();
-    if (textLower.includes('penthouse')) data.propertyType = 'penthouse';
-    else if (textLower.includes('studio')) data.propertyType = 'studio';
-    else if (textLower.includes('house')) data.propertyType = 'house';
-    else if (textLower.includes('maisonette')) data.propertyType = 'maisonette';
-    else if (textLower.includes('apartment')) data.propertyType = 'apartment';
-    else data.propertyType = 'flat';
+    // Property type - subject object first (FIX #4), else infer from page text.
+    if (subject && subject.propertyType) {
+      data.propertyType = subject.propertyType;
+    } else {
+      const textLower = pageText.toLowerCase();
+      if (textLower.includes('penthouse')) data.propertyType = 'penthouse';
+      else if (textLower.includes('studio')) data.propertyType = 'studio';
+      else if (textLower.includes('house')) data.propertyType = 'house';
+      else if (textLower.includes('maisonette')) data.propertyType = 'maisonette';
+      else if (textLower.includes('apartment')) data.propertyType = 'apartment';
+      else data.propertyType = 'flat';
+    }
 
     // Floorplan - Chestertons uses homeflow-assets CDN with /files/floorplan/ path
     // CRITICAL: Match spider pattern - look for /files/floorplan/ path, not just domain
@@ -1797,16 +1954,48 @@
   }
 
   async function displayResult(r, source) {
+    // FIX #1: When the sqft was NOT found on the page and we fell back to estimateSqft()
+    // (source === 'estimated'), the fair value — and therefore the over/under-priced
+    // verdict — rests on a guessed size. Estimated size flips the verdict on ~29% of
+    // real listings and produces a FALSE "OVERPRICED" on ~12%. So in that state we must
+    // NOT render a confident verdict: suppress the bold OVERPRICED / GOOD DEAL banner,
+    // show a neutral "SIZE UNKNOWN — EST. ONLY" state, soften the % to a tilde estimate,
+    // widen the displayed range (±40%), and surface the caveat ABOVE the number.
+    // The normal path (size from the page / floorplan / cache) is UNCHANGED.
+    const sizeEstimated = source === 'estimated';
+
     const assessment = r.premium_pct > 15 ? 'overpriced' : r.premium_pct < -10 ? 'good_deal' : 'fair';
     const colorClass = assessment === 'overpriced' ? 'rfv-overpriced' :
                        assessment === 'good_deal' ? 'rfv-good-deal' : 'rfv-fair';
     const label = assessment.replace('_', ' ').toUpperCase();
     const sign = r.premium_pct > 0 ? '+' : '';
 
+    // When size is estimated, widen the shown range to ~±40% (fairValue×0.6..×1.6) to
+    // reflect that the point estimate is soft, rather than the normal ~±20% band.
+    const rangeLow = sizeEstimated ? Math.round(r.fair_value * 0.6) : r.range_low;
+    const rangeHigh = sizeEstimated ? Math.round(r.fair_value * 1.6) : r.range_high;
+
     const sizeNote = source === 'ocr' ? `${r.size_sqft} sqft (from floorplan)` :
                      source === 'estimated' ? 'Size estimated from beds' :
                      source === 'cached' ? 'From daily analysis' :
                      `${r.size_sqft} sqft`;
+
+    // The assessment block: confident verdict on the normal path; a neutral
+    // "size unknown" state when the size was estimated.
+    const assessmentHtml = sizeEstimated
+      ? `<div class="rfv-assessment rfv-fair rfv-estimated">
+           <div class="rfv-assessment-value rfv-estimated-pct">~${sign}${r.premium_pct}%</div>
+           <div class="rfv-assessment-label">SIZE UNKNOWN — EST. ONLY</div>
+         </div>`
+      : `<div class="rfv-assessment ${colorClass}">
+           <div class="rfv-assessment-value">${sign}${r.premium_pct}%</div>
+           <div class="rfv-assessment-label">${label}</div>
+         </div>`;
+
+    // Caveat shown ABOVE the model number when the valuation rests on a guessed size.
+    const sizeCaveatHtml = sizeEstimated
+      ? `<div class="rfv-size-caveat">Size not found on page — valuation approximate</div>`
+      : '';
 
     const amenitiesHtml = r.amenities_detected?.length > 0
       ? `<div class="rfv-amenities">${r.amenities_detected.map(a =>
@@ -1826,14 +2015,13 @@
 
         <hr class="rfv-divider">
 
+        ${sizeCaveatHtml}
+
         <div class="rfv-label">Model Estimate</div>
         <div class="rfv-price">£${formatNum(r.fair_value)}/mo</div>
-        <div class="rfv-range">Range: £${formatNum(r.range_low)} – £${formatNum(r.range_high)}</div>
+        <div class="rfv-range">Range: £${formatNum(rangeLow)} – £${formatNum(rangeHigh)}</div>
 
-        <div class="rfv-assessment ${colorClass}">
-          <div class="rfv-assessment-value">${sign}${r.premium_pct}%</div>
-          <div class="rfv-assessment-label">${label}</div>
-        </div>
+        ${assessmentHtml}
 
         ${amenitiesHtml}
 

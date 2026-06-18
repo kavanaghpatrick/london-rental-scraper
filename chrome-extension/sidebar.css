@@ -83,6 +83,28 @@
   font-style: italic;
 }
 
+/* FIX #1: estimated-size state. The verdict rests on a guessed size, so the
+   assessment block is shown neutral (grey, not the red/green verdict colors)
+   and the percentage is de-emphasized (smaller, lighter, no bold). */
+#rent-fair-value .rfv-assessment.rfv-estimated {
+  background: #4b5563; /* neutral slate — NOT the overpriced/good-deal colors */
+}
+
+#rent-fair-value .rfv-assessment-value.rfv-estimated-pct {
+  font-size: 15px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+/* FIX #1: caveat surfaced ABOVE the model number when size was estimated. */
+#rent-fair-value .rfv-size-caveat {
+  font-size: 11px;
+  font-weight: 600;
+  color: #d97706; /* amber warning */
+  text-align: center;
+  margin: 6px 0 4px;
+}
+
 /* Assessment colors */
 #rent-fair-value .rfv-overpriced {
   background: #ef4444;
