@@ -349,6 +349,7 @@ export function loadExtractors(html, { hostname, pathname = '/properties/1', hre
     '__export.extractPropertyDataRightmove=extractPropertyDataRightmove;' +
     '__export.extractPropertyDataKnightFrank=extractPropertyDataKnightFrank;' +
     '__export.extractPropertyDataFoxtons=extractPropertyDataFoxtons;' +
+    '__export.extractPropertyDataChestertons=extractPropertyDataChestertons;' +
     '__export.extractSqftFromPage=extractSqftFromPage;' +
     '__export.extractPostcode=extractPostcode;' +
     '__export.parsePrice=parsePrice;' +

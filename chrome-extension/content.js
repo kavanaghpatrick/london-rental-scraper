@@ -1141,13 +1141,37 @@
           const m = objStr.match(new RegExp('"' + f + '":\\s*"([^"]*)"'));
           return m ? m[1] : undefined;
         };
+        // First URL inside the subject-scoped objStr's floorplans:[...] array. objStr is
+        // already bounded to THIS subject, so the first match is the subject's own plan
+        // (never a carousel comp). The capture [^"\\] stops at the first quote OR
+        // backslash, so a residual trailing escape from the stream is excluded rather
+        // than captured (a backslash-suffixed URL would 404 on fetch); the closing-quote
+        // anchor is dropped so an optional trailing backslash before the quote can't make
+        // the whole match fail.
+        const arr = (f) => {
+          const m = objStr.match(new RegExp('"' + f + '":\\s*\\[\\s*"([^"\\\\]+)'));
+          return m ? m[1].replace(/\\+$/, '') : undefined;
+        };
         return {
           bedrooms: num('bedrooms'),
           bathrooms: num('bathrooms'),
           propertyType: str('propertyType'),
           postcode: str('postcode'),
           squareFeetInternal: num('squareFeetInternal'),
+          floorplanUrl: arr('floorplans'),
         };
+      }
+
+      // The subject object also carries a floorplans:[<url>,...] array of direct
+      // homeflow-assets.co.uk /files/floorplan/ URLs. For the SIZE-UNKNOWN listings the
+      // subject's squareFeetInternal is null, so OCR of this plan is the ONLY way to
+      // recover a real sqft. Surface floorplans[0] here (already unescaped + anchored to
+      // the subject id, so it is guaranteed the subject's own plan, not a carousel comp).
+      let floorplanUrl;
+      if (Array.isArray(obj.floorplans)) {
+        const first = obj.floorplans.find(
+          (u) => typeof u === 'string' && u.trim().toLowerCase().startsWith('http'));
+        if (first) floorplanUrl = first.trim().replace(/\\+$/, '');
       }
 
       return {
@@ -1159,6 +1183,7 @@
         // tend to carry it); read it ONLY from this subject object, never globally.
         squareFeetInternal: (typeof obj.squareFeetInternal === 'number' && obj.squareFeetInternal > 0)
           ? obj.squareFeetInternal : undefined,
+        floorplanUrl,
       };
     } catch (e) {
       logError(' Chestertons flight extraction threw:', e);
@@ -1322,20 +1347,36 @@
       else data.propertyType = 'flat';
     }
 
-    // Floorplan - Chestertons uses homeflow-assets CDN with /files/floorplan/ path
-    // CRITICAL: Match spider pattern - look for /files/floorplan/ path, not just domain
-    // Also check data-src for lazy-loaded images
-    const floorplanImg = document.querySelector(
-      'img[src*="/files/floorplan/"], img[data-src*="/files/floorplan/"], ' +
-      'img[src*="floorplan"], img[data-src*="floorplan"]'
-    );
-    if (floorplanImg) {
-      const url = floorplanImg.src || floorplanImg.dataset.src || floorplanImg.getAttribute('data-src');
-      if (url) data.floorplans = [{ url }];
+    // Floorplan - Chestertons uses homeflow-assets CDN with /files/floorplan/ path.
+    // PREFER the SUBJECT object's floorplans[0] from the RSC flight stream. At
+    // document_idle the live PDP has ZERO rendered floorplan <img> tags (the Floorplans
+    // tab is a lazy React skeleton), and the only place the subject plan URL exists is
+    // inside the escaped __next_f stream — so the DOM selectors / innerHTML regex below
+    // either miss it or (the regex) capture it with a trailing backslash that 404s on
+    // fetch. The subject URL is already unescaped + anchored to the numeric URL id, so it
+    // is guaranteed THIS listing's own plan (not a carousel comp). This is what lets the
+    // existing ocrFloorplan() path fire and recover real sqft (size_source='ocr') instead
+    // of falling back to estimateSqft -> "SIZE UNKNOWN".
+    if (subject && subject.floorplanUrl) {
+      data.floorplans = [{ url: subject.floorplanUrl }];
+    }
+    // DOM fallbacks (older render path / structure change) — only when the flight stream
+    // didn't yield a URL. Match spider pattern (look for /files/floorplan/ path, not just
+    // domain) and check data-src for lazy-loaded images.
+    if (!data.floorplans) {
+      const floorplanImg = document.querySelector(
+        'img[src*="/files/floorplan/"], img[data-src*="/files/floorplan/"], ' +
+        'img[src*="floorplan"], img[data-src*="floorplan"]'
+      );
+      if (floorplanImg) {
+        const url = floorplanImg.src || floorplanImg.dataset.src || floorplanImg.getAttribute('data-src');
+        if (url) data.floorplans = [{ url }];
+      }
     }
     if (!data.floorplans) {
-      // Try to find in page HTML - use spider's exact pattern
-      const floorplanMatch = document.body.innerHTML.match(/https:\/\/[^"\s]+\/files\/floorplan\/[^"\s]+/i);
+      // Try to find in page HTML - use spider's exact pattern. [^"\s\\] excludes the
+      // escaped-stream's trailing backslash so the URL doesn't 404 on fetch.
+      const floorplanMatch = document.body.innerHTML.match(/https:\/\/[^"\s\\]+\/files\/floorplan\/[^"\s\\]+/i);
       if (floorplanMatch) {
         data.floorplans = [{ url: floorplanMatch[0] }];
       }
@@ -1881,12 +1922,14 @@
         return floorplanLink.href;
       }
 
-      // Final fallback - regex search in page HTML for common CDN patterns
+      // Final fallback - regex search in page HTML for common CDN patterns.
+      // [^"\s\\] (not [^"\s]) so a URL sitting inside an escaped RSC flight chunk isn't
+      // captured with its trailing backslash — that corrupted URL 404s on fetch.
       const htmlContent = document.body.innerHTML;
       const patterns = [
-        /https:\/\/[^"\s]+\/files\/floorplan\/[^"\s]+/i,  // Chestertons
-        /https:\/\/content\.knightfrank\.com\/[^"\s]*floorplan[^"\s]*\.(?:jpg|png|jpeg)/i,  // Knight Frank
-        /https:\/\/[^"\s]*savills[^"\s]*(?:floorplan|floor-plan|_fp)[^"\s]*\.(?:jpg|png|jpeg)/i,  // Savills
+        /https:\/\/[^"\s\\]+\/files\/floorplan\/[^"\s\\]+/i,  // Chestertons
+        /https:\/\/content\.knightfrank\.com\/[^"\s\\]*floorplan[^"\s\\]*\.(?:jpg|png|jpeg)/i,  // Knight Frank
+        /https:\/\/[^"\s\\]*savills[^"\s\\]*(?:floorplan|floor-plan|_fp)[^"\s\\]*\.(?:jpg|png|jpeg)/i,  // Savills
       ];
       for (const pattern of patterns) {
         const match = htmlContent.match(pattern);
