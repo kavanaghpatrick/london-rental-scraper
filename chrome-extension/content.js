@@ -604,23 +604,60 @@
       } catch (e) {}
     }
 
-    // Strategy 2: window.PAGE_MODEL
+    // Strategy 2: window.PAGE_MODEL (legacy single-underscore embedded blob).
+    // Kept for backward-compat: an older Rightmove build (and some cached pages)
+    // shipped `window.PAGE_MODEL = { propertyData: {...} }` directly in a <script>.
     for (const script of document.querySelectorAll('script')) {
       const text = script.textContent || '';
       const match = text.match(/window\.PAGE_MODEL\s*=\s*/);
       if (match) {
         try {
-          const start = match.index + match[0].length;
-          let braceCount = 0, i = start;
-          while (i < text.length) {
-            if (text[i] === '{') braceCount++;
-            else if (text[i] === '}' && --braceCount === 0) break;
-            i++;
-          }
-          const data = JSON.parse(text.slice(start, i + 1));
-          if (data.propertyData) {
+          const obj = parseScriptObjectLiteral(text, match.index + match[0].length);
+          if (obj && obj.propertyData) {
             log(' Found via PAGE_MODEL');
-            return data.propertyData;
+            return obj.propertyData;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Strategy 3: window.__PAGE_MODEL (CURRENT live Rightmove — DOUBLE underscore).
+    // Rightmove now ships a devalue/flatten-encoded blob:
+    //   window.__PAGE_MODEL = {"data":"<escaped JSON>","encoding":"on"}
+    // where `data` is a STRING of escaped JSON that parses to a FLAT reference-indexed
+    // array `arr`. arr[0] is the root index-map ({propertyData: <idx>, ...}); every
+    // value inside an object/array node is an INTEGER INDEX into arr. We rebuild the
+    // real object via decodeRightmovePageModel() (see its comment for the load-bearing
+    // scalar-vs-container subtlety) and return propertyData in the canonical shape the
+    // shared helpers already consume.
+    //
+    // Two sources, in order:
+    //   (a) a live runtime global window.__PAGE_MODEL (set post-hydration by client JS);
+    //   (b) the static escaped blob embedded in a page <script> (what a fresh load /
+    //       a non-browser fetch sees before hydration).
+    // (a) is tried first so a future runtime-only format still works; (b) is the path
+    // that fires on a normally-rendered page.
+    try {
+      const runtime = (typeof window !== 'undefined') ? window.__PAGE_MODEL : null;
+      if (runtime && typeof runtime === 'object') {
+        const pd = decodeRightmovePageModel(runtime);
+        if (pd) {
+          log(' Found via __PAGE_MODEL (runtime global)');
+          return pd;
+        }
+      }
+    } catch (e) {}
+
+    for (const script of document.querySelectorAll('script')) {
+      const text = script.textContent || '';
+      const match = text.match(/window\.__PAGE_MODEL\s*=\s*/);
+      if (match) {
+        try {
+          const obj = parseScriptObjectLiteral(text, match.index + match[0].length);
+          const pd = decodeRightmovePageModel(obj);
+          if (pd) {
+            log(' Found via __PAGE_MODEL (embedded script)');
+            return pd;
           }
         } catch (e) {}
       }
@@ -628,6 +665,107 @@
 
     log(' No Rightmove property data found');
     return null;
+  }
+
+  // Brace-match a top-level `{ ... }` object literal starting at `start` in `text`,
+  // honouring string quotes + escapes so a `{`/`}` inside a JSON string value (or an
+  // escaped quote) does not throw off the depth count, then JSON.parse it.
+  // Used by the PAGE_MODEL / __PAGE_MODEL embedded-<script> strategies.
+  function parseScriptObjectLiteral(text, start) {
+    let depth = 0, i = start, inStr = false, esc = false, quote = '';
+    // skip leading whitespace to the opening brace
+    while (i < text.length && text[i] !== '{') i++;
+    for (; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === '\\') esc = true;
+        else if (ch === quote) inStr = false;
+        continue;
+      }
+      if (ch === '"' || ch === "'") { inStr = true; quote = ch; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') { if (--depth === 0) { i++; break; } }
+    }
+    const slice = text.slice(start, i);
+    const objStart = slice.indexOf('{');
+    return JSON.parse(objStart === -1 ? slice : slice.slice(objStart));
+  }
+
+  // Decode Rightmove's devalue/flatten-encoded __PAGE_MODEL into the canonical
+  // propertyData object. `model` is {data:"<escaped JSON>", encoding:...} (the live
+  // shape) OR an already-decoded {propertyData:{...}} (defensive). Returns the
+  // propertyData object or null.
+  //
+  // FLATTEN FORMAT: model.data parses to a flat array `arr`. arr[0] is the root
+  // index-map. Inside any object/array node, a numeric value is an INDEX into arr.
+  //
+  // THE LOAD-BEARING SUBTLETY: dereferencing is SINGLE-HOP per slot and TYPE-AWARE.
+  // resolveSlot(idx) inspects arr[idx]: if it is a CONTAINER (object/array) we rebuild
+  // it, resolving each child value as an index; if it is a SCALAR (string/number/bool/
+  // null) we return it LITERALLY and DO NOT index again. This is essential because
+  // scalar leaves are themselves small integers — e.g. bedrooms references slot 258 and
+  // arr[258] === 2; naive "every number is an index" recursion would then read arr[2]
+  // (the property id) and corrupt the value. sizings carries multiple unit rows
+  // (ha/sqft/sqm/ac) with their sizes likewise hoisted to slots.
+  function decodeRightmovePageModel(model) {
+    if (!model || typeof model !== 'object') return null;
+
+    // Already-decoded shape (legacy / defensive): {propertyData:{...}} not flattened.
+    if (model.propertyData && typeof model.propertyData === 'object'
+        && !Array.isArray(model.propertyData) && model.data === undefined) {
+      return model.propertyData;
+    }
+
+    let arr;
+    try {
+      arr = typeof model.data === 'string' ? JSON.parse(model.data) : model.data;
+    } catch (e) {
+      return null;
+    }
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+
+    const root = arr[0];
+    if (!root || typeof root !== 'object' || typeof root.propertyData !== 'number') {
+      return null;
+    }
+
+    const cache = new Array(arr.length);
+
+    function resolveValue(v) {
+      if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < arr.length) {
+        return resolveSlot(v);
+      }
+      if (Array.isArray(v)) return v.map(resolveValue);
+      if (v && typeof v === 'object') {
+        const o = {};
+        for (const k of Object.keys(v)) o[k] = resolveValue(v[k]);
+        return o;
+      }
+      return v;
+    }
+
+    function resolveSlot(idx) {
+      if (cache[idx] !== undefined) return cache[idx];
+      const node = arr[idx];
+      let out;
+      if (Array.isArray(node)) {
+        out = [];
+        cache[idx] = out;          // set before recursing => cycle-safe
+        for (const child of node) out.push(resolveValue(child));
+      } else if (node && typeof node === 'object') {
+        out = {};
+        cache[idx] = out;
+        for (const k of Object.keys(node)) out[k] = resolveValue(node[k]);
+      } else {
+        out = node;                // scalar leaf — literal, never re-indexed
+        cache[idx] = out;
+      }
+      return out;
+    }
+
+    const pd = resolveSlot(root.propertyData);
+    return (pd && typeof pd === 'object') ? pd : null;
   }
 
   // ============================================
@@ -821,12 +959,26 @@
     }
 
     // Postcode from address - FIXED split bug
+    // KF addresses are OUTCODE-ONLY ("...Chelsea, London, SW3"): they carry no incode.
+    // First try a FULL postcode (outcode + incode); if none is present, fall back to an
+    // outcode-only match anchored at the END of the address so we still set
+    // data.address.outcode (the spider's own parse_card_data also stores outcode-only
+    // for KF, so this matches canonical behaviour). Without this fallback the full-only
+    // regex never matched KF's "...London, SW3" and outcode was left unset.
     if (data.address?.displayAddress) {
-      const pcMatch = data.address.displayAddress.match(/([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})/i);
+      const addr = data.address.displayAddress;
+      const pcMatch = addr.match(/([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})/i);
       if (pcMatch) {
         const parts = pcMatch[1].split(/\s+/);
         data.address.outcode = parts[0] || '';
         data.address.incode = parts[1] || '';
+      } else {
+        const ocMatch = addr.match(/,\s*([A-Z]{1,2}\d{1,2}[A-Z]?)\s*$/i)
+          || addr.match(/\b([A-Z]{1,2}\d{1,2}[A-Z]?)\s*$/i);
+        if (ocMatch) {
+          data.address.outcode = ocMatch[1].toUpperCase();
+          data.address.incode = '';
+        }
       }
     }
 

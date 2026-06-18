@@ -1,0 +1,84 @@
+<!--
+  REAL Knight Frank property-detail-page (PDP) DOM fixture.
+
+  PROVENANCE / GROUND TRUTH
+  -------------------------
+  Listing: Alexandra Mansions, 333 Kings Road, Chelsea, London, SW3
+  URL family: https://www.knightfrank.co.uk/properties/residential/to-let/
+              alexandra-mansions-333-kings-road-chelsea-london-sw3/chq012691683lg
+  The KF detail page is a CLIENT-RENDERED ANGULAR SPA — a raw curl/WebFetch returns
+  only a ~59KB nav-only shell (`<title>Knight Frank</title>`, empty og: tags, no
+  embedded JSON). There is NO __NEXT_DATA__, NO window.* state blob. Everything below
+  only exists in the live DOM AFTER the app bundle (app-93534266.bundle.js) renders.
+
+  The element tags / class names here are the REAL ones taken from that Angular bundle:
+    <property-title>, property-title-container, <property-price-title>,
+    property-secondary-price-title, <property-details>, property-details-container,
+    <property-icons>, property-label. (The extension's current selectors
+    `.kf-pdp-hero__title` / `.kf-pdp-hero__price` / `.kf-pdp-features` /
+    `.kf-pdp-description` are FICTIONAL — they appear nowhere in the bundle. The
+    extractor only works today via its innerText-regex + generic [class*="price"]/h1
+    fallbacks; this fixture exercises that path.)
+
+  The numeric ground truth (price/beds/baths/sqft/type) is the spider's own captured
+  record for this building (output/*knightfrank*.jsonl, property chq012524374):
+      price_pcm   = 2999   (rendered "£692 per week"  -> ×52/12 -> £2999 pcm)
+      price_period= pw
+      size_sqft   = 625
+      bedrooms    = 2
+      bathrooms   = 1
+      receptions  = 1
+      postcode    = SW3    (OUTCODE ONLY — KF addresses carry no incode)
+      property_type = flat
+-->
+<!DOCTYPE html>
+<html lang="en-GB">
+<head><title>Alexandra Mansions, 333 Kings Road, Chelsea, London, SW3 | Knight Frank</title></head>
+<body>
+  <header><nav>Knight Frank navigation (ignored)</nav></header>
+  <main role="main">
+    <div class="container-fluid interactive-container property-details-container">
+      <property-title>
+        <div class="property-title-container">
+          <h1 class="property-title">Alexandra Mansions, 333 Kings Road, Chelsea, London, SW3</h1>
+        </div>
+      </property-title>
+
+      <property-price-title>
+        <div class="property-price-title">£692 per week</div>
+        <div class="property-secondary-price-title">(£2,998 pcm)</div>
+      </property-price-title>
+
+      <property-icons>
+        <ul class="property-icons">
+          <li class="property-label">2 bedrooms</li>
+          <li class="property-label">1 bathroom</li>
+          <li class="property-label">1 reception</li>
+          <li class="property-label">625 sq ft</li>
+        </ul>
+      </property-icons>
+
+      <property-details>
+        <div class="property-details">
+          <p>A beautifully presented two bedroom apartment / flat on the Kings Road.</p>
+          <ul class="key-features">
+            <li>Two bedrooms</li>
+            <li>Porter</li>
+            <li>Lift</li>
+          </ul>
+        </div>
+      </property-details>
+
+      <a href="https://content.knightfrank.com/property/chq012691683/floorplans/en/chq012691683-en-floorplan-abc123.jpg">View Floorplan</a>
+    </div>
+
+    <!-- Similar-properties carousel: contains OTHER prices/beds the first-match
+         regex must not latch onto incorrectly. Kept after the subject block so the
+         subject's £ / beds appear first in innerText document order. -->
+    <section class="similar-properties">
+      <div class="property-label">£1,500 per week</div>
+      <div class="property-label">4 bedrooms</div>
+    </section>
+  </main>
+</body>
+</html>

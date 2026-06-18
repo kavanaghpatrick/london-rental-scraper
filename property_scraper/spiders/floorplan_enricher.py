@@ -16,6 +16,7 @@ Usage:
 
 import scrapy
 import sqlite3
+import os
 import json
 import re
 import time
@@ -79,7 +80,8 @@ class FloorplanEnricherSpider(scrapy.Spider):
         },
     }
 
-    def __init__(self, source=None, limit=None, use_ocr=False, db_path=None, *args, **kwargs):
+    def __init__(self, source=None, limit=None, use_ocr=False, db_path=None,
+                 postgres=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         if not source or source not in self.SOURCE_CONFIG:
@@ -92,6 +94,20 @@ class FloorplanEnricherSpider(scrapy.Spider):
         # db_path defaults to the canonical DB; override via -a db_path=... for testing
         self.db_path = db_path or 'output/rentals.db'
         self.use_ocr = str(use_ocr).lower() in ('true', '1', 'yes') and OCR_AVAILABLE
+
+        # Postgres mode: scheduled (daily-scrape) runs write PROD Postgres, the same
+        # DB that scripts/ocr_enrich.py reads. Without this the captured floorplan_url
+        # would land in local SQLite and the OCR step would still starve (#WS3).
+        # Gated on BOTH -a postgres=true AND a POSTGRES_URL in the env, so a stray
+        # env var on a local run never accidentally writes prod.
+        flag_pg = str(postgres).lower() in ('true', '1', 'yes')
+        self.postgres_url = os.environ.get('POSTGRES_URL')
+        self.use_postgres = flag_pg and bool(self.postgres_url)
+        if flag_pg and not self.postgres_url:
+            self.logger.error(
+                "[CONFIG] postgres=true but POSTGRES_URL is not set — "
+                "falling back to SQLite (%s)", self.db_path
+            )
 
         # ThreadPoolExecutor for OCR
         self.executor = ThreadPoolExecutor(max_workers=2) if self.use_ocr else None
@@ -138,6 +154,21 @@ class FloorplanEnricherSpider(scrapy.Spider):
             return self.SOURCE_THROTTLE[self.source]
         return {}
 
+    def _get_connection(self):
+        """Open a DB connection: Postgres (prod) when use_postgres, else SQLite.
+
+        Returns (conn, placeholder) where placeholder is the param token ('%s'
+        for Postgres, '?' for SQLite). Caller closes the connection.
+        """
+        if self.use_postgres:
+            import psycopg2
+            import psycopg2.extras
+            conn = psycopg2.connect(self.postgres_url)
+            return conn, '%s', psycopg2.extras
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        return conn, '?', None
+
     def start_requests(self):
         """Read properties from database that need enrichment (floorplan or description).
 
@@ -147,17 +178,23 @@ class FloorplanEnricherSpider(scrapy.Spider):
         conn = None
         rows = []
 
-        try:
-            conn = sqlite3.connect(self.db_path, timeout=30.0)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+        db_label = 'Postgres' if self.use_postgres else f'SQLite ({self.db_path})'
+        self.logger.info(f"[START] Reading listings from {db_label}")
 
-            # Find listings missing floorplan URL OR description
-            query = '''
+        try:
+            conn, ph, pg_extras = self._get_connection()
+            if self.use_postgres:
+                cursor = conn.cursor(cursor_factory=pg_extras.RealDictCursor)
+            else:
+                cursor = conn.cursor()
+
+            # Find listings missing floorplan URL OR description.
+            # LENGTH() is portable across SQLite and Postgres.
+            query = f'''
                 SELECT property_id, url, address, price_pcm, bedrooms, size_sqft,
                        floorplan_url, description
                 FROM listings
-                WHERE source = ?
+                WHERE source = {ph}
                 AND (
                     (floorplan_url IS NULL OR floorplan_url = '')
                     OR (description IS NULL OR description = '')
@@ -167,11 +204,14 @@ class FloorplanEnricherSpider(scrapy.Spider):
             params = [self.source]
 
             if self.limit:
-                query += f' LIMIT {self.limit}'
+                query += f' LIMIT {int(self.limit)}'
 
             cursor.execute(query, params)
-            rows = cursor.fetchall()
-        except sqlite3.Error as e:
+            fetched = cursor.fetchall()
+            # Normalise to plain dicts so downstream row['col'] works for both
+            # sqlite3.Row and psycopg2 RealDictRow.
+            rows = [dict(r) for r in fetched]
+        except Exception as e:
             self.logger.error(f"[START] Database error: {e}")
             rows = []
         finally:
@@ -609,28 +649,57 @@ class FloorplanEnricherSpider(scrapy.Spider):
 
         return floorplan_url, description
 
+    @staticmethod
+    def _clean_floorplan_url(url):
+        """Strip JSON-escape artefacts off a floorplan URL captured from raw HTML.
+
+        Live Rightmove serves the page model as escaped JSON inside a <script>, so
+        a regex over response.text can pick up trailing backslashes (\\" / \\/) and
+        escaped slashes mid-URL. Normalise them so the stored URL is fetchable.
+        """
+        if not url:
+            return url
+        # Unescape JSON slashes (\/ -> /, / -> /) then drop any trailing
+        # backslash / quote left over from the escape boundary.
+        url = url.replace('\\u002F', '/').replace('\\u002f', '/').replace('\\/', '/')
+        url = url.rstrip('\\').rstrip('"').rstrip('\\')
+        return url
+
     def _extract_rightmove(self, response):
         """Extract floorplan URL AND description from Rightmove page.
 
-        Rightmove floorplan URLs contain '_FLP_' in the filename:
-        https://media.rightmove.co.uk/XXXk/XXXXXX/ID/XXXXX_FLP_00_0000.jpeg
+        Rightmove floorplan URLs (2026) live under the /property-floorplan/ path:
+            https://media.rightmove.co.uk/property-floorplan/<dir>/<id>/<hash>.jpeg
+        Older listings used a '_FLP_' filename token:
+            https://media.rightmove.co.uk/XXXk/XXXXXX/ID/XXXXX_FLP_00_0000.jpeg
+        Both are matched; '_max_' thumbnails are skipped in favour of full size.
+
+        The page no longer ships <script id="__NEXT_DATA__"> — inline data moved to
+        window.__PAGE_MODEL — so the floorplan must be recovered from the raw HTML
+        media URLs. The __NEXT_DATA__ branch is kept for back-compat with any page
+        that still carries it.
 
         Returns: (floorplan_url, description)
         """
         floorplan_url = None
         description = None
 
-        # Strategy 1: Search HTML for FLP URLs directly (most reliable)
-        flp_pattern = r'https://media\.rightmove\.co\.uk/[^"\'<>\s]*_FLP_[^"\'<>\s]*'
-        matches = re.findall(flp_pattern, response.text, re.I)
-
+        # Strategy 1: Search raw HTML for floorplan media URLs directly (most
+        # reliable on the current page model, which has no __NEXT_DATA__).
+        # Match BOTH the new /property-floorplan/ path and the legacy _FLP_ token.
+        media_pattern = (
+            r'https://media\.rightmove\.co\.uk/'
+            r'(?:[^"\'<>\s\\]*property-floorplan[^"\'<>\s\\]*'
+            r'|[^"\'<>\s\\]*_FLP_[^"\'<>\s\\]*)'
+        )
+        matches = [self._clean_floorplan_url(m) for m in re.findall(media_pattern, response.text, re.I)]
         if matches:
-            # Filter out thumbnails (prefer full size images)
-            full_size = [m for m in matches if '_max_' not in m]
-            if full_size:
-                floorplan_url = full_size[0]
-            else:
-                floorplan_url = matches[0]
+            # Prefer the full-size image (drop '_max_' resized thumbnails) and
+            # avoid the resized '/dir/' CDN variant when a clean URL exists.
+            def _rank(u):
+                return ('_max_' in u, '/dir/' in u)
+            best = sorted(matches, key=_rank)[0]
+            floorplan_url = best
 
         # Strategy 2: Try __NEXT_DATA__ JSON (for floorplan and description)
         script = response.css('script#__NEXT_DATA__::text').get()
@@ -723,31 +792,46 @@ class FloorplanEnricherSpider(scrapy.Spider):
         if not updates:
             return
 
+        # Rebuild the SET clause with the correct placeholder for the backend.
+        ph = '%s' if self.use_postgres else '?'
+        set_clause = ', '.join(u.replace('= ?', f'= {ph}') for u in updates)
         params.extend([self.source, property_id])
 
-        # Issue #33 FIX: Retry with exponential backoff
+        # Issue #33 FIX: Retry with exponential backoff (SQLite lock contention).
         max_retries = 5
         for attempt in range(max_retries):
+            conn = None
             try:
-                conn = sqlite3.connect(self.db_path)
-                conn.execute("PRAGMA busy_timeout = 60000")  # 60s timeout
+                conn, _ph, _ = self._get_connection()
+                if not self.use_postgres:
+                    conn.execute("PRAGMA busy_timeout = 60000")  # 60s timeout
                 cursor = conn.cursor()
                 cursor.execute(f'''
                     UPDATE listings
-                    SET {', '.join(updates)}
-                    WHERE source = ? AND property_id = ?
+                    SET {set_clause}
+                    WHERE source = {ph} AND property_id = {ph}
                 ''', params)
                 conn.commit()
                 conn.close()
                 return  # Success
             except sqlite3.OperationalError as e:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                 if "locked" in str(e).lower() and attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 2  # 2s, 4s, 6s, 8s
                     self.logger.warning(f"[DB-RETRY] {property_id}: database locked, retrying in {wait_time}s ({attempt + 1}/{max_retries})")
                     time.sleep(wait_time)
                 else:
                     self.logger.error(f"[DB-ERROR] Failed to update {property_id} after {max_retries} attempts: {e}")
-            except sqlite3.Error as e:
+            except Exception as e:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                 self.logger.error(f"[DB-ERROR] Failed to update {property_id}: {e}")
                 break
 
@@ -756,29 +840,42 @@ class FloorplanEnricherSpider(scrapy.Spider):
 
         Issue #33 FIX: Added retry logic with exponential backoff for database locks.
         """
+        ph = '%s' if self.use_postgres else '?'
         max_retries = 5
         for attempt in range(max_retries):
+            conn = None
             try:
-                conn = sqlite3.connect(self.db_path)
-                conn.execute("PRAGMA busy_timeout = 60000")  # 60s timeout
+                conn, _ph, _ = self._get_connection()
+                if not self.use_postgres:
+                    conn.execute("PRAGMA busy_timeout = 60000")  # 60s timeout
                 cursor = conn.cursor()
-                cursor.execute('''
+                cursor.execute(f'''
                     UPDATE listings
-                    SET size_sqft = ?
-                    WHERE source = ? AND property_id = ?
+                    SET size_sqft = {ph}
+                    WHERE source = {ph} AND property_id = {ph}
                     AND (size_sqft IS NULL OR size_sqft = 0)
                 ''', (sqft, self.source, property_id))
                 conn.commit()
                 conn.close()
                 return  # Success
             except sqlite3.OperationalError as e:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                 if "locked" in str(e).lower() and attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 2
                     self.logger.warning(f"[DB-RETRY] {property_id} sqft: database locked, retrying in {wait_time}s ({attempt + 1}/{max_retries})")
                     time.sleep(wait_time)
                 else:
                     self.logger.error(f"[DB-ERROR] Failed to update sqft for {property_id} after {max_retries} attempts: {e}")
-            except sqlite3.Error as e:
+            except Exception as e:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
                 self.logger.error(f"[DB-ERROR] Failed to update sqft for {property_id}: {e}")
                 break
 

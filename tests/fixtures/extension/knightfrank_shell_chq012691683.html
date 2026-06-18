@@ -1,0 +1,424 @@
+
+<!DOCTYPE html>
+<html lang="en-GB" dir="auto">
+<head prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns/fb#">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <script>
+        (function () {
+            if (window.__TC_EVENT_TAPPER_PROXY_HC__) return;
+            window.__TC_EVENT_TAPPER_PROXY_HC__ = true;
+
+            if (typeof Proxy === "undefined") return; // graceful fallback
+
+            window.dataLayer = window.dataLayer || [];
+
+            function safeClone(v) {
+                try {
+                    return JSON.parse(JSON.stringify(v));
+                } catch (e) {
+                    return v;
+                }
+            }
+
+            function wrapEventObj(evObj) {
+                if (!evObj || typeof evObj !== "object") return evObj;
+                if (evObj.__tc_proxied__) return evObj;
+
+                function wrapFn(name, fn) {
+                    if (typeof fn !== "function") return fn;
+                    if (fn.__tc_wrapped__) return fn;
+
+                    function wrapped() {
+                        var payload = arguments.length ? arguments[0] : undefined;
+
+                        var evtData = safeClone(payload) || {};
+                        evtData.event = name;
+
+                        window.dataLayer.push(evtData);
+
+                        return fn.apply(this, arguments);
+                    }
+                    wrapped.__tc_wrapped__ = true;
+                    wrapped.__tc_original__ = fn;
+                    return wrapped;
+                }
+
+                var prox = new Proxy(evObj, {
+                    get: function (t, p) {
+                        var v = t[p];
+                        return typeof v === "function" ? wrapFn(String(p), v) : v;
+                    },
+                    set: function (t, p, v) {
+                        t[p] = typeof v === "function" ? wrapFn(String(p), v) : v;
+                        return true;
+                    }
+                });
+
+                try {
+                    Object.defineProperty(prox, "__tc_proxied__", { value: true });
+                } catch (e) {}
+                return prox;
+            }
+
+            function instrument() {
+                if (!window.tC || !window.tC?.event) return false;
+                window.tC.event = wrapEventObj(window.tC.event);
+                return true;
+            }
+
+            function instrumentKF() {
+                if (!window.tC || !window.tC?.event || !window.tC?.kf) return false;
+                window.tC.kf = wrapEventObj(tC.kf);
+                return true;
+            }
+
+            instrument();
+
+            var tries = 0;
+            (function retry() {
+                tries++;
+                if (!instrument() && tries < 150) setTimeout(retry, 100);
+            })();
+
+            instrumentKF();
+
+            var ptries = 0;
+            (function retryprop() {
+                ptries++;
+                if (!instrumentKF() && ptries < 150) setTimeout(retryprop, 100);
+            })();
+        })();
+    </script>
+    <!-- Google Tag Manager -->
+
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-5TDD2G49');</script>
+    
+    <!-- End Google Tag Manager -->
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <meta name="author" content="">
+    <meta name="x-kf-pingdom-validator" content="search.knightfrank.com">
+    <meta name="type" property="og:type" content="website">
+    <base href="/properties/">
+    <title>Knight Frank</title>
+    <link rel="canonical" href="">
+    <meta name="title" property="og:title" content="">
+    <meta name="description" property="og:description" content="">
+    <meta name="url" property="og:url" content="">
+
+
+
+
+   <!-- Standard Favicon / Minimum requirement -->
+    <link rel="icon" type="image/png" href="/properties-resources/favicon-16x16.png" sizes="16x16" />
+    <link rel="icon" type="image/png" href="/properties-resources/favicon-32x32.png" sizes="32x32" />
+    <link rel="icon" type="image/x-icon" href="/properties-resources/favicon-16x16.ico" sizes="16x16" />
+    <link rel="icon" type="image/x-icon" href="/properties-resources/favicon-32x32.ico" sizes="32x32" />
+
+    <!-- High-Resolution Icon for Browsers /  Used by most modern browsers -->
+    <link rel="icon" type="image/png" href="/properties-resources/favicon-48x48.png" sizes="48x48" />
+    <link rel="icon" type="image/x-icon" href="/properties-resources/favicon-48x48.ico" sizes="48x48" />
+
+    <!-- SVG Favicon (for modern browsers) -->
+    <link rel="icon" type="image/svg+xml" href="/properties-resources/favicon-general.svg" />
+
+    <!-- Apple Touch Icon / iOS/iPad home screen bookmark -->
+    <link rel="apple-touch-icon" href="/properties-resources/apple-touch-icon-180x180.png" />
+
+    <!-- Android Chrome Icon -->
+    <link rel="icon" type="image/png" href="/properties-resources/android-chrome-192x192.png" sizes="192x192" />
+    <link rel="icon" type="image/png" href="/properties-resources/android-chrome-512x512.png" sizes="512x512" />
+
+    <!-- Microsoft Tile Icon / Windows 8/10 live tiles -->
+    <meta name="msapplication-TileImage" content="/properties-resources/mstile-150x150.png" />
+    <meta name="msapplication-TileColor" content="#ffffff">
+
+    <!-- Safari Pinned Tab  -->
+    <link rel="mask-icon" href="/properties-resources/safari-pinned-bar-16x16.svg" />
+
+    <link rel="manifest" href="/properties-resources/manifest.json" />
+
+    <script>window.tc_vars = window.tc_vars || {}; window.tc_vars.isProperty = "YES";</script>
+        <script src="//cdn.tagcommander.com/4398/tc_KnightFrank_header_21.js?t=639173987026876332"></script>
+
+
+    <!-- Bootstrap core CSS -->
+
+
+        <link href="/properties-resources/assets/vendor-93534266.bundle.css" rel="stylesheet">
+        <link href="/properties-resources/assets/app-93534266.bundle.css" rel="stylesheet">
+        <link href="/properties-resources/css/print.css" media="print" rel="stylesheet" >
+    <!-- TODO -->
+    <style>
+
+        [data-hidden="true"] {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+ <!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5TDD2G49"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<header class="fixed-head fixed-nav head">
+    <div class="container">
+        <div class="row">
+            <div class="col-xs-3">
+                <a href="https://www.knightfrank.co.uk">
+                    <img id="LogoImg"
+                        class="logo--default"
+                        src="/properties-resources/images/knightfranklogo.svg"
+                        width="143"
+                        height="54"
+                        alt="Knight Frank Logo">
+                </a>
+            </div>
+            <div class="col-xs-9 header-list">
+                    <ul class="hidden-sm-down">
+                        <li>
+                            <div class="dropdown">
+                                
+<a id="js-country-selector" class="dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+UK</a>
+<ul id="country-dropdown-list" class="dropdown-menu" aria-labelledby="js-country-selector">
+        <li>
+                <a href="https://www.knightfrank.com" rel="noindex, nofollow">Global</a>
+        </li>        <li>
+Africa                <ul>
+                        <li><a href="https://www.bw.knightfrank.com" rel="noindex, nofollow">Botswana</a></li>
+                        <li><a href="https://www.knightfrank.com/egypt" rel="noindex, nofollow">Egypt</a></li>
+                        <li><a href="https://www.knightfrank.co.ke" rel="noindex, nofollow">Kenya</a></li>
+                        <li><a href="https://www.knightfrank.mw" rel="noindex, nofollow">Malawi</a></li>
+                        <li><a href="https://www.knightfrank.com.ng" rel="noindex, nofollow">Nigeria</a></li>
+                        <li><a href="https://www.knightfrank.rw" rel="noindex, nofollow">Rwanda</a></li>
+                        <li><a href="https://www.knightfrank.co.za" rel="noindex, nofollow">South Africa</a></li>
+                        <li><a href="https://www.knightfrank.co.tz" rel="noindex, nofollow">Tanzania</a></li>
+                        <li><a href="https://www.knightfrank.ug" rel="noindex, nofollow">Uganda</a></li>
+                        <li><a href="https://www.zm.knightfrank.com" rel="noindex, nofollow">Zambia</a></li>
+                        <li><a href="https://www.knightfrank.co.zw" rel="noindex, nofollow">Zimbabwe</a></li>
+                </ul>
+        </li>        <li>
+Asia Pacific                <ul>
+                        <li><a href="https://www.knightfrank.com.au" rel="noindex, nofollow">Australia</a></li>
+                        <li><a href="https://www.knightfrank.com.kh" rel="noindex, nofollow">Cambodia</a></li>
+                        <li><a href="https://www.knightfrank.com.cn/en" rel="noindex, nofollow">Chinese Mainland</a></li>
+                        <li><a href="https://www.knightfrank.com.hk" rel="noindex, nofollow">Hong Kong SAR</a></li>
+                        <li><a href="https://www.knightfrank.co.in" rel="noindex, nofollow">India</a></li>
+                        <li><a href="https://www.knightfrank.co.id" rel="noindex, nofollow">Indonesia</a></li>
+                        <li><a href="https://www.knightfrank.jp" rel="noindex, nofollow">Japan</a></li>
+                        <li><a href="https://www.knightfrank.com.my" rel="noindex, nofollow">Malaysia</a></li>
+                        <li><a href="https://www.knightfrank.co.nz" rel="noindex, nofollow">New Zealand</a></li>
+                        <li><a href="https://www.santos.knightfrank.ph" rel="noindex, nofollow">Philippines</a></li>
+                        <li><a href="https://www.knightfrank.com.sg" rel="noindex, nofollow">Singapore</a></li>
+                        <li><a href="https://www.knightfrank.kr" rel="noindex, nofollow">South Korea</a></li>
+                        <li><a href="https://www.repro.knightfrank.com.tw/" rel="noindex, nofollow">Taipei</a></li>
+                        <li><a href="https://www.knightfrank.co.th" rel="noindex, nofollow">Thailand</a></li>
+                        <li><a href="https://www.knightfrank.com/vietnam" rel="noindex, nofollow">Vietnam</a></li>
+                </ul>
+        </li>        <li>
+Europe                <ul>
+                        <li><a href="https://www.knightfrank.com/austria" rel="noindex, nofollow">Austria</a></li>
+                        <li><a href="https://www.knightfrank.be/" rel="noindex, nofollow">Belgium</a></li>
+                        <li><a href="https://www.knightfrank.com/bulgaria" rel="noindex, nofollow">Bulgaria</a></li>
+                        <li><a href="https://www.knightfrank.cz/" rel="noindex, nofollow">Czech Republic</a></li>
+                        <li><a href="https://www.knightfrank.com/denmark" rel="noindex, nofollow">Denmark</a></li>
+                        <li><a href="https://www.knightfrank.com/finland" rel="noindex, nofollow">Finland</a></li>
+                        <li><a href="https://www.knightfrank.fr/en" rel="noindex, nofollow">France</a></li>
+                        <li><a href="https://www.knightfrank.de/berlin" rel="noindex, nofollow">Germany - Berlin</a></li>
+                        <li><a href="https://www.knightfrank.de/frankfurt" rel="noindex, nofollow">Germany - Frankfurt</a></li>
+                        <li><a href="https://www.knightfrank.de/munich" rel="noindex, nofollow">Germany - Munich</a></li>
+                        <li><a href="https://www.knightfrank.com/greece" rel="noindex, nofollow">Greece</a></li>
+                        <li><a href="https://www.knightfrank.hu" rel="noindex, nofollow">Hungary</a></li>
+                        <li><a href="https://www.knightfrank.com/iceland" rel="noindex, nofollow">Iceland</a></li>
+                        <li><a href="https://www.knightfrank.ie/" rel="noindex, nofollow">Ireland</a></li>
+                        <li><a href="https://www.knightfrank.com/it" rel="noindex, nofollow">Italy</a></li>
+                        <li><a href="https://www.knightfrank.com/overseas-property/monaco-overview" rel="noindex, nofollow">Monaco</a></li>
+                        <li><a href="https://www.knightfrank.com/netherlands" rel="noindex, nofollow">Netherlands</a></li>
+                        <li><a href="https://www.knightfrank.com.pl/" rel="noindex, nofollow">Poland</a></li>
+                        <li><a href="https://www.knightfrank.com/portugal" rel="noindex, nofollow">Portugal</a></li>
+                        <li><a href="https://www.knightfrank.com.ro/" rel="noindex, nofollow">Romania</a></li>
+                        <li><a href="https://www.knightfrank.com/serbia" rel="noindex, nofollow">Serbia</a></li>
+                        <li><a href="https://www.knightfrank.es/" rel="noindex, nofollow">Spain</a></li>
+                        <li><a href="https://www.knightfrank.com/sweden" rel="noindex, nofollow">Sweden</a></li>
+                        <li><a href="https://www.knightfrank.com/switzerland" rel="noindex, nofollow">Switzerland</a></li>
+                        <li><a href="https://www.knightfrank.co.uk/" rel="noindex, nofollow">UK</a></li>
+                </ul>
+        </li>        <li>
+Middle East                <ul>
+                        <li><a href="https://www.knightfrank.ae/" rel="noindex, nofollow">UAE</a></li>
+                        <li><a href="https://www.knightfrank.com/bahrain" rel="noindex, nofollow">Bahrain</a></li>
+                        <li><a href="https://www.knightfrank.qa/" rel="noindex, nofollow">Qatar</a></li>
+                        <li><a href="https://www.knightfrank.com.sa" rel="noindex, nofollow">Saudi Arabia</a></li>
+                </ul>
+        </li>        <li>
+America                <ul>
+                        <li><a href="https://www.knightfrank.us" rel="noindex, nofollow">USA</a></li>
+                        <li><a href="https://ca.knightfrank.com" rel="noindex, nofollow">Canada</a></li>
+                        <li><a href="https://www.knightfrank.com/caribbean" rel="noindex, nofollow">Caribbean</a></li>
+                </ul>
+        </li></ul>
+
+                            </div>
+                        </li>
+                        <ul class="non-ss-menu" style="float: right;">
+<li><a href="https://knightfrank.co.uk/about">About</a></li>
+<li><a href="https://www.knightfrank.com/recruitment">Careers</a></li>
+<li><a href="https://knightfrank.co.uk/contact-us">Contact us</a></li>
+<li><a href="https://secure.knightfrank.com/en" class="my-knight-frank">My Knight Frank</a></li>
+</ul>
+<ul class="ss-menu" style="display: none;">
+<li><a href="https://knightfrank.co.uk/about">About</a></li>
+<li><a href="https://knightfrank.co.uk/research">Research</a></li>
+<li><a href="https://knightfrank.co.uk/contact-us">Contact us</a></li>
+<li><a href="https://www.knightfrank.com/recruitment" target="blank">Careers</a></li>
+<li><a href="https://account.knightfrank.com/" class="my-knight-frank">My Knight Frank</a></li>
+</ul>
+<ul class="hidden-sm-down" style="top: -30px;position: absolute; right: 15px; font-weight: bold;"><li style="display: inline-block; margin-right: 20px;">Commercial enquiries: <a href="tel:+442039446318" style="margin-left: 5px;">020 3944 6318</a></li>
+<li style="display: inline-block;">Residential enquiries: <a href="tel:+442045028066" style="margin-left: 5px; color: black;"> <span class="rTapNumber415004">020 3869 4758</span></a></li></ul>
+                    </ul>
+                    <button class="hidden-md-up" data-toggle="offcanvas" data-target=".navmenu" data-canvas="body">
+                        <i class="fa fa-bars" aria-hidden="true"></i>
+                        <span class="sr-only">Navigation</span>
+                    </button>
+            </div>
+        </div>
+    </div>
+</header>
+
+    <nav id="siteNav"><section class="navigation hidden-sm-down">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-12">
+                <ul class="main-navigation">
+                    
+<li><a href="https://knightfrank.co.uk/residential" data-selected-pillar-url-regex="^/residential">Residential</a></li>
+                    <li><a href="https://knightfrank.co.uk/commercial" data-selected-pillar-url-regex="^/commercial">Commercial</a></li>
+
+<li><a href="https://knightfrank.co.uk/people" data-selected-pillar-url-regex="^/residential">People</a></li>
+                    <li><a href="https://knightfrank.co.uk/offices" data-selected-pillar-url-regex="^/commercial">Offices</a></li>
+                     <li><a href="https://knightfrank.co.uk/research" data-selected-pillar-url-regex="^/research">Research</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+<div class="navmenu navmenu-inverse navmenu-fixed-right offcanvas" role="navigation">
+    <ul class="nav navmenu-nav navbar-nav">
+        
+<li class="main-item"><a href="https://knightfrank.co.uk/residential">Residential</a></li>
+        
+<li class="main-item"><a href="https://knightfrank.co.uk/commercial">Commercial</a></li>
+
+<li class="main-item"><a href="https://knightfrank.co.uk/people">People</a></li>
+
+<li class="main-item"><a href="https://knightfrank.co.uk/offices">Offices</a></li>
+        
+<li class="main-item"><a href="https://knightfrank.co.uk/research">Research</a></li>
+        <li class="main-item"><a href="https://knightfrank.co.uk/perspectives">Perspectives</a></li>
+        <li><a href="https://knightfrank.co.uk/about">About</a></li>
+        <li><a href="https://www.knightfrank.com/recruitment" target="blank">Careers</a></li>
+        <li><a href="https://knightfrank.co.uk/contact-us">Contact us</a></li>
+       <li><a href="https://secure.knightfrank.com/en?hostname=knightfrank.co.uk">My Knight Frank</a></li>
+<li><a href="tel:+442039446318">Commercial: 020 3944 6318</a></li>
+<li><a href="tel:+442038694758">Residential: <span class="rTapNumber415004">020 3869 4758</span></a></li>
+    </ul>
+</div></nav>
+    <div id="mobileNav" style="display: none">
+        <li>
+    <label>UK</label>
+    
+    <select id="js-country-selector-responsive">
+                    <option value="https://www.knightfrank.com">Global</option>                <optgroup label="Africa">
+                            <option value="https://www.bw.knightfrank.com">Botswana</option>                            <option value="https://www.knightfrank.com/egypt">Egypt</option>                            <option value="https://www.knightfrank.co.ke">Kenya</option>                            <option value="https://www.knightfrank.mw">Malawi</option>                            <option value="https://www.knightfrank.com.ng">Nigeria</option>                            <option value="https://www.knightfrank.rw">Rwanda</option>                            <option value="https://www.knightfrank.co.za">South Africa</option>                            <option value="https://www.knightfrank.co.tz">Tanzania</option>                            <option value="https://www.knightfrank.ug">Uganda</option>                            <option value="https://www.zm.knightfrank.com">Zambia</option>                            <option value="https://www.knightfrank.co.zw">Zimbabwe</option>                </optgroup>                <optgroup label="Asia Pacific">
+                            <option value="https://www.knightfrank.com.au">Australia</option>                            <option value="https://www.knightfrank.com.kh">Cambodia</option>                            <option value="https://www.knightfrank.com.cn/en">Chinese Mainland</option>                            <option value="https://www.knightfrank.com.hk">Hong Kong SAR</option>                            <option value="https://www.knightfrank.co.in">India</option>                            <option value="https://www.knightfrank.co.id">Indonesia</option>                            <option value="https://www.knightfrank.jp">Japan</option>                            <option value="https://www.knightfrank.com.my">Malaysia</option>                            <option value="https://www.knightfrank.co.nz">New Zealand</option>                            <option value="https://www.santos.knightfrank.ph">Philippines</option>                            <option value="https://www.knightfrank.com.sg">Singapore</option>                            <option value="https://www.knightfrank.kr">South Korea</option>                            <option value="https://www.repro.knightfrank.com.tw/">Taipei</option>                            <option value="https://www.knightfrank.co.th">Thailand</option>                            <option value="https://www.knightfrank.com/vietnam">Vietnam</option>                </optgroup>                <optgroup label="Europe">
+                            <option value="https://www.knightfrank.com/austria">Austria</option>                            <option value="https://www.knightfrank.be/">Belgium</option>                            <option value="https://www.knightfrank.com/bulgaria">Bulgaria</option>                            <option value="https://www.knightfrank.cz/">Czech Republic</option>                            <option value="https://www.knightfrank.com/denmark">Denmark</option>                            <option value="https://www.knightfrank.com/finland">Finland</option>                            <option value="https://www.knightfrank.fr/en">France</option>                            <option value="https://www.knightfrank.de/berlin">Germany - Berlin</option>                            <option value="https://www.knightfrank.de/frankfurt">Germany - Frankfurt</option>                            <option value="https://www.knightfrank.de/munich">Germany - Munich</option>                            <option value="https://www.knightfrank.com/greece">Greece</option>                            <option value="https://www.knightfrank.hu">Hungary</option>                            <option value="https://www.knightfrank.com/iceland">Iceland</option>                            <option value="https://www.knightfrank.ie/">Ireland</option>                            <option value="https://www.knightfrank.com/it">Italy</option>                            <option value="https://www.knightfrank.com/overseas-property/monaco-overview">Monaco</option>                            <option value="https://www.knightfrank.com/netherlands">Netherlands</option>                            <option value="https://www.knightfrank.com.pl/">Poland</option>                            <option value="https://www.knightfrank.com/portugal">Portugal</option>                            <option value="https://www.knightfrank.com.ro/">Romania</option>                            <option value="https://www.knightfrank.com/serbia">Serbia</option>                            <option value="https://www.knightfrank.es/">Spain</option>                            <option value="https://www.knightfrank.com/sweden">Sweden</option>                            <option value="https://www.knightfrank.com/switzerland">Switzerland</option>                            <option value="https://www.knightfrank.co.uk/" selected>UK</option>                </optgroup>                <optgroup label="Middle East">
+                            <option value="https://www.knightfrank.ae/">UAE</option>                            <option value="https://www.knightfrank.com/bahrain">Bahrain</option>                            <option value="https://www.knightfrank.qa/">Qatar</option>                            <option value="https://www.knightfrank.com.sa">Saudi Arabia</option>                </optgroup>                <optgroup label="America">
+                            <option value="https://www.knightfrank.us">USA</option>                            <option value="https://ca.knightfrank.com">Canada</option>                            <option value="https://www.knightfrank.com/caribbean">Caribbean</option>                </optgroup>    </select>
+</li>
+    </div>
+
+<div class="initial-load">
+    <div class="loading-container">
+        <div class="site-loading">
+            <div class="triangle">
+                <div class="blank"></div>
+                <div class="triangle-topleft"></div>
+                <div class="blank"></div>
+                <div class="triangle-topright"></div>
+                <div class="blank"></div>
+                <div class="triangle-bottomleft"></div>
+                <div class="blank"></div>
+                <div class="triangle-bottomright"></div>
+                <div class="blank"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="click-layer"></div>
+<main class="content" data-host-country="UK">
+	<kf-search>
+		
+	</kf-search>
+	<app-redirect></app-redirect>
+</main>
+
+<script>
+    var elems = document.querySelectorAll('[data-selected-pillar-url-regex]');
+    for (var i = 0; i < elems.length; i++) {
+        var elem = elems[i];
+        var regexStr = elem.attributes["data-selected-pillar-url-regex"].value;
+        var regex = new RegExp(regexStr);
+        if (regex.test(window.location.pathname)) {
+            elem.classList.add("active");
+        }
+    }
+
+    function setTrialGdpr(val) {
+        document.cookie = "gdpr=" + val + ";path=/";
+    }
+
+    function toggleCheckbox(cb) {
+        if (cb.checked) {
+            setTrialGdpr("true");
+        } else {
+            setTrialGdpr("false");
+        }
+    }
+</script>
+<div id="fb-root"></div>
+<script>
+    var kfsearchconfig = {"ApiBase":"https://api-v2.web.prd-knightfrank.com","ApiSecureBase":"https://api-v2.web.prd-knightfrank.com/secure","ApiBase3":"https://api-v3.web.prd-knightfrank.com","CmsBase":"https://www.knightfrank.com","BasePath":"/properties/","ContactUrl":"https://www.knightfrank.co.uk/contact/offices/atoz","ContactUs":"https://www.knightfrank.co.uk/contact","DebugOutput":false,"Translations":{"ALL_LOCATIONS":"all-locations","ALL_TYPES":"all-types","ALL_BEDS":"all-beds","ALL_FLOOR":"all-floor","RESIDENTIAL_SLUG":"residential","COMMERCIAL_SLUG":"commercial","SALES_SLUG":"for-sale","LETTINGS_SLUG":"to-let","DIVISION":"Division","RESIDENTIAL":"Residential","COMMERCIAL":"Commercial","SALES":"Buy","LETTINGS":"Rent","BEDS_SUFFIX":"beds","LOADING":"Loading","TENNIS_COURT":"Tennis Court","PET_FRIENDLY":"pet friendly","SWIMMING_POOL":"Swimming Pool","PAGER_PREV":"Previous","PAGER_NEXT":"Next","LOCATION_PLACEHOLDER":"Search by town, city or postcode","NET_INITIAL_YIELD":"Net Initial Yield {yield}%","NO_RESULTS_LOCATION":"Below is a list of the closest properties to {location}","NO_RESULTS_CREATE_ALERT":"Or you can <a>create an alert</a> to receive new properties that match your search.","All":"All","Any":"Any","ABOUT":"About","AMENITIES":"Amenities","APPLY_FILTERS":"Apply Filters","Bedrooms":"Bedrooms","Bathrooms":"Bathrooms","RECEPTION_ROOMS":"Reception Rooms","COMMERCIAL_OPPORTUNITIES":"Commercial Opportunities","CONTACT":"Contact","CONTACT_NAME":"Contact {name}","CONTACT_US":"Contact us","CONTACTS":"Contacts","CURRENCY":"Currency","DEVELOPERS":"Developers","DEVELOPMENT":"Development","DISTANCE":"Distance","DOWNLOAD":"Download","EPC_CHART":"EPC Chart","EMAIL_ALERT":"Create an email alert","FINANCING_OPTIONS":"Financing options","FIND_OUT_MORE":"Find out more","GRID_VIEW":"Grid View","LIST_VIEW":"List View","SKYSCRAPER_VIEW":"Skyscraper View","IMAGES":"Images","INTERIORS":"Interiors","LOCATION":"Location","Map":"Map","MORE_OFFICE_PROPERTIES":"More {name} properties","MORE_PROPERTIES_IN":"More properties in:","MORE_FILTERS":"More filters","OFFICES":"Offices","OVERVIEW":"Overview","PROPERTY":"Property","RELATED_AREAS":"Related areas","SITE_OVERVIEW":"Site Overview","SIZE":"Size","THE_ARCHITECTS":"The Architects","VirtualTour":"Virtual Tour","VIDEO":"Video","Watch video":"Watch video","Close video":"Close video","Video Thumbnail":"Video Thumbnail","VISIT_OFFICE":"Visit {name} office's site","SORT_BY":"Sort","Floor Area (desc)":"Floor Area: high to low","Floor Area (asc)":"Floor Area: low to high","Price":"Price","Monthly":"Monthly","Price (desc)":"Price: high to low","Price (asc)":"Price: low to high","Most recent":"Most recent","Relevance":"Relevance","This area only":"This area only","Property types":"Property types","Accessibility":"Accessibility","Features":"Features","SearchFeatures":"Search features","CLEAR":"Clear Filters","Land Area":"Land Area","Furnishing":"Furnishing","Furnished":"Furnished","Unfurnished":"Unfurnished","Short Let Only":"Short Let Only","Rented":"Rented","Sold":"Sold","Occupied":"Occupied","Managed":"Managed","Investment":"Investment","VIEW_PROFILE":"View profile","VCARD":"vCard","PROPERTY_REF":"Property Ref","sqm":"sqm","sqft":"sqft","ACREAGE":"{acres} acres ({hectares} hectares)","ACREAGE_Label":"{acres} acres","ACREAGE_Sub_Label":"({hectares} hectares)","VIEW_PROPERTIES_CONTAINING":"View any properties that contain the word(s) {term}","More Filters":"More filters","Filters":"Filters","{number} options selected":"{number} options selected","From Email:":"From Email:","To Email:":"To Email:","Language:":"Language:","Floor area information":"Floor area information","Description":"Description","Status":"Status","Back":"Back","More currencies":"More currencies","Related research":"Related Research","Type":"Type","Bedroom":"Bedroom","Studio":"Studio","Bathroom":"Bathroom","Reception room":"Reception room","ac":"ac","NoMapCoords":"Some properties cannot be displayed because we have no exact location information.","NoExactMatch":"No exact match","NearbyProperties":"Below are some nearby properties","Estimated Service Charge":"Estimated Service Charge","Of":"of","privacyRestricted":"By clicking on the \"Submit\" button, you consent to the processing of personal data in accordance with the ","privacyRestrictedLink":"Regulation on the processing of personal data of Knight Frank","NO_HTML_PERMITTED":"No HTML permitted","LEASEEXPIREDATE":"{leaseExpireYears} {yearsLabel}, {leaseExpireMonths} {monthsLabel}","TENURE":"Tenure","PROPERTY_TYPES":"Property type","PROPERTY_FEATURES":"Property features","Rent_Area_Breakdown":"Rent","FPN":"To find out how we use your personal information, please click","LastUpdateDate":"Issued on","VIEWS":"Views","SS_No_Results_Message":"There are no matching properties. Please contact the <a href='{contact}'>local office</a> who may be able to help you.","ss_BackToSearch":"Back to results","SOI":"Statement of Information","CTA_SAVE":"Save","CTA_SAVED":"SAVED","SAVE_PROPERTY":"Save Property","PROPERTY_SAVED":"Property saved","CTA_SHARE":"Share","CTA_MAKE_AN_ENQUIRY":"MAKE AN ENQUIRY","CTA_GET_IN_TOUCH":"Get in touch","CTA_VIEW_MORE_PROPERTIES":"More properties from this office","CTA_VIEW_MORE_PROPERTIES_PLURAL":"More properties from these offices","BOOK_VIEWING":"Book a viewing","REQUEST_VIEWING":"Request a viewing","CONTACT_AGENT":"Contact agent","CTA_RESET_FIELDS":"Reset Fields","CTA_CALCULATE":"Calculate","CTA_SUBMIT":"Submit","CTA_UPDATE":"Update","CTA_SEARCH_THIS_AREA":"Search this area","CTA_CANCEL":"Cancel","CTA_CLOSE":"Close","CTA_GO_BACK":"Go Back","MORTGAGE_CALCULATOR":"Mortgage Calculator","CTA_CALC_BTLY":"Buy to Let Yield Calculator","GET_A_MORTGAGE":"KF Finance: get a tailored mortgage","RATE_PROPERTY":"Rate Property","REGISTER_YOUR_INTEREST":"Register your interest","REQUEST_A_CALL":"Request a call","CTA_VIEW_MORE_IMAGES":"View more images","CTA_VIEW_VIDEOS":"Videos","CTA_MAP_VIEW":"Map view","CTA_STREET_VIEW":"Street view","FORM_ENQUIRY_TITLE":"Make an enquiry with one of our property experts","FORM_ENQUIRY_T1":"Fill in your details below and a member of our team will be in touch with you as soon as possible to discuss your property needs, or any other enquiries you may have","FORM_BV_T1":"Use this form to let us know roughly when you're free and we'll handle the rest. One of the team will accompany you to the appointment, so you can ask any other questions you may have then.","FORM_YOUR_DETAILS":"Your details","FORM_FIELD_OPTIONAL":"(optional)","FORM_PH_TITLE":"e.g. Mr/Mrs","FORM_TITLE":"Title","FORM_PH_FIRST_NAME":"Please enter your name","FORM_FIRST_NAME":"First name","FORM_PH_LAST_NAME":"Please enter your last name","FORM_LAST_NAME":"Last name","FORM_PH_EMAIL":"e.g. name@mail.com","FORM_EMAIL":"Email address","FORM_PH_PHONE":"e.g. +44 (0) xxx xxx xxxx","FORM_PHONE":"Phone number","FORM_PH_MESSAGE":"Please enter your enquiry here","FORM_MESSAGE":"How can we help you?","FORM_PH_BK_ADD_INFO":"Enter your message","FORM_BV_ADD_INFO":"Anything else we should know?","FORM_BV_ADD_INFO_TITLE":"Additional info","FORM_BV_THE_VIEWING":"The Viewing","FORM_BV_PREFERRED_DATE":"Preferred date","FORM_BV_PREFERRED_TIME":"Preferred time","FORM_BV_MORNING":"Morning","FORM_BV_MORNING_TIME":"9am-12pm","FORM_BV_AFTERNOON":"Afternoon","FORM_BV_AFTERNOON_TIME":"1pm-5pm","FORM_BV_ALLDAY":"All Day","FORM_BV_ALLDAY_TIME":"9am-5pm","FORM_BV_METHOD_TITLE":"Preferred viewing method","FORM_BV_METHOD_PERSON":"Visit the property in person","FORM_BV_METHOD_VIRTUAL":"View the property virtually","FORM_CALC_SD_BTN_TEXT":"Work out how much stamp duty you'll need to pay","FORM_CALC_MORG_BTN_TEXT":"Calculate your mortgage repayments with this quick tool","FORM_CALC_BTLY_BTN_TEXT":"Calculate your potential rental yield with this tool","FORM_ERROR_INVALID_PICKED_DATE":"Your date/time selection is not valid.","FORM_ERROR_EMAIL":"Invalid e-mail address","FORM_ERROR_PHONE":"Invalid phone number","FORM_ERROR_REQUIRED":"Required","FORM_SEND_ERROR":"There was an error sending your message, please try again later","FORM_SEND_SUCCESS":"Your message has been sent successfully","FORM_SENDING":"Sending...","FORM_BV_THANK_YOU_TITLE":"Thank you for requesting a viewing","FORM_BV_THANK_YOU_M1":"We will be in contact with you shortly to confirm the details of the viewing.","FORM_BV_THANK_YOU_M2":"We look forward to seeing you soon.","Select preferred date and time":"Select preferred date and time","FORM_BV_ANY_TIME":"Any time","FORM_BV_LUNCH":"Lunchtime","FORM_BV_EVENING":"Evening","FORM_BV_CONFIRMATION_WARNING":"Please note this is not a firm booking until you receive confirmation","FORM_BV_SELECT_TIMESLOT":"Select a timeslot","FORM_THANK_YOU_OFFICE_P1":"Feel free to call us on","FORM_ME_THANK_YOU_TITLE":"Thank you for getting in touch","FORM_ME_THANK_YOU_M1":"A member of our team will be in touch with you as soon as possible to discuss your enquiry.","FORM_ME_THANK_YOU_M2":"I will be in touch with you as soon as possible to discuss your enquiry.","FORM_ME_THANK_YOU_M3":"We look forward to speaking to you soon.","FORM_ME_THANK_YOU_M4":"I look forward to speaking to you soon.","FORM_ME_THANK_YOU_OFFICE_P2":"if anything changes, or you have any other questions.","FORM_ME_THANK_YOU_OFFICE_P1":"Feel free to call me on","FORM_WHERE_DID_YOU_HEAR_ABOUT_US":"Where did you hear about us?","FORM_PLEASE_SELECT":"Please select","FORM_PRESS":"Press","FORM_SOCIAL_MEDIA":"Social Media","FORM_WORD_OF_MOUTH":"Word of mouth","FORM_ADVERTISEMENT":"Advertisement","FORM_PROPERTY_WEBSITE":"Property website","FORM_SEARCH_ENGINE":"Search engine","FORM_OTHER":"Other","FORM_KNIGHT_FRANK_WEBSITE":"Knight Frank Website","FORM_EMAIL_KNIGHT_FRANK":"Email Knight Frank","FORM_KNIGHT_FRANK_ADVERTISEMENT":"Knight Frank Advertisement","FORM_PERSONAL_RECOMMENDATION":"Personal Recommendation","FORM_MARKETING_BOARDS":"Marketing boards","PRIVACY_KF_TITLE":"Your privacy","PRIVACY_KF_MSG1":"We take the processing and privacy of your information very seriously. Your data is collected and used in accordance with our <a href='https://www.knightfrank.com/legals' target='_blank'>terms and conditions</a> and <a href='https://www.knightfrank.com/legals/privacy-statement' target='_blank'>global privacy policy</a>.","PRIVACY_KF_MSG2":"Find out <a href='https://www.knightfrank.com/legals/fpn' target='_blank'>how we use your personal information</a>.","PRIVACY_GOOGLE_MSG1":"This site is protected by reCAPTCHA and the Google <a href='https://policies.google.com/privacy' target='_blank'>privacy policy</a> and <a href='https://policies.google.com/terms' target='_blank'>terms of service</a> apply.","MORE_ABOUT_PROPERTY":"A little more about the property","APPROXIMATE_DISCLAIMER":"Please note all distances and measurements are approximate and the map location is not the exact location of the property","TITLE_DISCLAIMER":"Disclaimer","TITLE_LOCATION_INFO":"About the area","TITLE_VIEW_MORE_PROPERTIES_IN":"More properties nearby","SOLD_MSG1":"Looking for a property just like this?","SOLD_MSG2":"One of our agents would love to help you find the perfect property.","AMENITIES_LBL_YEAR_BUILT":"Year built","AMENITIES_LBL_FLOOR_AREA":"Floor area","AMENITIES_LBL_LAND":"Land","AMENITIES_LBL_CouncilTaxBand":"Council Tax Band","AMENITIES_LBL_AnnualServiceCharge":"Annual Service Charge","AMENITIES_LBL_EstimatedBusinessRates":"Estimated Business Rates","AMENITIES_LBL_GroundRent":"Ground Rent","AMENITIES_LBL_GroundRentPercentageIncrease":"Ground Rent Percentage Increase","AMENITIES_LBL_DepositPayable":"Deposit Payable","AMENITIES_LBL_MinimumTenancyLength":"Minimum Tenancy Length","AMENITIES_LBL_ReviewPeriod":"Review Period","AMENITIES_LBL_Years":"years","AMENITIES_LBL_Months":"months","AMENITIES_LBL_ReadDisclaimerForMore":"Read disclaimer for more","AMENITIES_LBL_AvailableDate":"Available date","AMENITIES_LBL_ListedGrade":"Listed grade","LBL_READ_MORE":"Read more","LBL_READ_LESS":"Read less","LBL_BACK_TO_RESULTS":"Back to results","LBL_SEARCH_SIMILAR_PROPERTIES":"Similar properties","LBL_LOCAL_AUTHORITY_INFO":"Local authority","LBL_BROCHURES":"Brochures","LBL_BROCHURE":"Brochure","LBL_PROPERTY_BROCHURE_IMAGE":"Property Brochure Image","LBL_FLOORPLAN":"Floorplan","LBL_FLOORPLANS":"Floorplans","LBL_EXTERNALLINKS":"External Links","LBL_VIRTUALTOURS":"Virtual Tours","LBL_GALLERY":"Gallery","LBL_DEVELOPMENT_PHASES":"Development Phases","LBL_THE_BUILDING":"The Building","LBL_EPC_RATING":"EPC Charts","LBL_SOI":"Statement of Information","LBL_LettingType":"Letting Type","LBL_LettingType_ANY":"Any","LBL_LettingType_SHORT":"Short Let","LBL_LettingType_LONG":"Long Let","LBL_RelatedReport_title":"Related publications/reports","LBL_RelatedReport_desc":"Want the latest, data-driven insights? Like a global perspective? Prefer it in an easy format that you can enjoy over a coffee? Here you go","LBL_FurnishingType":"Furnishing Type","Price per sqft Saleable area":"Price per sqft Saleable area","Price per sqft Gross area":"Price per sqft Gross area","Saleable area":"Saleable area","Gross area":"Gross area","Facebook":"Facebook","LinkedIn":"LinkedIn","Share on X":"Share on X","Copy Link":"Copy Link","SOCIAL_EMAIL":"Email","Please enter a value":"Please enter a value","NO_RESULTS_TITLE":"Sorry about this...","NO_RESULTS_MSG":"We currently don’t have any properties that match your requirements.","Prime Property":"Prime Property","LBL_ANY":"Any","Min":"Min","Max":"Max","LBL_SEARCH":"Search","See more":"See more","See less":"See less","See fewer":"See fewer","View similar properties":"View similar properties","View all":"View all","Filter properties":"Filter Properties","Create alerts":"Create alerts","CAN'T_FIND_WHAT_YOU_ARE_LOOKING_FOR_TITLE":"Can't find what you are looking for?","CAN'T_FIND_WHAT_YOU_ARE_LOOKING_FOR_DESCRIPTION":"Our knowledgeable agents can help you discover the perfect property.","All properties":"All properties","Available":"Available","Let":"Let","Minimum":"Minimum","Maximum":"Maximum","No Minimum":"No Minimum","No Maximum":"No Maximum","acres":"acres","Show Properties":"Show Properties","Search for properties":"Search for properties","Satellite":"Satellite","CTA_SEND":"Send","FORM_ENQUIRY_SUCCESS_TITLE":"Thank you for your enquiry","FORM_ENQUIRY_SUCCESS_MESSAGE":"We have received your request and will be in touch shortly.","SORRY":"Sorry!","next month":"Next month","previous month":"Previous month","New Development":"New Development","Keyword Search":"Keyword Search","CTA_GET_DIRECTIONS":"Get directions","RES_DEV_LOCATION_TITLE":"The location","RES_DEV_DEVELOPMENT_PROMO_TEXT":"Explore the Development","RES_DEV_DEVELOPMENT_PROMO_CTA":"View Development","Prices":"Prices","Reception":"Reception","Receptions":"Receptions","More details":"More details","Load More":"Load More","Contact us for full list":"Contact us for full list","No of Bedrooms":"No of Bedrooms","No of Bathrooms":"No of Bathrooms","No of Receptions":"No of Receptions","Gallery":"Gallery","List":"List","Size":"Size","PROPERTIES_AT":"Properties at {name}","PROPERTIES_PAGINATION":"Showing {from} to {to} of {total} properties","Display price in":"Display price in","Sort by":"Sort by:","MI_Title":"Additional information","MI_Title_Utilities":"Utilities","MI_Title_Property_Details":"Property details","MI_Title_Environment":"Environment","MI_Title_Rights_Restrictions":"Rights and restrictions","Garage":"Garage","MI_Subheading_Property_Info":"Property Information","MI_Subheading_Floor":"Floor and Level","MI_Subheading_Parking":"Parking","MI_Subheading_Property_Status":"Property status","Capacity":"Capacity","Space":"Space","Electricity supply":"Electricity supply","Property floor":"Property floor","No of floors":"No of floors","Holiday home rental":"Holiday home rental","Property subletting":"Property subletting","Business from property":"Business from property","Water supply":"Water supply","Heating supply":"Heating supply","Sewage":"Sewage","Broadband":"Broadband","Mobile coverage":"Mobile coverage","Environmental factors":"Environmental factors","Risk of coastal erosion":"Risk of coastal erosion","Coal field or mining area":"Coal field or mining area","Flooding":"Flooding","Flooded in the past five years":"Flooded in the past five years","Source":"Source","Preservation and Conservation":"Preservation and Conservation","Tree preservation order":"Tree preservation order","Conservation area":"Conservation area","Property restrictions/obligations":"Property restrictions/obligations","Planning permission":"Planning permission","Lease restriction":"Lease restriction","Real burden":"Real burden","Locally listed":"Locally listed","Permitted development":"Permitted development","Restrictive covenant":"Restrictive covenant","Other restriction":"Other restriction","Right of way":"Right of way","Required Access":"Required Access"},"FinanceLink":"http://www.knightfrankfinance.co.uk/financing-options?ref={ref}","Locale":"en","Lang":"en-GB","HtmlLang":"en-GB","MyKfBase":"https://account.knightfrank.com","GoogleMapsKey":"AIzaSyC9EJO5p1qSiJ2lrp6Q9Fe8Ep2aEWnvPpE","ReCaptchaPublicKey":"6LeQvyIUAAAAAJmDHO7iJuq7VPNl_2zl98FYygLX","ReCaptchaPublicKeyV3":"6Ld6T2opAAAAAO3rgFU_JArctMrwkGFpYdNUFRNN","GTMCode":"GTM-NCLJ7G","ResourceHost":"https://content.knightfrank.com","Languages":{"Default":"/properties/","Items":[{"Value":"/properties/","Label":"English","Crawlable":true,"HtmlLang":"en-GB","Lang":"en-GB","Canonical":"https://www.knightfrank.co.uk/"}]},"Histograms":{"PriceMax":{"ResLet":20000,"ResBuy":10000000,"ComLet":10000,"ComBuy":10000000},"FloorMax":{"ResLet":10000,"ResBuy":10000,"ComLet":10000,"ComBuy":10000},"AcreageMax":{"ResLet":250,"ResBuy":250,"ComLet":250,"ComBuy":250}},"Currencies":{"Default":"GBP","Items":[{"Value":"GBP","Label":null,"Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"EUR","Label":null,"Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"USD","Label":null,"Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null}]},"CurrencySuffix":true,"Order":{"Default":"desdate","Items":[{"Value":"desdate","Label":"Most recent","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"dessize","Label":"Floor Area (desc)","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"ascsize","Label":"Floor Area (asc)","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"desprice","Label":"Price (desc)","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"ascprice","Label":"Price (asc)","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"relevance","Label":"Relevance","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"rank","Label":"Relevance","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null}]},"Radius":{"Default":"0","Items":[{"Value":"0","Label":"This area only","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"8046","Label":"+ 5 miles","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"16093","Label":"+ 10 miles","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"17702","Label":"+ 11 miles","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"19312","Label":"+ 12 miles","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"20921","Label":"+ 13 miles","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"22530","Label":"+ 14 miles","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null},{"Value":"24140","Label":"+ 15 miles","Crawlable":null,"HtmlLang":null,"Lang":null,"Canonical":null}]},"FloorAreaUnit":"sqft","TrackingCode":"UA-542400-1","DefaultIsoCode":"GB","Host":"https://www.knightfrank.co.uk","Country":"","PrivacyRestricted":false,"FairProcessingNoticeUrl":"https://www.knightfrank.co.uk/legals/fpn","LandAreaUnit":"acres","ShowSingleSearch":false,"IsDomainCrawlable":false,"IsTcEnabled":true,"CanonicalDomainList":{"en-BW":"https://www.knightfrank.com/","en-CA":"https://www.knightfrank.com/","en":"https://www.knightfrank.com/","en-IT":"https://www.knightfrank.com/","it-IT":"https://www.knightfrank.com/it/","en-AE":"https://www.knightfrank.com/","en-BE":"https://www.knightfrank.be/","fr-BE":"https://www.knightfrank.fr/","nl-BE":"https://www.knightfrank.com/","en-ID":"https://www.knightfrank.com/","id-ID":"https://www.knightfrank.co.id/","en-IN":"https://www.knightfrank.com/","en-KE":"https://www.knightfrank.com/","en-NZ":"https://www.knightfrank.com/","en-TH":"https://www.knightfrank.com/","th-TH":"https://www.knightfrank.co.th/","en-TZ":"https://www.knightfrank.com/","en-GB":"https://www.knightfrank.co.uk/","en-ZA":"https://www.knightfrank.com/","en-ZW":"https://www.knightfrank.com/","en-AU":"https://www.knightfrank.com/","zh-Hans-CN":"https://www.knightfrank.com.cn/","en-CN":"https://www.knightfrank.com/","en-HK":"https://www.knightfrank.com/","zh-Hant-HK":"https://www.knightfrank.com.hk/","en-KH":"https://www.knightfrank.com/","en-MY":"https://www.knightfrank.com/","en-NG":"https://www.knightfrank.com/","pl-PL":"https://www.knightfrank.com.pl/","en-PL":"https://www.knightfrank.com/","en-RO":"https://www.knightfrank.com/","ar-SA":"https://www.knightfrank.com.sa/","en-SA":"https://www.knightfrank.com/","en-SG":"https://www.knightfrank.com/","zh-Hant-TW":"https://www.knightfrank.com.tw/","en-TW":"https://www.knightfrank.com/","en-VN":"https://www.knightfrank.com.vn/","cs-CZ":"https://www.knightfrank.cz/","en-CZ":"https://www.knightfrank.com/","de-DE":"https://www.knightfrank.de/","en-DE":"https://www.knightfrank.com/","es-ES":"https://www.knightfrank.es/","en-ES":"https://www.knightfrank.com/","fr-FR":"https://www.knightfrank.fr/","en-FR":"https://www.knightfrank.com/","en-GR":"https://knightfrank.gr/","hu-HU":"https://www.knightfrank.hu/","en-HU":"https://www.knightfrank.com/","en-IE":"https://www.knightfrank.com/","en-JE":"https://www.knightfrank.je/","en-JP":"https://www.knightfrank.com/","en-KR":"https://www.knightfrank.com/","ko-KR":"https://www.knightfrank.kr/","en-MW":"https://www.knightfrank.com/","en-PH":"https://www.knightfrank.com/","en-RW":"https://www.knightfrank.com/","en-UG":"https://www.knightfrank.com/","en-US":"https://www.knightfrank.com/","en-ZM":"https://www.knightfrank.com/"},"ExcludedCountriesRelatedReports":[""],"CountrySettings":{"Items":[{"Isocode":"ES","PriceFilterRanges":{"ResBuy":null,"ResLet":null,"ComBuy":null,"ComLet":[5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100]}},{"Isocode":"HK","PriceFilterRanges":{"ResBuy":[10000000,20000000,30000000,40000000,50000000,60000000,70000000,80000000,90000000,100000000],"ResLet":[20000,30000,40000,50000,60000,70000,80000,90000,100000,200000],"ComBuy":null,"ComLet":null}},{"Isocode":"AE","PriceFilterRanges":{"ResBuy":[750000,1000000,2000000,3000000,4000000,5000000,6000000,7000000,8000000,9000000,10000000,15000000,20000000,25000000,30000000,35000000,40000000,45000000,50000000,60000000,70000000,80000000,90000000,100000000,300000000],"ResLet":[5000,10000,20000,30000,40000,50000,60000,70000,80000,90000,100000,125000,150000,175000,200000,225000,250000,275000,300000,350000,500000],"ComBuy":null,"ComLet":null}}]},"Azureb2c":{"Authorities":{"SignInSignUp":"https://login.prd-knightfrank.com/ea15e386-0dbc-4a5b-ac74-08f50f444486/B2C_1A_MYKFSIGNIN","KnownAuthorities":"login.prd-knightfrank.com"},"Scope":"https://KnightFrankB2Cprod.onmicrosoft.com/6e6a9034-3e20-4ec6-993f-61c89c0a2e2a/MyKf.ReadWrite","ClientId":"8482b8b8-8bcf-4fb9-b39d-d07346818e2a","RedirectUri":"/properties/login-redirect","PostLogoutRedirectUri":"/"},"KfTrackingUrlTemplate":"//tracking.web.prd-knightfrank.com/tracking.aspx?{pidorpids}&ttid={ttid}"};
+    var cmsFooterHtml = '<div class="container">						<div class="row">	<div class="column medium-3 col-sm-3">		<ul class="side-nav">			<li>				<h3><a href="https://knightfrank.co.uk/about" target="blank">About Knight Frank</a></h3><ul>					<li><a href="https://knightfrank.co.uk/about" target="blank">About us</a></li>					<li><a href="https://www.knightfrank.com/recruitment" target="blank">Careers</a></li>					<li><a href="https://www.knightfrank.com/about-us/diversity-equity-inclusion" target="blank">Diversity</a></li>                                        <li><a href="https://knightfrank.co.uk/about/esg">ESG</a></li>                                        <li><a href="https://www.knightfrank.com/about-us/awards" target="blank">Awards</a></li>                                        <li><a href="https://uk.trustpilot.com/review/www.knightfrank.co.uk" target="blank">Trustpilot reviews</a></li>                                        <li><a href="https://knightfrank.co.uk/newsroom">Newsroom</a></li>                                        <li><a href="https://knightfrank.co.uk/contact-us">Contact us</a></li></ul>			</li>				</ul>	</div><div class="row">	<div class="column medium-3 col-sm-3">		<ul class="side-nav">			<li>				<h3><a href="https://knightfrank.co.uk/research">Market insights</a></h3><ul>					<li><a href="https://knightfrank.co.uk/research">Research</a></li>					<li><a href="https://www.knightfrank.com/wealthreport" target="blank">The Wealth Report</a></li>					<li><a href="https://www.knightfrank.com/active-capital" target="blank">Active Capital</a></li>					<li><a href="https://www.knightfrank.com/yourspace" target="blank">Active Capital</a></li>					<li><a href="https://knightfrank.co.uk/research/reports/london-series">The London Series</a></li>					<li><a href="https://knightfrank.co.uk/research/reports/alpine-report">The Alpine Report</a></li>                                        <li><a href="https://www.knightfrank.com/rural-matters" target="blank">Rural Matters</a></li>                                        <li><a href="https://knightfrank.co.uk/perspectives">Perspectives</a></li>					<li><a href="https://www.knightfrank.com/theview" target="blank">The View from Knight Frank</a></li></ul>			</li>				</ul>	</div>	<div class="column medium-3 col-sm-3">		<ul class="side-nav">                                                <li>				<h3><a href="https://knightfrank.co.uk/">Tools and guides</a></h3>				<ul>					<li><a href="https://knightfrank.co.uk/calculator/stamp-duty-calculator">Stamp duty calculator</a></li>					<li><a href="https://knightfrank.co.uk/calculator/buy-to-let-stamp-duty-calculator">Buy-to-let stamp duty calculator</a></li>					<li><a href="https://knightfrank.co.uk/calculator/overseas-buyer-stamp-duty-calculator">Overseas buyer stamp duty calculator</a></li>					<li><a href="https://knightfrank.co.uk/calculator/commercial-stamp-duty-calculator">Commercial stamp duty calculator</a></li>					<li><a href="https://knightfrank.co.uk/property-valuations">Property valuations</a></li>					<li><a href="https://knightfrank.co.uk/residential/services/useful-guides-faqs-selling">Selling guide</a></li>					<li><a href="https://knightfrank.co.uk/residential/services/useful-guides-faqs-buying">Buying guide</a></li>					<li><a href="https://knightfrank.co.uk/residential/services/useful-guides-faqs-landlords">Landlord guide</a></li>					<li><a href="https://knightfrank.co.uk/residential/services/useful-guides-faqs-tenants">Tenant guide</a></li>					<li><a href="https://apps.apple.com/app/knight-frank-property-search/id350149855" target="blank">Knight Frank app</a></li>					<li><a href="https://secure.knightfrank.com/en" target="blank">My Knight Frank</a></li>					<li><a href="https://preferences.knightfrank.com/choose-your-preferences" target="blank">Subscribe to our newsletters</a></li>				</ul>			</li>		</ul>	</div>	<div class="column medium-3 col-sm-3">		<ul class="side-nav">			<li>				<h3><a href="https://www.knightfrank.com/about-us">Governance</a></h3>				<ul>					<li><a href="https://knightfrank.co.uk/governance/client-money-protection">Client money protection</a></li>					<li><a href="https://knightfrank.co.uk/governance/guidance-fraud">Protection against fraud</a></li>					<li><a href="https://knightfrank.co.uk/contact-us/feedback" target="blank">Feedback and complaints</a></li>				</ul>			</li>			<li>				<h3><a href="https://knightfrank.co.uk/about">Fees & charges</a></h3>				<ul>					<li><a href="https://knightfrank.co.uk/residential/services/useful-guides-faqs-tenants">Tenant fees</a></li>					<li><a href="https://knightfrank.co.uk/residential/services/landlord-responsibilities-fees">Landlord fees</a></li>				</ul>			</li>		</ul>	</div></div><div class="row"><div class="column col-lg-12 col-sm-6 OnTheMarket jsMatchHeights"><img alt="RICS Logo" style="width: 138px;height:auto;margin: 17px 15px 0; display:flex;" src="https://content.knightfrank.com/images/knightfrank.com/logos/rics-logo-white.png"><a title="Silver status of the Armed Forces Covenant " target="_blank" href="https://www.knightfrank.com/recruitment" rel="nofollow"><img style="width:61px; height:auto; margin: 10px 10px 20px; display:flex;" alt="Armed Forces Covenant - Silver status" src="https://content.knightfrank.com/images/knightfrank.co.uk/logos/armed-forces-covenant.webp"><a title="Women in Data " target="_blank" href="https://womenindata.co.uk/knight-frank/" rel="nofollow"><img style="width:100px; height:auto; margin: 10px 10px 20px; display:flex;" alt="Women in Data" src="https://content.knightfrank.com/images/knightfrank.com/about-us/wid-high-res-logo138.jpg"></a></div><hr></div>		    <div class="row">	<div class="column medium-6 col-sm-6 jsMatchHeights">		<div class="StayConnected" style="    height: auto !important;">		<h3>Follow us</h3>	</div><ul class="MyKF">			<li>Sign up to <a href="https://secure.knightfrank.com/?hostname=knightfrank.co.uk&amp;locale=en">My Knight Frank</a></li>		</ul>	</div>	<div class="column medium-6 col-sm-6 jsMatchHeights">		<ul class="social">			<li>				<a title="Knight Frank LinkedIn" href="https://uk.linkedin.com/company/knight-frank/">					<i class="fa fa-linkedin"></i>				</a>			</li>			<li>				<a title="Knight Frank Youtube" href="https://www.youtube.com/knightfrank/">					<i class="fa fa-youtube"></i>				</a>			</li>                        <li>                                                <a title="Knight Frank Instagram" href="https://www.instagram.com/knightfrank/">                                                            <i class="fa fa-instagram"></i>                                                </a>                                    </li>			<li>				<a title="Knight Frank Facebook" href="https://www.facebook.com/knightfrankllp/">					<i class="fa fa-facebook"></i>				</a>			</li>			<li>				<a title="Knight Frank X" href="https://www.x.com/knightfrank/">					<i class="fa fa-twitter"></i>				</a>			</li>		</ul>	</div>	<hr>	<div class="column col-md-8 col-sm-6">		<ul class="inline-list">			<li><a href="https://knightfrank.co.uk/site-map" title="Site map">Property site map</a></li><li><a href="https://knightfrank.co.uk/legals/privacy-statement" title="Group Privacy Policy">Privacy statement</a></li><li><a href="https://knightfrank.co.uk/legals/terms-conditions">Terms and conditions</a></li><li><a href="https://knightfrank.co.uk/legals/modern-slavery-act">Modern slavery act</a></li><li><a href="https://knightfrank.co.uk/legals/cookie-policy">Cookie policy</a></li><li><a href="https://knightfrank.co.uk/legals/cookie-settings">Cookie settings</a></li>		</ul>	</div>	<div class="column col-md-4 col-sm-6 Copyright">		<p>Copyright © 2025 Knight Frank.</p>	</div></div></div>';
+
+</script>
+
+<script src="/properties-resources/vendor/js/intl/dist/Intl.min.js"></script>
+<script src="/properties-resources/vendor/js/intl/locale-data/jsonp/en-GB.js"></script>
+<script src="/properties-resources/js/polyfills-93534266.bundle.js"></script>
+<script src="/properties-resources/js/vendor-93534266.bundle.js"></script>
+<script src="/properties-resources/js/app-93534266.bundle.js"></script>
+
+
+<script>
+    var MTIProjectId = '31ae3a6b-8559-4b55-b582-08c72c6d8fc5';
+    (function() {
+        var mtiTracking = document.createElement('script');
+        mtiTracking.type = 'text/javascript';
+        mtiTracking.async = 'true';
+        mtiTracking.src = '/properties-resources/vendor/js/fonts.com/knightfrank.com/mtiFontTrackingCode.js';
+        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(
+            mtiTracking);
+    })();
+</script>
+    <script async src="//cdn.tagcommander.com/4398/tc_KnightFrank_footer_20.js?t=639173987026880031"></script>
+
+<script src="//maps.googleapis.com/maps/api/js?key=AIzaSyC9EJO5p1qSiJ2lrp6Q9Fe8Ep2aEWnvPpE&language=en-GB"></script>
+
+</body>
+</html>

@@ -949,8 +949,14 @@ def enrich_floorplans(
     source: str = typer.Option(None, "--source", "-s", help="Specific source to enrich"),
     limit: int = typer.Option(None, "--limit", "-l", help="Max listings to process per source"),
     use_ocr: bool = typer.Option(False, "--ocr", help="Run OCR to extract sqft from floorplans"),
+    postgres: bool = typer.Option(False, "--postgres", help="Read/write Vercel Postgres (uses POSTGRES_URL) instead of SQLite"),
 ):
-    """Fetch missing floorplan URLs for all sources."""
+    """Fetch missing floorplan URLs for all sources.
+
+    Pass --postgres in scheduled (daily-scrape) runs so the captured floorplan_url
+    lands in the SAME Postgres DB that scripts/ocr_enrich.py reads — otherwise the
+    OCR step starves on NULL floorplan_url (WS3 root cause).
+    """
     # Sources to enrich (HTTP sources first for speed)
     all_sources = ['foxtons', 'rightmove', 'savills', 'knightfrank', 'chestertons']
 
@@ -967,9 +973,17 @@ def enrich_floorplans(
 
     results = []
     for src in sources_to_run:
-        # Determine settings based on source type
+        # Determine settings based on source type. In Postgres mode use the
+        # *_postgres settings so the SQLitePipeline isn't engaged; the enricher
+        # itself talks to Postgres directly via POSTGRES_URL.
         needs_playwright = src in ['savills', 'knightfrank', 'chestertons']
-        settings_module = "property_scraper.settings" if needs_playwright else "property_scraper.settings_standard"
+        if postgres:
+            settings_module = (
+                "property_scraper.settings_postgres" if needs_playwright
+                else "property_scraper.settings_postgres_standard"
+            )
+        else:
+            settings_module = "property_scraper.settings" if needs_playwright else "property_scraper.settings_standard"
 
         # Build command - ALWAYS disable cache for enricher
         # Playwright sources need fresh pages to click tabs (PLANS, Floorplan, etc.)
@@ -980,6 +994,8 @@ def enrich_floorplans(
             cmd.extend(["-a", f"limit={limit}"])
         if use_ocr:
             cmd.extend(["-a", "use_ocr=true"])
+        if postgres:
+            cmd.extend(["-a", "postgres=true"])
 
         env = os.environ.copy()
         env["SCRAPY_SETTINGS_MODULE"] = settings_module

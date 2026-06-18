@@ -118,6 +118,23 @@ jobs:
           ITEMS=$(grep -oP 'Total: \K[\d,]+' scrape_output.txt | tail -1 || echo "0")
           echo "items_scraped=$ITEMS" >> $GITHUB_OUTPUT
 
+      - name: Capture floorplan URLs (enrich-floorplans, Postgres)
+        continue-on-error: true
+        env:
+          USE_POSTGRES: "true"
+        run: |
+          # WS3 FIX: Rightmove search results rarely carry floorplan_url, so the
+          # downstream OCR backlog step (which SELECTs WHERE floorplan_url IS NOT
+          # NULL) was STARVING — Rightmove is ~86% of the no-sqft hole. Run the
+          # floorplan_enricher FIRST to fetch detail pages
+          # and write floorplan_url, into the SAME Postgres DB the OCR step reads
+          # (--postgres -> uses $POSTGRES_URL). --limit caps the run so it finishes
+          # inside the timeout. The enricher's UPDATE is non-destructive.
+          echo "Capturing floorplan URLs for rightmove (Postgres)..."
+          python -m cli.main enrich-floorplans --source rightmove --postgres --limit 300 2>&1 | tee enrich_output.txt || true
+          echo "=== Floorplan URL capture complete ==="
+        timeout-minutes: 30
+
       - name: Run OCR enrichment on backlog floorplans
         continue-on-error: true
         run: |

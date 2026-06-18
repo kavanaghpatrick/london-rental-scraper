@@ -97,6 +97,12 @@ jobs:
       - name: JS↔Python feature/£ parity (fail on drift)
         run: node chrome-extension/fixture_diff.mjs
 
+      - name: Extension extraction tests (per-site, vs real fixtures)
+        run: |
+          node chrome-extension/rightmove_extract_test.mjs
+          node chrome-extension/knightfrank_extract_test.mjs
+          node chrome-extension/foxtons_extract_test.mjs
+
   # === 3. Dashboard type-check + lint ===
   dashboard:
     runs-on: ubuntu-latest

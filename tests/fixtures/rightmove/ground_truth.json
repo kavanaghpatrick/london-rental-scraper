@@ -1,0 +1,41 @@
+{
+  "169944029": {
+    "beds": 2,
+    "baths": 2,
+    "sqft": 1539,
+    "price_primary": "£19,000 pcm",
+    "price_secondary": "£4,385 pw",
+    "outcode": "SW1W",
+    "incode": "8BQ",
+    "propertySubType": "Apartment",
+    "floorplan_url": "https://media.rightmove.co.uk/property-floorplan/ce4a84bec/169944029/ce4a84bec148f470b62a457f79068a53.jpeg",
+    "lat": 51.489118,
+    "lon": -0.153977
+  },
+  "163282418": {
+    "beds": 3,
+    "baths": 3,
+    "sqft": null,
+    "price_primary": "£20,583 pcm",
+    "price_secondary": "£4,750 pw",
+    "outcode": "SW1W",
+    "incode": "9AA",
+    "propertySubType": "Apartment",
+    "floorplan_url": "https://media.rightmove.co.uk/property-floorplan/f10240307/163282418/f10240307b30684f3c31f2916b3f0298.jpeg",
+    "lat": 51.49603,
+    "lon": -0.151424
+  },
+  "89290260": {
+    "beds": 3,
+    "baths": 2,
+    "sqft": null,
+    "price_primary": "£7,000 pcm",
+    "price_secondary": "£1,615 pw",
+    "outcode": "W14",
+    "incode": "8AZ",
+    "propertySubType": "Apartment",
+    "floorplan_url": "https://media.rightmove.co.uk/property-floorplan/b8ceb41ac/89290260/b8ceb41ac175b6d8da2829c4582e238b.jpeg",
+    "lat": 51.496109,
+    "lon": -0.204103
+  }
+}
