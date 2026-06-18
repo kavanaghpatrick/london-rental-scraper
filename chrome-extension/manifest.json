@@ -17,7 +17,8 @@
         "https://www.rightmove.co.uk/properties/*",
         "https://www.knightfrank.co.uk/properties/*",
         "https://www.chestertons.co.uk/properties/*",
-        "https://search.savills.com/property-detail/*"
+        "https://search.savills.com/property-detail/*",
+        "https://www.foxtons.co.uk/properties-to-rent/*"
       ],
       "js": ["vendor/tesseract.min.js", "xgboost.js", "content.js"],
       "css": ["sidebar.css"],
@@ -33,6 +34,8 @@
     "https://*.chestertons.co.uk/*",
     "https://*.homeflow-assets.co.uk/*",
     "https://*.savills.com/*",
+    "https://*.foxtons.co.uk/*",
+    "https://web-prod-page-assets.foxtons.co.uk/*",
     "https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/*",
     "https://dashboard-fawn-nu-59.vercel.app/*"
   ],
@@ -44,7 +47,8 @@
         "https://www.knightfrank.co.uk/*",
         "https://www.chestertons.co.uk/*",
         "https://search.savills.com/*",
-        "https://*.savills.com/*"
+        "https://*.savills.com/*",
+        "https://www.foxtons.co.uk/*"
       ]
     },
     {
@@ -53,7 +57,8 @@
         "https://www.rightmove.co.uk/*",
         "https://www.knightfrank.co.uk/*",
         "https://www.chestertons.co.uk/*",
-        "https://search.savills.com/*"
+        "https://search.savills.com/*",
+        "https://www.foxtons.co.uk/*"
       ]
     }
   ]

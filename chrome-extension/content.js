@@ -53,6 +53,7 @@
     KNIGHTFRANK: 'knightfrank',
     CHESTERTONS: 'chestertons',
     SAVILLS: 'savills',
+    FOXTONS: 'foxtons',
   };
 
   function detectSite() {
@@ -61,6 +62,7 @@
     if (hostname.includes('knightfrank.co.uk')) return SITES.KNIGHTFRANK;
     if (hostname.includes('chestertons.co.uk')) return SITES.CHESTERTONS;
     if (hostname.includes('savills.com')) return SITES.SAVILLS;
+    if (hostname.includes('foxtons.co.uk')) return SITES.FOXTONS;
     return null;
   }
 
@@ -161,6 +163,16 @@
         return /\/properties\/\d+\/lettings\//.test(url);
       case SITES.SAVILLS:
         return /\/property-detail\//.test(url);
+      case SITES.FOXTONS:
+        // Detail URLs are /properties-to-rent/{postcode-or-area-slug}/{ref}, where
+        // the ref segment is letters+digits (e.g. b2rc5264686, btrc0001663,
+        // chpk0478367). Search/area pages are a SINGLE segment (e.g.
+        // /properties-to-rent/kensington/) with no digit-bearing ref, so requiring a
+        // digit in the final segment excludes them. This self-gating mirrors the other
+        // sites (a search page's __NEXT_DATA__ has no propertyDetail key, so the
+        // extractor also returns null there — but gating the SPA re-run/retry on the
+        // URL keeps us from arming retries on listing-grid pages).
+        return /\/properties-to-rent\/[^/]+\/[a-z]*\d[a-z\d]*\/?(?:[?#].*)?$/i.test(url);
       default:
         return false;
     }
@@ -566,6 +578,8 @@
         return extractPropertyDataChestertons();
       case SITES.SAVILLS:
         return extractPropertyDataSavills();
+      case SITES.FOXTONS:
+        return extractPropertyDataFoxtons();
       default:
         log(' Unknown site, trying Rightmove extraction');
         return extractPropertyDataRightmove();
@@ -614,6 +628,139 @@
 
     log(' No Rightmove property data found');
     return null;
+  }
+
+  // ============================================
+  // FOXTONS EXTRACTION
+  // ============================================
+  // Foxtons detail pages are server-rendered Next.js with a clean single-property JSON
+  // blob at <script id="__NEXT_DATA__"> -> props.pageProps.propertyDetail (a FLAT
+  // object). This mirrors the Rightmove embedded-__NEXT_DATA__ path; we read the blob
+  // and BUILD the canonical propertyData-shaped object that the shared normalization
+  // helpers (extractPostcode / extractPropertyType / extractAgentName /
+  // extractSqftFromPage / parsePrice / extractLetType) already consume.
+  //
+  // SELF-GATING: on a Foxtons search/area page (which the manifest glob also matches)
+  // there is NO propertyDetail key, so this returns null and no popup shows — same
+  // gating the other sites rely on. Delisted refs 301-redirect to the area search page
+  // (URL gains a #gone fragment) where propertyDetail is likewise absent -> null.
+  //
+  // PRICE (verified live): pd.pricePcm is the correct per-calendar-month figure
+  // (rendered "£12,740 pcm"); pd.priceFrom/pd.priceTo are the WEEKLY figure
+  // (2,940 -> "£2,940 pw"). So when pricePcm > 0 we surface "£{pricePcm} pcm". On the
+  // rare price-RANGE listing pricePcm is 0 — there we fall back to the weekly priceFrom
+  // and surface "£{priceFrom} pw" so parsePrice() applies the ×52/12 pw->pcm conversion
+  // (e.g. 3,000 pw -> £13,000 pcm, matching the rendered figure). FLOORAREA is ALREADY
+  // square feet (the foxtons spider uses it verbatim as size_sqft; jsonLd unitCode
+  // "MTK" is mislabeled — ignore it).
+  function extractPropertyDataFoxtons() {
+    const nextDataScript = document.getElementById('__NEXT_DATA__');
+    if (!nextDataScript) {
+      log(' Foxtons: no __NEXT_DATA__ script');
+      return null;
+    }
+
+    let pd;
+    try {
+      const json = JSON.parse(nextDataScript.textContent);
+      pd = json?.props?.pageProps?.propertyDetail;
+    } catch (e) {
+      logError(' Foxtons __NEXT_DATA__ parse failed:', e);
+      return null;
+    }
+
+    // No propertyDetail => search/area page or delisted-redirect. No popup.
+    if (!pd) {
+      log(' Foxtons: no propertyDetail (search page or delisted)');
+      return null;
+    }
+
+    const data = { _source: 'foxtons' };
+
+    // Bedrooms / bathrooms / receptions (ints; 0/undefined left to caller defaults)
+    if (typeof pd.bedrooms === 'number') data.bedrooms = pd.bedrooms;
+    if (typeof pd.bathrooms === 'number') data.bathrooms = pd.bathrooms;
+    if (typeof pd.receptions === 'number') data.receptions = pd.receptions;
+
+    // Size — floorArea is ALREADY sqft. set size_source='page' via the sizings array
+    // (extractSqftFromPage reads sizings; analyzeProperty marks sizeSource='page' when
+    // sqft is present). Guard against null/0/garbage so we fall back to estimateSqft.
+    if (typeof pd.floorArea === 'number' && pd.floorArea > 0) {
+      const sqft = Math.round(pd.floorArea);
+      if (sqft >= 100 && sqft <= 50000) {
+        data.sizings = [{ minimumSize: sqft, unit: 'sqft' }];
+      }
+    }
+
+    // Price — build the visible-style string parsePrice() expects.
+    if (typeof pd.pricePcm === 'number' && pd.pricePcm > 0) {
+      data.prices = { primaryPrice: `£${pd.pricePcm.toLocaleString('en-GB')} pcm` };
+    } else if (typeof pd.priceFrom === 'number' && pd.priceFrom > 0) {
+      // pricePcm unreliable (0) on price-range listings; priceFrom is the WEEKLY figure.
+      // Surface as "£X pw" -> parsePrice does ×52/12 to recover the pcm value.
+      data.prices = { primaryPrice: `£${pd.priceFrom.toLocaleString('en-GB')} pw` };
+    }
+
+    // Postcode -> outcode/incode for extractPostcode(). Prefer the full postcode.
+    const fullPostcode = (pd.postcode && typeof pd.postcode === 'object' && pd.postcode.name)
+      ? pd.postcode.name
+      : (typeof pd.postcode === 'string' ? pd.postcode : (pd.postcodeShort || ''));
+
+    // Address — build displayAddress from the structured fields.
+    const addrObj = (pd.address && typeof pd.address === 'object') ? pd.address : {};
+    const line1 = pd.addressLine1 || addrObj.addressLine1 || '';
+    const line2 = pd.addressLine2 || addrObj.addressLine2 || addrObj.streetName || pd.street || '';
+    const town = pd.town || 'London';
+    const displayParts = [line1, line2, town].filter(p => p && String(p).trim());
+    data.address = { displayAddress: displayParts.join(', ') };
+
+    if (fullPostcode) {
+      const pc = String(fullPostcode).trim();
+      const parts = pc.split(/\s+/);
+      data.address.outcode = parts[0] || '';
+      data.address.incode = parts[1] || '';
+      // Ensure the postcode is also discoverable in the free-text address as a fallback.
+      if (data.address.displayAddress && !data.address.displayAddress.toUpperCase().includes(parts[0].toUpperCase())) {
+        data.address.displayAddress = `${data.address.displayAddress}, ${pc}`;
+      }
+    }
+
+    // Property type — pd.type is the specific lowercase string ('flat'/'penthouse'/
+    // 'house'); '' falls through to extractPropertyType()'s default ('flat').
+    if (typeof pd.type === 'string' && pd.type.trim()) {
+      data.propertyType = pd.type.trim().toLowerCase();
+    }
+
+    // Agent — always Foxtons.
+    data.customer = { companyName: 'Foxtons' };
+
+    // Lat/lng for the predictor's location features (pd.lat/pd.lng preferred).
+    const lat = (typeof pd.lat === 'number') ? pd.lat : (typeof pd.latitude === 'number' ? pd.latitude : undefined);
+    const lng = (typeof pd.lng === 'number') ? pd.lng : (typeof pd.longitude === 'number' ? pd.longitude : undefined);
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      data.location = { latitude: lat, longitude: lng };
+    }
+
+    // Floorplan — pd.floorplan.src lives on web-prod-page-assets.foxtons.co.uk; often
+    // "" (no floorplan). Guard so getFloorplanUrl() doesn't return an empty string.
+    const fpSrc = (pd.floorplan && typeof pd.floorplan === 'object') ? pd.floorplan.src : '';
+    if (fpSrc && String(fpSrc).trim()) {
+      data.floorplans = [{ url: String(fpSrc).trim() }];
+    }
+
+    // Description / key features for short-let detection + amenity parsing.
+    if (typeof pd.description === 'string' && pd.description.trim()) {
+      data.text = { description: pd.description.trim() };
+    }
+    if (Array.isArray(pd.features) && pd.features.length) {
+      data.keyFeatures = pd.features.filter(f => typeof f === 'string');
+    } else if (Array.isArray(pd.keyFeatures) && pd.keyFeatures.length) {
+      data.keyFeatures = pd.keyFeatures.filter(f => typeof f === 'string');
+    }
+
+    log(' Foxtons extracted:', data);
+    // Require at least a price OR beds so a half-empty blob doesn't render garbage.
+    return (data.prices?.primaryPrice || data.bedrooms) ? data : null;
   }
 
   // ============================================
@@ -1253,6 +1400,12 @@
         const match = pathname.match(/\/property-detail\/([a-zA-Z0-9-]+)/);
         return match ? match[1] : null;
       }
+      case SITES.FOXTONS: {
+        // URL like: /properties-to-rent/SW7/b2rc5264686 — the final ref segment is
+        // the stable id (letters+digits, e.g. b2rc5264686 / btrc0001663 / chpk0478367).
+        const match = pathname.match(/\/properties-to-rent\/[^/]+\/([a-zA-Z]*\d[a-zA-Z\d]*)\/?$/);
+        return match ? match[1] : null;
+      }
       default:
         return null;
     }
@@ -1455,6 +1608,7 @@
       case SITES.KNIGHTFRANK: return 'Knight Frank';
       case SITES.CHESTERTONS: return 'Chestertons';
       case SITES.SAVILLS: return 'Savills';
+      case SITES.FOXTONS: return 'Foxtons';
       default: return '';
     }
   }
@@ -1530,6 +1684,15 @@
           break;
         case SITES.SAVILLS:
           imgSelector = '.sv-pdp-floorplan img, [data-type="floorplan"] img, [data-tab="plans"] img';
+          break;
+        case SITES.FOXTONS:
+          // Foxtons floorplan (when present) is in pd.floorplan.src on
+          // web-prod-page-assets.foxtons.co.uk and is already surfaced via
+          // data.floorplans above; this DOM fallback covers the rare case where the
+          // blob carried it but our array build missed it.
+          imgSelector = 'img[src*="web-prod-page-assets.foxtons.co.uk"][src*="floorplan"], ' +
+                       'img[src*="foxtons.co.uk"][src*="floorplan"], ' +
+                       'img[data-src*="web-prod-page-assets.foxtons.co.uk"]';
           break;
       }
 
