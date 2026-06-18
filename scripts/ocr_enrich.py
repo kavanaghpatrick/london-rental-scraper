@@ -94,7 +94,7 @@ def get_listings_needing_ocr(source=None, limit=None):
     query = '''
         SELECT
             id, source, property_id, floorplan_url, address,
-            size_sqft, floor_count, property_levels
+            size_sqft, floor_count, property_levels, bedrooms, price_pcm
         FROM listings
         WHERE is_active = 1
           AND floorplan_url IS NOT NULL
@@ -212,6 +212,7 @@ def process_listing(listing, extractor, use_playwright=False):
         'property_id': listing['property_id'],
         'source': listing['source'],
         'success': False,
+        'orig_sqft': listing['size_sqft'],
         'sqft': None,
         'floor_count': None,
         'property_levels': None,
@@ -253,9 +254,16 @@ def process_listing(listing, extractor, use_playwright=False):
         # Extract results
         result['success'] = True
 
-        # Extract sqft (FloorplanData is a dataclass, use attribute access)
-        if data.total_sqft and data.total_sqft > 100:
-            result['sqft'] = data.total_sqft
+        # Extract sqft — SANITY-GATED so a mis-read OCR value can't poison the model.
+        # (FloorplanData is a dataclass, use attribute access.)
+        sqft = data.total_sqft
+        if sqft and 150 <= sqft <= 10000:
+            beds = listing['bedrooms']
+            price = listing['price_pcm']
+            ppsf = (price / sqft) if price else None        # monthly £/sqft
+            spb = (sqft / beds) if beds else None            # sqft per bedroom
+            if (ppsf is None or 3 <= ppsf <= 30) and (spb is None or 80 <= spb <= 4000):
+                result['sqft'] = sqft
 
         # Extract floor data from FloorData dataclass
         if data.floor_data:
@@ -300,7 +308,8 @@ def update_database(results, dry_run=False):
         updates = []
         params = []
 
-        if r.get('sqft'):
+        # Only FILL missing sqft — never OVERWRITE an existing scraped value with OCR.
+        if r.get('sqft') and not r.get('orig_sqft'):
             updates.append(f'size_sqft = {placeholder}')
             params.append(r['sqft'])
 
