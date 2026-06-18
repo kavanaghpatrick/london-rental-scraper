@@ -181,71 +181,49 @@ class TestWorkflowWiring:
             pytest.skip(f"workflow missing: {WORKFLOW}")
         return WORKFLOW.read_text(encoding="utf-8")
 
-    @pytest.fixture(scope="class")
-    def steps(self, workflow_text):
-        """The ordered list of step `run:` script bodies for the scrape job."""
-        import yaml
+    # NB: assertions parse the workflow as TEXT (no PyYAML) so they run in CI without
+    # an extra dependency. Step ordering == position in the file (steps are sequential),
+    # so character offsets of the actual run commands encode run order.
 
-        doc = yaml.safe_load(workflow_text)
-        jobs = doc.get("jobs", {})
-        # The scrape job is the one that runs the scraper; find it robustly.
-        for _job_name, job in jobs.items():
-            step_list = job.get("steps", []) or []
-            run_bodies = [s.get("run", "") or "" for s in step_list]
-            if any("cli.main scrape" in b for b in run_bodies):
-                return run_bodies
-        pytest.fail("could not find the scrape job (no step runs `cli.main scrape`)")
-
-    def _first_index(self, steps, needle):
-        for i, body in enumerate(steps):
-            if needle in body:
-                return i
-        return -1
-
-    def test_enrich_floorplans_step_exists(self, steps):
-        idx = self._first_index(steps, "enrich-floorplans")
-        assert idx >= 0, (
+    def test_enrich_floorplans_step_exists(self, workflow_text):
+        assert "enrich-floorplans" in workflow_text, (
             "daily-scrape.yml has NO `enrich-floorplans` step — the floorplan_enricher "
             "is wired into no workflow, so floorplan_url is never captured for scheduled "
             "runs and ocr_enrich.py starves."
         )
 
-    def test_enrich_floorplans_targets_rightmove(self, steps):
-        idx = self._first_index(steps, "enrich-floorplans")
-        if idx < 0:
-            pytest.fail("no enrich-floorplans step present")
-        body = steps[idx]
-        assert "rightmove" in body, (
+    def test_enrich_floorplans_targets_rightmove(self, workflow_text):
+        import re
+
+        assert re.search(r"enrich-floorplans[^\n]*rightmove", workflow_text), (
             "enrich-floorplans step must cover rightmove (86% of the no-sqft hole)"
         )
 
-    def test_enrich_runs_before_ocr_enrich(self, steps):
-        enrich_idx = self._first_index(steps, "enrich-floorplans")
-        ocr_idx = self._first_index(steps, "ocr_enrich.py")
-        assert ocr_idx >= 0, "expected the existing scripts/ocr_enrich.py step"
-        assert enrich_idx >= 0, "expected an enrich-floorplans step (capture floorplan_url first)"
-        assert enrich_idx < ocr_idx, (
-            f"enrich-floorplans (step {enrich_idx}) must run BEFORE ocr_enrich.py "
-            f"(step {ocr_idx}) so floorplan_url is populated before OCR reads it"
+    def test_enrich_runs_before_ocr_enrich(self, workflow_text):
+        enrich = workflow_text.find("cli.main enrich-floorplans")
+        ocr = workflow_text.find("ocr_enrich.py")
+        assert ocr >= 0, "expected the existing scripts/ocr_enrich.py step"
+        assert enrich >= 0, "expected an enrich-floorplans run step (capture floorplan_url first)"
+        assert enrich < ocr, (
+            "enrich-floorplans must run BEFORE ocr_enrich.py so floorplan_url is "
+            "populated before OCR reads it"
         )
 
-    def test_enrich_runs_after_scrape(self, steps):
-        scrape_idx = self._first_index(steps, "cli.main scrape")
-        enrich_idx = self._first_index(steps, "enrich-floorplans")
-        assert enrich_idx > scrape_idx >= 0, (
+    def test_enrich_runs_after_scrape(self, workflow_text):
+        scrape = workflow_text.find("cli.main scrape")
+        enrich = workflow_text.find("cli.main enrich-floorplans")
+        assert scrape >= 0 and enrich > scrape, (
             "enrich-floorplans must run AFTER the scrape (enrich existing rows), "
-            f"got scrape={scrape_idx} enrich={enrich_idx}"
+            f"got scrape@{scrape} enrich@{enrich}"
         )
 
-    def test_enrich_writes_to_postgres_db_ocr_reads(self, steps):
+    def test_enrich_writes_to_postgres_db_ocr_reads(self, workflow_text):
         """The scheduled run writes PROD Postgres; the enrich step must target the
         SAME DB ocr_enrich reads (via --postgres / POSTGRES_URL), else the captured
         floorplan_url lands in SQLite and OCR (on Postgres) still starves."""
-        idx = self._first_index(steps, "enrich-floorplans")
-        if idx < 0:
-            pytest.fail("no enrich-floorplans step present")
-        body = steps[idx]
-        assert ("--postgres" in body) or ("POSTGRES_URL" in body), (
+        import re
+
+        assert re.search(r"enrich-floorplans[^\n]*(?:--postgres|POSTGRES_URL)", workflow_text), (
             "enrich-floorplans in the Postgres-mode daily run must write Postgres "
             "(pass --postgres or set POSTGRES_URL) so OCR reads the rows it captured"
         )
