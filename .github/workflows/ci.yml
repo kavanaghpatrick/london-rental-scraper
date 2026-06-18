@@ -45,7 +45,7 @@ jobs:
           # Default pytest excludes `live` (network) tests and, via conftest.py,
           # skips data-validation tests when no rentals.db is present (CI has none).
           # ALSO exclude `parity` here: the node-parity JOB already runs
-          # _fixture_diff.mjs (regen-then-diff, more robust), so the pytest parity
+          # fixture_diff.mjs (regen-then-diff, more robust), so the pytest parity
           # wrapper (#47) would be a redundant double-run. It still runs in a local
           # bare `pytest` for dev convenience.
           # COVERAGE GATE: --cov-fail-under is a FLOOR that RATCHETS UP as the test
@@ -95,7 +95,7 @@ jobs:
           node-version: '20'
 
       - name: JS↔Python feature/£ parity (fail on drift)
-        run: node chrome-extension/_fixture_diff.mjs
+        run: node chrome-extension/fixture_diff.mjs
 
   # === 3. Dashboard type-check + lint ===
   dashboard:

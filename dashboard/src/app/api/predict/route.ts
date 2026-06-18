@@ -169,7 +169,7 @@ interface SharedPredictorModule {
  * into this route dir (`xgboost.predictor.js`, byte-identical copy of
  * chrome-extension/xgboost.js) so Next bundles it into the serverless function
  * (the canonical source lives outside the dashboard build root). The module is
- * GREEN: `_fixture_diff.mjs` passes 0 feature + 0 £ mismatch on all 5 locked
+ * GREEN: `fixture_diff.mjs` passes 0 feature + 0 £ mismatch on all 5 locked
  * golden-fixture samples (belgravia £11,189, chelsea £4,862, mews £6,758,
  * studio £1,947, prestige £27,635).
  *

@@ -40,7 +40,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      # Node is needed for the post-retrain JS<->Python parity gate (_fixture_diff.mjs),
+      # Node is needed for the post-retrain JS<->Python parity gate (fixture_diff.mjs),
       # which blocks the model commit if a retrain desyncs the served JS predictor (#14).
       - name: Set up Node
         uses: actions/setup-node@v5
@@ -352,7 +352,7 @@ jobs:
           # Fail the job (so the Commit step below is SKIPPED) if the retrain left the served
           # JS predictor inconsistent with the Python golden / inference.json. The safety net
           # that prevents the daily auto-update from EVER pushing a desynced model (#14).
-          node chrome-extension/_fixture_diff.mjs
+          node chrome-extension/fixture_diff.mjs
           python3 scripts/sync_js_freq_maps.py --check
           echo "JS<->Python parity verified (0/0) — matched artifact set is consistent"
 

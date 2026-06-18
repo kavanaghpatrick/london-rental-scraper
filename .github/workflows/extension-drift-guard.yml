@@ -6,7 +6,7 @@ name: Extension Drift Guard
 #   1. FIXTURE DIFF — JS XGBFeatures.buildFeatures/predictor vs the Python v20 truth.
 #      Regenerates the golden fixture FROM Python (gen_feature_parity_golden.py) so the
 #      JS is diffed against FRESH Python truth, not a stale committed fixture, then runs
-#      artifacts' _fixture_diff.mjs (fails on ANY feature or £ mismatch across all samples).
+#      artifacts' fixture_diff.mjs (fails on ANY feature or £ mismatch across all samples).
 #      This catches the JS feature builder / tree-walker silently drifting from Python v20.
 #
 #   2. BYTE-IDENTITY — serving vendored a COPY of chrome-extension/xgboost.js into
@@ -21,7 +21,7 @@ on:
   pull_request:
     paths:
       - 'chrome-extension/xgboost.js'
-      - 'chrome-extension/_fixture_diff.mjs'
+      - 'chrome-extension/fixture_diff.mjs'
       - 'chrome-extension/api/model.json'
       - 'chrome-extension/api/features.json'
       - 'dashboard/src/app/api/predict/xgboost.predictor.js'
@@ -33,7 +33,7 @@ on:
   push:
     paths:
       - 'chrome-extension/xgboost.js'
-      - 'chrome-extension/_fixture_diff.mjs'
+      - 'chrome-extension/fixture_diff.mjs'
       - 'chrome-extension/api/model.json'
       - 'chrome-extension/api/features.json'
       - 'dashboard/src/app/api/predict/xgboost.predictor.js'
@@ -77,7 +77,7 @@ jobs:
         run: |
           # Harness defaults to output/feature_parity_golden.json (just regenerated).
           # Exits non-zero on any feature mismatch or £ mismatch beyond epsilon.
-          node chrome-extension/_fixture_diff.mjs
+          node chrome-extension/fixture_diff.mjs
 
   # === Guard 2: vendored predictor byte-identity ===
   vendored-identity:
