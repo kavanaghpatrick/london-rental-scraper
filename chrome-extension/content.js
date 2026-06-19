@@ -373,8 +373,20 @@
     let sizeSource = sizeSqft ? 'page' : null;
     let ocrText = ''; // Store raw OCR text for floor extraction
 
-    // ALWAYS run OCR if floorplan available - we need it for floor extraction even if sqft is known
-    // For SPA sites (Chestertons, Savills), click the floorplan tab first and retry if needed
+    // Run OCR on the floorplan to extract floor flags (and sqft when the page
+    // doesn't expose it). For SPA sites (Chestertons, Savills) the floorplan lives
+    // in a tab that must be clicked first; retry if needed.
+    //
+    // EXCEPTION — Foxtons: its floorplan CDN (web-prod-page-assets.foxtons.co.uk,
+    // Cloudflare in front of CloudFront) actively blocks the extension's
+    // service-worker fetch with HTTP 403 (bot/hotlink mitigation; see
+    // scripts/ocr_enrich.py "Foxtons CDN blocks ... use Playwright"). When Foxtons
+    // already gives us real sqft from the page (size_source==='page'), OCR can only
+    // add floor-flag granularity — not worth a guaranteed-failing fetch that floods
+    // the console with 403s. So we skip floorplan OCR on Foxtons when sqft is known.
+    // All other hosts (incl. Chestertons, which depends on OCR for sqft) are
+    // unchanged. The skip is keyed on the known-hostile host, NOT on size_source
+    // generally, so we never weaken OCR where it works.
     let floorplanUrl = getFloorplanUrl(propertyData);
     log(' Initial floorplan URL:', floorplanUrl || 'NOT FOUND');
 
@@ -404,9 +416,30 @@
       }
     }
 
-    if (floorplanUrl) {
+    // Skip floorplan OCR on Foxtons when we already have sqft from the page: the
+    // Foxtons CDN 403s the extension fetch, so OCR would only spam errors while
+    // adding (at most) floor flags. Only floor-flag granularity is lost, which is
+    // acceptable vs. a guaranteed-failing fetch on every analysis.
+    const sqftKnownFromPage = sizeSource === 'page';
+    const hostBlocksFloorplanFetch = currentSite === SITES.FOXTONS;
+    const skipFloorplanOcr = floorplanUrl && hostBlocksFloorplanFetch && sqftKnownFromPage;
+
+    if (floorplanUrl && !skipFloorplanOcr) {
       injectLoadingState('Reading floorplan...');
-      const ocrResult = await ocrFloorplan(floorplanUrl);
+      // BUG2 GUARD: OCR is best-effort enrichment only — it must NEVER abort the
+      // analysis or the comps render. ocrFloorplan already catches its own errors
+      // and returns {sqft:null,text:''}, but we wrap the await here too so that even
+      // an unexpected rejection that escapes that catch degrades to empty OCR text
+      // instead of bubbling to init()'s outer catch (which would injectError and wipe
+      // the sidebar + Similar Properties). Comps render independent of OCR outcome.
+      let ocrResult = { sqft: null, text: '' };
+      try {
+        ocrResult = await ocrFloorplan(floorplanUrl);
+      } catch (ocrErr) {
+        log(' OCR step skipped (unexpected error, analysis continues):',
+          (ocrErr && ocrErr.message) || 'unknown');
+        ocrResult = { sqft: null, text: '' };
+      }
       ocrText = ocrResult.text || '';
       // Only use OCR sqft if we don't have it from page
       if (!sizeSqft && ocrResult.sqft) {
@@ -414,6 +447,9 @@
         sizeSource = 'ocr';
       }
       log(' OCR result: sqft=' + (ocrResult.sqft || 'none') + ', text length=' + ocrText.length);
+    } else if (skipFloorplanOcr) {
+      // ocrText stays '' -> extractFloors('') returns all-zero flags (safe).
+      log(' Skipping floorplan OCR (sqft known from page; this host blocks the floorplan CDN fetch)');
     } else {
       log(' No floorplan found in property data');
     }
@@ -2037,7 +2073,14 @@
       log(' No size pattern found in OCR text');
       return { sqft: null, text };
     } catch (e) {
-      logError(' OCR failed:', e.message);
+      // GRACEFUL + NON-SPAMMY: a blocked/failed floorplan fetch (e.g. Foxtons CDN
+      // 403) is expected and recoverable — the page sqft / estimateSqft fallback
+      // already covers size, and extractFloors('') is safe. Log a SINGLE debug-level
+      // line (never console.error, so it can't flood the console as an error), and
+      // guard against an undefined e.message tail ("OCR failed: undefined"). The
+      // clean return below guarantees this never aborts analyzeProperty or the
+      // comps render.
+      log(' OCR unavailable (floorplan fetch/OCR failed):', (e && e.message) || 'fetch blocked');
       return { sqft: null, text: '' };
     } finally {
       // Always terminate worker to prevent memory leak

@@ -13,8 +13,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: true, data: base64 });
       })
       .catch(error => {
-        console.error('[RFV Background] Fetch failed:', error.message);
-        sendResponse({ success: false, error: error.message });
+        // A blocked/failed cross-origin floorplan fetch (e.g. Foxtons CDN HTTP 403
+        // bot-mitigation) is EXPECTED and recoverable: the content script falls back
+        // to page sqft / estimateSqft and renders normally. Log at debug level so a
+        // hostile CDN can't flood the service-worker console with error-level noise.
+        // Still report the failure to the caller so its OCR path returns cleanly.
+        const msg = (error && error.message) || 'fetch blocked';
+        console.debug('[RFV Background] Floorplan fetch unavailable:', msg);
+        sendResponse({ success: false, error: msg });
       });
 
     return true; // Required for async sendResponse
@@ -28,7 +34,11 @@ async function fetchImageAsBase64(url) {
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    // Some CDNs (e.g. Foxtons) return an empty statusText with a 403, which would
+    // produce a dangling "HTTP 403:" — include statusText only when present.
+    const detail = response.statusText ? `HTTP ${response.status}: ${response.statusText}`
+                                       : `HTTP ${response.status}`;
+    throw new Error(detail);
   }
 
   const blob = await response.blob();

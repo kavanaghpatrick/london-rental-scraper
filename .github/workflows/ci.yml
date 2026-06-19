@@ -103,6 +103,7 @@ jobs:
           node chrome-extension/knightfrank_extract_test.mjs
           node chrome-extension/foxtons_extract_test.mjs
           node chrome-extension/floorplan_discovery_test.mjs
+          node chrome-extension/foxtons_ocr_skip_test.mjs
 
   # === 3. Dashboard type-check + lint ===
   dashboard:
