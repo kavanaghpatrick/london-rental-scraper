@@ -211,8 +211,10 @@ def _compute_after_oof(db_path: Path):
 
 @pytest.mark.unit
 def test_before_baseline_files_exist():
-    """R3 captured the BEFORE baselines; the gates depend on them. Fail loudly if missing."""
-    assert R3_DIR.is_dir(), f"missing R3 baseline dir {R3_DIR}"
+    """R3 captured the BEFORE baselines locally; the gates depend on them. These TSVs are a
+    LOCAL experiment artifact (output/r3_baseline/, not committed) — skip where absent (CI)."""
+    if not R3_DIR.is_dir():
+        pytest.skip(f"r3_baseline dir absent (local-only experiment artifact): {R3_DIR}")
     assert BEFORE_RENTALSDB_TSV.exists(), (
         f"missing same-DB BEFORE baseline {BEFORE_RENTALSDB_TSV} — the ONLY correct R²/MAE "
         f"comparison for a rentals.db retrain"
@@ -223,6 +225,8 @@ def test_before_baseline_files_exist():
 @pytest.mark.unit
 def test_before_baseline_parses_to_known_numbers():
     """The TSV parser must reproduce R3's recorded BEFORE-rentals.db numbers exactly."""
+    if not BEFORE_RENTALSDB_TSV.exists():
+        pytest.skip("r3_baseline TSV absent (local-only experiment artifact)")
     o = _parse_overall_tsv(BEFORE_RENTALSDB_TSV)
     assert o["n"] == BEFORE_RENTALSDB_N, o
     assert abs(o["R2"] - BEFORE_RENTALSDB_R2) < 1e-6, o
@@ -252,6 +256,8 @@ def test_we_do_not_gate_on_the_shipped_modelercopy_number():
     red a healthy retrain (DB switch alone costs ~0.014 R²). Assert the gate's floor is
     derived from the SAME-DB baseline (0.8192), not the shipped one (0.8337).
     """
+    if not BEFORE_RENTALSDB_TSV.exists():
+        pytest.skip("r3_baseline TSV absent (local-only experiment artifact)")
     shipped = _parse_overall_tsv(BEFORE_SHIPPED_TSV)["R2"] if BEFORE_SHIPPED_TSV.exists() else 0.8337
     same_db = _parse_overall_tsv(BEFORE_RENTALSDB_TSV)["R2"]
     assert abs(same_db - BEFORE_RENTALSDB_R2) < 1e-6
