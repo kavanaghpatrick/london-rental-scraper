@@ -61,8 +61,20 @@ from io import BytesIO
 try:
     import pytesseract
     from PIL import Image
+    # CRITICAL: pytesseract being importable is NOT enough — the actual OCR call shells
+    # out to the `tesseract` BINARY, and when that binary is off PATH pytesseract raises
+    # TesseractNotFoundError (an OSError) at extract-time, NOT ImportError at import-time.
+    # If OCR_AVAILABLE only tracked the package import, every guard that does
+    # `if not OCR_AVAILABLE: skip` would WRONGLY proceed and the test/run would CRASH
+    # (RED) instead of skipping. So probe the binary here: get_tesseract_version()
+    # invokes it and raises if it's missing. This makes OCR_AVAILABLE mean "the OCR
+    # engine can actually run", so a CI env with pytesseract pip-installed but no
+    # `apt-get install tesseract-ocr` SKIPS cleanly instead of flipping the suite RED.
+    pytesseract.get_tesseract_version()
     OCR_AVAILABLE = True
-except ImportError:
+except Exception:
+    # ImportError (no pytesseract/Pillow) OR TesseractNotFoundError/EnvironmentError
+    # (binary absent) OR any probe failure — all mean OCR can't run here.
     OCR_AVAILABLE = False
     Image = None  # Type stub for when PIL not available
 

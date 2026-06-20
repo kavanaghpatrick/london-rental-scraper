@@ -48,6 +48,13 @@ jobs:
           # fixture_diff.mjs (regen-then-diff, more robust), so the pytest parity
           # wrapper (#47) would be a redundant double-run. It still runs in a local
           # bare `pytest` for dev convenience.
+          #
+          # ANTI-SILENT-SKIP (#49): tests/test_ci_critical_tests_run.py runs as part of
+          # this suite and FAILS if any test on the CRITICAL allowlist is missing or
+          # skip-marked in CI — so a load-bearing regression guard that silently stops
+          # running fails the build instead of hiding behind a green suite. The
+          # --strict-markers in pytest.ini turns a typo'd marker into a hard error.
+          #
           # COVERAGE GATE: --cov-fail-under is a FLOOR that RATCHETS UP as the test
           # owners (#45-48) land tests. Set to the current measured baseline so it
           # catches a REGRESSION without blocking a PR on a number the suite hasn't
@@ -59,7 +66,37 @@ jobs:
             --cov=canonical_predict --cov=retrain_canonical --cov=rental_price_models_v20 \
             --cov-report=term-missing --cov-report=xml \
             --cov-fail-under=5 \
+            --junitxml=pytest-results.xml \
             -q
+
+      - name: Assert a sane number of tests actually EXECUTED (not all-skipped)
+        if: always()
+        run: |
+          # Belt-and-braces floor on the silent-skip class: if conftest itself broke, or
+          # the env regressed so the whole suite skipped, the count collapses and we fail
+          # loudly. This is a coarse global guard; the per-test allowlist meta-test is the
+          # precise one. Keep the floor comfortably BELOW the real executed count
+          # (~190+ in CI) so a normal PR never trips it, but a collapse to a handful does.
+          python3 - <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          MIN_EXECUTED = 120  # CI executes ~197; alarm well below that, above noise.
+          t = ET.parse("pytest-results.xml").getroot()
+          suites = t.iter("testsuite")
+          total = skipped = errors = failures = 0
+          for s in suites:
+              total += int(s.get("tests", 0))
+              skipped += int(s.get("skipped", 0))
+              errors += int(s.get("errors", 0))
+              failures += int(s.get("failures", 0))
+          executed = total - skipped
+          print(f"tests={total} executed={executed} skipped={skipped} "
+                f"failures={failures} errors={errors}")
+          if executed < MIN_EXECUTED:
+              print(f"::error::Only {executed} tests executed (< {MIN_EXECUTED}). The suite "
+                    f"likely silently collapsed to skips — investigate conftest/env before "
+                    f"trusting this green.")
+              sys.exit(1)
+          PY
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v6
@@ -104,6 +141,25 @@ jobs:
           node chrome-extension/foxtons_extract_test.mjs
           node chrome-extension/floorplan_discovery_test.mjs
           node chrome-extension/foxtons_ocr_skip_test.mjs
+          # Behavioural guards for recent extension work that were passing green but
+          # wired into NO workflow (zero PR-CI protection until now):
+          #   similar_properties_test — the comps location HARD-gate in
+          #     findSimilarProperties (the "comps totally off" fix). A regression that
+          #     re-softens the location gate is invisible without this.
+          #   content_load_test — content.js loads without throwing (the log/logError
+          #     infinite-recursion crash that broke the plugin on EVERY site) + the
+          #     bounded SPA-retry guard.
+          node chrome-extension/similar_properties_test.mjs
+          node chrome-extension/content_load_test.mjs
+
+      - name: Anti-silent-skip guard (a critical extension harness silently stopped running)
+        run: |
+          # SYSTEMIC FIX: assert that EVERY extension harness ci.yml is supposed to run
+          # is actually invoked above. A renamed/removed/typo'd harness — the exact
+          # "green locally, dark in CI" failure class — fails THIS step loudly instead
+          # of silently shrinking coverage. The allowlist is the source of truth; adding
+          # a harness without listing it here (or vice-versa) is a hard error.
+          node chrome-extension/ci_harness_guard.mjs
 
   # === 3. Dashboard type-check + lint ===
   dashboard:

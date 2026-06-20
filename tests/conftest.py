@@ -134,3 +134,18 @@ def pytest_collection_modifyitems(config, items):
         is_data = "data" in item.keywords or "test_scrape_validation" in str(item.fspath)
         if is_data:
             item.add_marker(skip_no_db)
+
+
+# ---------------------------------------------------------------------------------
+# ANTI-SILENT-SKIP instrumentation (#49 systemic fix).
+#
+# The team's distrust: a critical regression test that silently STOPS RUNNING in CI —
+# renamed, de-collected, or over-broadly skipped — looks identical to "all green".
+# tests/test_ci_critical_tests_run.py inspects the live session's collected items to
+# assert each test on the CRITICAL allowlist was collected AND not skip-marked in this
+# env. We expose the post-skip collected nodeids on the session config so the meta-test
+# (and any future tooling) has a stable handle on "what actually ran this run".
+# ---------------------------------------------------------------------------------
+def pytest_collection_finish(session):
+    # Record every nodeid that survived collection (after the skips above are applied).
+    session.config._collected_nodeids = {item.nodeid for item in session.items}

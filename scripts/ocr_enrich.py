@@ -47,15 +47,71 @@ def log(msg):
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from property_scraper.utils.floorplan_extractor import FloorplanExtractor, OCR_AVAILABLE
-
-if not OCR_AVAILABLE:
-    log("ERROR: pytesseract not available. Install with: pip install pytesseract")
-    log("Also ensure tesseract is installed: brew install tesseract")
-    sys.exit(1)
-
+# NOTE: the OCR engine (pytesseract/tesseract) is imported lazily in main() rather
+# than at module scope. Importing it here and `sys.exit(1)`-ing when it's absent made
+# the WHOLE module un-importable in any env without the OCR system dep — which meant
+# the pure no-overwrite / sanity-gate decision logic below (the part that protects the
+# model from a mis-read OCR value, and that protects scraped sqft from being clobbered)
+# could not be unit-tested in PR CI (CI has no pytesseract). Keeping the import in
+# main() lets tests import + exercise those pure functions with no OCR deps installed,
+# while a real run still hard-fails fast if tesseract is missing. See
+# tests/test_ocr_enrich_guards.py.
 
 DB_PATH = Path(__file__).parent.parent / 'output' / 'rentals.db'
+
+# --- Pure decision logic (no OCR / no DB) — unit-tested in test_ocr_enrich_guards.py.
+
+# Absolute plausible-area window for a London flat/house total (sq ft). Outside this a
+# number is almost certainly a room dimension mis-read as the total, or a scan artifact.
+SQFT_SANITY_MIN = 150
+SQFT_SANITY_MAX = 10000
+# Secondary cross-checks against price/beds so a number that is *in range* but
+# economically impossible (e.g. £/sqft of 0.5 or 500 sqft-per-bed of 12) is rejected.
+PPSF_MIN, PPSF_MAX = 3, 30          # monthly £ per sqft
+SQFT_PER_BED_MIN, SQFT_PER_BED_MAX = 80, 4000
+
+
+def sqft_passes_sanity_gate(sqft, bedrooms, price_pcm):
+    """Return the OCR'd sqft IF it survives the sanity gate, else None.
+
+    Mirrors the exact gate applied in process_listing: an absolute area window plus
+    optional £/sqft and sqft-per-bed cross-checks (each skipped when its input is
+    missing). Pure — no OCR, no DB — so it is unit-testable in PR CI.
+    """
+    if not sqft or not (SQFT_SANITY_MIN <= sqft <= SQFT_SANITY_MAX):
+        return None
+    ppsf = (price_pcm / sqft) if price_pcm else None
+    spb = (sqft / bedrooms) if bedrooms else None
+    if (ppsf is None or PPSF_MIN <= ppsf <= PPSF_MAX) and (
+        spb is None or SQFT_PER_BED_MIN <= spb <= SQFT_PER_BED_MAX
+    ):
+        return sqft
+    return None
+
+
+def select_field_updates(result):
+    """Build the ordered (column, value) updates for a successful OCR result.
+
+    Encodes the NO-OVERWRITE rule: OCR may only FILL a missing size_sqft — never
+    overwrite a value that was already scraped (`orig_sqft`). Floor fields are
+    set when present. Pure — no DB — so the no-overwrite policy is unit-testable.
+    """
+    updates = []
+    # Only FILL missing sqft — never OVERWRITE an existing scraped value with OCR.
+    if result.get('sqft') and not result.get('orig_sqft'):
+        updates.append(('size_sqft', result['sqft']))
+    if result.get('floor_count'):
+        updates.append(('floor_count', result['floor_count']))
+    if result.get('property_levels'):
+        updates.append(('property_levels', result['property_levels']))
+    if result.get('floor_data'):
+        fd = result['floor_data']
+        for flag in ['has_basement', 'has_lower_ground', 'has_ground', 'has_mezzanine',
+                     'has_first_floor', 'has_second_floor', 'has_third_floor',
+                     'has_fourth_plus', 'has_roof_terrace']:
+            if fd.get(flag):
+                updates.append((flag, fd[flag]))
+    return updates
 
 # Database connection helpers
 def get_postgres_url():
@@ -256,14 +312,11 @@ def process_listing(listing, extractor, use_playwright=False):
 
         # Extract sqft — SANITY-GATED so a mis-read OCR value can't poison the model.
         # (FloorplanData is a dataclass, use attribute access.)
-        sqft = data.total_sqft
-        if sqft and 150 <= sqft <= 10000:
-            beds = listing['bedrooms']
-            price = listing['price_pcm']
-            ppsf = (price / sqft) if price else None        # monthly £/sqft
-            spb = (sqft / beds) if beds else None            # sqft per bedroom
-            if (ppsf is None or 3 <= ppsf <= 30) and (spb is None or 80 <= spb <= 4000):
-                result['sqft'] = sqft
+        accepted = sqft_passes_sanity_gate(
+            data.total_sqft, listing['bedrooms'], listing['price_pcm']
+        )
+        if accepted is not None:
+            result['sqft'] = accepted
 
         # Extract floor data from FloorData dataclass
         if data.floor_data:
@@ -305,34 +358,14 @@ def update_database(results, dry_run=False):
         if not r['success']:
             continue
 
-        updates = []
-        params = []
-
-        # Only FILL missing sqft — never OVERWRITE an existing scraped value with OCR.
-        if r.get('sqft') and not r.get('orig_sqft'):
-            updates.append(f'size_sqft = {placeholder}')
-            params.append(r['sqft'])
-
-        if r.get('floor_count'):
-            updates.append(f'floor_count = {placeholder}')
-            params.append(r['floor_count'])
-
-        if r.get('property_levels'):
-            updates.append(f'property_levels = {placeholder}')
-            params.append(r['property_levels'])
-
-        if r.get('floor_data'):
-            fd = r['floor_data']
-            for flag in ['has_basement', 'has_lower_ground', 'has_ground', 'has_mezzanine',
-                         'has_first_floor', 'has_second_floor', 'has_third_floor',
-                         'has_fourth_plus', 'has_roof_terrace']:
-                if fd.get(flag):
-                    updates.append(f'{flag} = {placeholder}')
-                    params.append(fd[flag])
-
-        if updates:
+        # NO-OVERWRITE + field selection is the pure decision (unit-tested); this loop
+        # just renders it into a parametrised UPDATE.
+        field_updates = select_field_updates(r)
+        if field_updates:
+            set_clauses = [f'{col} = {placeholder}' for col, _ in field_updates]
+            params = [val for _, val in field_updates]
             params.append(r['id'])
-            query = f"UPDATE listings SET {', '.join(updates)} WHERE id = {placeholder}"
+            query = f"UPDATE listings SET {', '.join(set_clauses)} WHERE id = {placeholder}"
             cursor.execute(query, params)
             updated += 1
 
@@ -349,6 +382,14 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Preview without updating DB')
     parser.add_argument('--timeout', '-t', type=int, default=120, help='Timeout per listing (seconds)')
     args = parser.parse_args()
+
+    # OCR engine is required for a REAL run — import lazily (not at module scope) so the
+    # pure decision logic above stays importable/testable without the OCR system dep.
+    from property_scraper.utils.floorplan_extractor import OCR_AVAILABLE
+    if not OCR_AVAILABLE:
+        log("ERROR: pytesseract/tesseract not available. Install with: pip install pytesseract")
+        log("Also ensure the tesseract binary is installed: brew install tesseract")
+        sys.exit(1)
 
     # Check database type
     db_type = 'postgres' if get_postgres_url() else 'sqlite'
@@ -387,6 +428,7 @@ def main():
 
     # Initialize extractor
     log("Initializing FloorplanExtractor...")
+    from property_scraper.utils.floorplan_extractor import FloorplanExtractor
     extractor = FloorplanExtractor()
     log("FloorplanExtractor ready.")
 
