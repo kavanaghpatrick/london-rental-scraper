@@ -195,3 +195,69 @@ jobs:
           else
             echo "::warning::No ESLint config in dashboard/ — lint skipped (Next 16 removed 'next lint'). Serving to add flat ESLint config."
           fi
+
+  # === 4. Dashboard route BEHAVIOR (real Postgres + real model) ===
+  #
+  # Closes the gap where /api/predict + /api/similar route handlers had NO
+  # CI-executing behavioral test (tests/test_api_dashboard.py SKIPS in CI — it needs
+  # node+next+testing.postgresql and @vercel/postgres can't reach a plain local PG).
+  #
+  # Approach (the lightest reliable one that runs green in GH Actions):
+  #   * /api/predict — runs the route's INLINE predictor pipeline (the vendored
+  #     xgboost.predictor.js + buildFeatures -> predict -> expm1 -> range, identical to
+  #     the route) against the REAL committed v20 model. No DB, no network (model is
+  #     pre-seeded into the predictor's cache from the committed artifacts).
+  #   * /api/similar — runs the route's ACTUAL query (the single-source similarQuery.js
+  #     that db.ts imports) against a REAL Postgres SERVICE CONTAINER via the `pg`
+  #     driver, seeded with fixture listings, asserting seeded peers + stats.
+  #   This sidesteps @vercel/postgres's neon-only transport (which would need a fragile
+  #   neon proxy for a local PG) by testing the route's query logic directly — same SQL,
+  #   same params, same stats helper the route runs, guarded by a structural-parity check.
+  dashboard-routes:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        # Wait until Postgres is accepting connections before the steps run.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # The similar-query harness reads this; points at the service container.
+      POSTGRES_TEST_URL: postgres://postgres:postgres@localhost:5432/testdb
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install deps (includes the `pg` driver the similar harness uses)
+        run: npm ci
+
+      - name: /api/predict — real v20 estimate (no DB, no network)
+        run: node test/predict_estimate_test.mjs
+
+      - name: /api/similar — real query vs seeded Postgres service container
+        run: node test/similar_query_test.mjs
+
+      - name: Anti-silent-skip — assert the route harnesses are wired + ran
+        run: |
+          # Mirror chrome-extension/ci_harness_guard for the dashboard route harnesses:
+          # if one is renamed/removed/un-wired, fail LOUD instead of silently shrinking
+          # coverage. (The similar harness must NOT have skipped for lack of a DB here —
+          # the service container guarantees POSTGRES_TEST_URL is set + reachable.)
+          node test/dashboard_routes_guard.mjs

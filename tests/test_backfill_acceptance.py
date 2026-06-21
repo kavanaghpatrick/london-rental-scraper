@@ -135,7 +135,14 @@ def _ocr_finished():
     Signal: the backfill orchestrator appends an 'after:' line to
     /tmp/backfill_progress.log on completion. If that log can't be read, fall back
     to BACKFILL_DONE.
+
+    The real-scale yield thresholds (>=400 recovered rows, >=50% floorplan coverage)
+    only mean something against the real post-backfill rentals.db. In PR CI / fixture
+    mode the live DB is ABSENT, so there is nothing real to assert — return False (skip)
+    regardless of any (possibly stale, dev-box) /tmp/backfill_progress.log.
     """
+    if not LIVE_DB.exists():
+        return False
     if BACKFILL_DONE:
         return True
     log = Path("/tmp/backfill_progress.log")

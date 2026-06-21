@@ -1,4 +1,9 @@
 import { sql } from '@vercel/postgres';
+// Single-source query logic for /api/similar — shared with the CI harness
+// (dashboard/test/similar_query_test.mjs) which runs the SAME query against a Postgres
+// service container via `pg`. Keeping the bounds derivation + stats here means the
+// route and the test exercise identical logic (no drift). See similarQuery.js.
+import { computeSimilarStats } from './similarQuery';
 
 /**
  * Data Quality Thresholds - keep in sync with shared_constants.py
@@ -1225,33 +1230,13 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
     LIMIT 15
   `;
 
-  // Calculate stats directly from rows (excludeId already filtered in SQL)
-  const peerCount = rows.length;
-  const avgPrice = peerCount > 0 ? Math.round(rows.reduce((sum, r) => sum + r.price_pcm, 0) / peerCount) : 0;
-
-  // Type-safe filter for null ppsf values
-  const ppsfValues = rows
-    .map(r => r.ppsf)
-    .filter((v): v is number => v !== null);
-  const avgPpsf = ppsfValues.length > 0 ? Math.round(ppsfValues.reduce((sum, v) => sum + v, 0) / ppsfValues.length * 100) / 100 : null;
-
-  const prices = rows.map(r => r.price_pcm);
-  const statsMinPrice = prices.length > 0 ? Math.min(...prices) : 0;
-  const statsMaxPrice = prices.length > 0 ? Math.max(...prices) : 0;
-
-  // Calculate percentile (what % of peers are priced below this property)
-  const belowCount = prices.filter(p => p < safePricePcm).length;
-  const yourPercentile = peerCount > 0 ? Math.round((belowCount / peerCount) * 100) : 50;
+  // Calculate stats from rows via the single-source helper (shared with the CI
+  // harness so the route and the test compute identical stats). excludeId is already
+  // filtered in SQL.
+  const stats = computeSimilarStats(rows, params);
 
   return {
     peers: rows,
-    stats: {
-      peer_count: peerCount,
-      avg_price: avgPrice,
-      avg_ppsf: avgPpsf,
-      min_price: statsMinPrice,
-      max_price: statsMaxPrice,
-      your_percentile: yourPercentile,
-    },
+    stats,
   };
 }

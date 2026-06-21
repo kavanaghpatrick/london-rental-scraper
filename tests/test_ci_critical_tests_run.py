@@ -54,6 +54,14 @@ CRITICAL_TESTS = [
     "tests/test_ocr_enrich_guards.py",
     # --- Bad-extraction detector (pure regex/range logic)
     "tests/test_ocr_accuracy.py::TestBadExtractionDetector",
+    # --- Mini rentals.db fixture wiring (the structural scrape-validation +
+    #     backfill suites must keep EXECUTING in PR CI via the committed fixture, not
+    #     silently all-skip when the live DB is absent). These are CI-safe: they read
+    #     the committed fixture, no live DB/network/node.
+    "tests/test_mini_db_fixture.py::test_committed_fixture_exists_and_nonempty",
+    "tests/test_mini_db_fixture.py::test_fixture_has_pipeline_schema",
+    "tests/test_mini_db_fixture.py::test_conftest_exposes_active_db_path",
+    "tests/test_mini_db_fixture.py::test_scrape_validation_structural_tests_are_not_skipped",
 ]
 
 

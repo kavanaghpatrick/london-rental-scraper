@@ -121,3 +121,17 @@ output/*.bak
 output/*.sql
 output/rentals.db.*
 output/*_recovery*.sql
+
+# Test fixtures (#CI mini-db): the committed, reviewable baseline fixture IS tracked;
+# the derived post-backfill variant conftest builds on demand is NOT.
+tests/fixtures/_mini_rentals_backfilled.db
+!tests/fixtures/mini_rentals.db
+
+# The generic Python-packaging `lib/` ignore (above) also catches dashboard/src/lib/,
+# which is REAL serving source (db.ts + the single-source similarQuery module the
+# /api/similar route imports). Un-ignore the dashboard lib + its test harnesses so the
+# route's query module is tracked (deployment imports it).
+!dashboard/src/lib/
+!dashboard/src/lib/**
+!dashboard/test/
+!dashboard/test/**
