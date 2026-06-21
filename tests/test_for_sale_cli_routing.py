@@ -131,42 +131,33 @@ def _count(db_path, table):
 def test_scrape_has_listing_type_option_default_rent():
     """`scrape` exposes a --listing-type option defaulting to 'rent'.
 
-    Introspects the registered Click params directly instead of grepping the
-    Rich-rendered --help text: that help table wraps/ANSI-formats differently
-    across Rich versions and terminal widths (an 80-col CI runner split the
-    option name out of the captured string), which is a rendering flake, not a
-    behavioural contract. The param + its default ARE the contract.
+    Introspects the registered Typer OptionInfo directly (stdlib `inspect` only)
+    instead of grepping the Rich-rendered --help text: that help table wraps/
+    ANSI-formats differently across Rich versions and terminal widths (an 80-col
+    CI runner split the option name out of the captured string), which is a
+    rendering flake, not a behavioural contract. Deliberately avoids `import click`
+    too — the CI python-tests env does not expose click as a top-level module even
+    though Typer is installed. The OptionInfo's param_decls + default ARE the contract.
     """
-    import click
-    import typer
+    import inspect
 
-    command = typer.main.get_command(cli_main.app)
-    candidates = (
-        list(command.commands.values()) if hasattr(command, "commands") else [command]
-    )
-    scrape_cmd = next(
+    scrape_cb = next(
         (
-            c
-            for c in candidates
-            if c.name == "scrape"
-            or any(
-                isinstance(p, click.Option) and "--listing-type" in p.opts
-                for p in c.params
-            )
+            info.callback
+            for info in cli_main.app.registered_commands
+            if getattr(info, "callback", None) is not None
+            and "listing_type" in inspect.signature(info.callback).parameters
         ),
         None,
     )
-    assert scrape_cmd is not None, "scrape command not found on the Typer app"
-    opt = next(
-        (
-            p
-            for p in scrape_cmd.params
-            if isinstance(p, click.Option) and "--listing-type" in p.opts
-        ),
-        None,
+    assert scrape_cb is not None, "no command exposes a listing_type parameter"
+    opt = inspect.signature(scrape_cb).parameters["listing_type"].default
+    assert "--listing-type" in (getattr(opt, "param_decls", None) or ()), (
+        f"listing_type must be a --listing-type Option, got {opt!r}"
     )
-    assert opt is not None, "scrape must expose a --listing-type option"
-    assert opt.default == "rent", f"--listing-type default must be 'rent', got {opt.default!r}"
+    assert getattr(opt, "default", None) == "rent", (
+        f"--listing-type default must be 'rent', got {getattr(opt, 'default', None)!r}"
+    )
 
 
 def test_listing_type_coerces_unknown_to_rent(monkeypatch):
