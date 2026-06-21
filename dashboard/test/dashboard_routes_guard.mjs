@@ -30,8 +30,10 @@ const CI_YML = join(ROOT, '.github', 'workflows', 'ci.yml');
 // The dashboard route harnesses CI MUST run. Source of truth for "what protects the
 // serving routes on every PR". Adding one means adding it here AND to ci.yml.
 const REQUIRED_HARNESSES = [
-  'predict_estimate_test.mjs', // /api/predict real v20 estimate (no DB)
-  'similar_query_test.mjs',    // /api/similar real query vs service-container Postgres
+  'predict_estimate_test.mjs',      // /api/predict real v20 estimate (no DB)
+  'similar_query_test.mjs',         // /api/similar real query vs service-container Postgres
+  'predict_sale_estimate_test.mjs', // /api/predict-sale real sale_v1 estimate (Inc4a; no DB)
+  'similar_sale_query_test.mjs',    // /api/similar-sale real query vs Postgres (Inc4a; SSTC+empty)
 ];
 
 // Helper/guard files that are NOT standalone `node …` harnesses.

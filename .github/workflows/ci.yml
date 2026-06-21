@@ -134,6 +134,16 @@ jobs:
       - name: JS↔Python feature/£ parity (fail on drift)
         run: node chrome-extension/fixture_diff.mjs
 
+      - name: SALE JS↔Python parity (Inc4a) — regen golden from committed model, then diff (must be 0/0)
+        run: |
+          # Mirror the rental fixture-diff for the for-sale vertical (Inc4a). gen_sale_golden.py
+          # LOADS the COMMITTED output/sale_api/model.json as a Booster and RE-SCORES the 15 golden
+          # inputs (inference=True, baked maps) — it does NOT retrain — so the £ values track the
+          # exact model the route serves, byte-safe across xgboost minor versions. Then the sale
+          # parity harness diffs the JS sale predictor vs that fresh golden: 0 feature + 0 £ mismatch.
+          python3 gen_sale_golden.py
+          node chrome-extension/sale_fixture_diff.mjs
+
       - name: Extension extraction tests (per-site, vs real fixtures)
         run: |
           node chrome-extension/rightmove_extract_test.mjs
@@ -253,6 +263,12 @@ jobs:
 
       - name: /api/similar — real query vs seeded Postgres service container
         run: node test/similar_query_test.mjs
+
+      - name: /api/predict-sale — real sale_v1 estimate (Inc4a; no DB, no network)
+        run: node test/predict_sale_estimate_test.mjs
+
+      - name: /api/similar-sale — real query vs seeded Postgres (Inc4a; SSTC-exclude + graceful-empty)
+        run: node test/similar_sale_query_test.mjs
 
       - name: Anti-silent-skip — assert the route harnesses are wired + ran
         run: |

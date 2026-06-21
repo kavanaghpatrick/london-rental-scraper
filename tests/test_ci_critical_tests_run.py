@@ -74,6 +74,15 @@ CRITICAL_TESTS = [
     #     If this went dark, the sale model could re-couple to the parity-gated rental
     #     chain or regress to the single-row freq degeneracy.
     "tests/test_for_sale_inc3_model.py",
+    #     Inc4a: the for-sale SERVING contract (Python side). Pins the inference=True
+    #     golden-writer fix (BLOCKER-1: district_freq != 1.0 via the baked maps), the
+    #     gen_sale_golden.py scores-the-committed-Booster invariant (NOT a retrain), the
+    #     'prediction_price' (not prediction_pcm) golden key, the inference.json
+    #     default-shape (default == min(map), no nested 'default'), and the sale-artifact
+    #     isolation (output/sale_api/, never chrome-extension/api/). CI-safe (committed
+    #     fixtures + xgboost/numpy; no DB/PG/OCR/node). If this went dark the JS↔Python
+    #     0/0 parity gate could silently drift or the serving golden re-degenerate.
+    "tests/test_for_sale_inc4_serving.py",
     #     Inc2: the for-sale CLI + PIPELINE ROUTING contract. The --listing-type seam,
     #     get_sale_db_path() read seam, the SaleListingPipeline (writes output/sales.db),
     #     and the per-item discriminator guard that keeps sale items OUT of the rental

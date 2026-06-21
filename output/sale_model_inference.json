@@ -1,0 +1,26 @@
+{
+  "canonical_version": "sale_v1",
+  "n_train": 224,
+  "district_freq": {
+    "SW3": 0.10033444816053512,
+    "SW7": 0.10033444816053512,
+    "SW10": 0.10033444816053512,
+    "W8": 0.10033444816053512,
+    "W11": 0.10033444816053512,
+    "NW3": 0.10033444816053512,
+    "SE15": 0.10033444816053512,
+    "E14": 0.10033444816053512,
+    "SW6": 0.10033444816053512,
+    "SW1X": 0.09698996655518395
+  },
+  "district_freq_default": 0.09698996655518395,
+  "postcode_area_freq": {
+    "SW": 0.4983277591973244,
+    "W": 0.20066889632107024,
+    "NW": 0.10033444816053512,
+    "SE": 0.10033444816053512,
+    "E": 0.10033444816053512
+  },
+  "postcode_area_freq_default": 0.10033444816053512,
+  "note": "Single-row inference injects district_freq / postcode_area_freq from these training maps (keyed on postcode_district / postcode_area) instead of the degenerate per-frame 1.0 recompute. Regenerated atomically with the pkl."
+}

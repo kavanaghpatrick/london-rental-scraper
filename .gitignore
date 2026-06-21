@@ -70,6 +70,16 @@ golden_master/*.manifest.json
 # Keep analysis PNGs
 !output/*.png
 
+# For-sale serving artifacts (Inc4) — small JSON sidecars, committed like the
+# rental chrome-extension/api/{model,features}.json. Never .db/.pkl/.csv.
+# These `!` rules are no-ops today (nothing above matches them) but future-proof
+# against a broadening `output/*.json` ignore silently dropping the sale serving
+# inputs; they do NOT un-ignore output/sale_model.pkl (blocked by *.pkl, intended).
+!output/sale_api/model.json
+!output/sale_api/features.json
+!output/sale_model_inference.json
+!output/sale_feature_parity_golden.json
+
 # Catboost
 catboost_info/
 

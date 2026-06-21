@@ -45,6 +45,16 @@
     PREDICT_URL: 'https://dashboard-fawn-nu-59.vercel.app/api/predict',
     PREDICT_TIMEOUT: 6000,
     OCR_TIMEOUT: 60000,
+    // --- FOR-SALE MODE (Inc4a, additive) — separate endpoints + sale artifacts.
+    // These never override the rental keys above; the sale path uses ONLY these,
+    // the sale-namespaced predictor globals (window.SaleXGBoostPredictor /
+    // window.SaleXGBFeatures from sale_xgboost.js) and the SEPARATE
+    // __SALE_XGB_MODEL_CACHE__ global. The model/features point at output/sale_api/
+    // (the committed sale Booster), NEVER chrome-extension/api/.
+    PREDICT_SALE_URL: 'https://dashboard-fawn-nu-59.vercel.app/api/predict-sale',
+    SIMILAR_SALE_URL: 'https://dashboard-fawn-nu-59.vercel.app/api/similar-sale',
+    SALE_MODEL_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/output/sale_api/model.json',
+    SALE_FEATURES_URL: 'https://raw.githubusercontent.com/kavanaghpatrick/london-rental-scraper/main/output/sale_api/features.json',
   };
 
   // Site detection
@@ -304,6 +314,23 @@
         isRunning = false;
         return;
       }
+
+      // === FOR-SALE FORK (Inc4a, additive) ===========================================
+      // Exactly ONE guarded fork into the sale path. Placed AFTER the price parse above
+      // (AMENDMENT FIX 5): the spec's original ~line-263 insertion point referenced
+      // askingPrice before it was parsed. Here askingPrice is defined, and analyzeSale
+      // takes the same (propertyData, askingPrice) signature as analyzeProperty.
+      //
+      // When tenure === 'rent' (the default) this branch is NOT taken and the rental
+      // path below runs BYTE-UNCHANGED. The sale path uses ONLY the sale-namespaced
+      // predictor/cache/artifacts and never touches window.XGBFeatures/XGBoostPredictor.
+      if (detectTenure(window.location.href, propertyData) === 'sale') {
+        const saleResult = await analyzeSale(propertyData, askingPrice);
+        if (saleResult) displaySaleResult(saleResult);
+        isRunning = false;
+        return;
+      }
+      // === END FOR-SALE FORK =========================================================
 
       // 4. Try cache first (instant) - DISABLED FOR TESTING v0.6.0 fixes
       // const cached = await getCachedPrediction(propertyId);
@@ -567,6 +594,353 @@
       baths: baths,
       predictor_source: 'fallback',  // in-browser model; approximate vs canonical v20
     };
+  }
+
+  // ============================================================================
+  // FOR-SALE MODE (Inc4a, additive) — detectTenure / analyzeSale / displaySaleResult
+  // ============================================================================
+  // STRICT ISOLATION: every function below reads ONLY the sale-namespaced globals
+  // (window.SaleXGBoostPredictor / window.SaleXGBFeatures from sale_xgboost.js) and the
+  // sale CONFIG keys (PREDICT_SALE_URL / SIMILAR_SALE_URL / SALE_MODEL_URL /
+  // SALE_FEATURES_URL). It NEVER references window.XGBFeatures / window.XGBoostPredictor,
+  // the rental endpoints, or the rental cache, so the rental parity surface is untouched.
+  // The existing read-only extractors (extractPostcode, extractPropertyType,
+  // extractSqftFromPage) are REUSED as pure readers — not modified.
+
+  // Lazily-built in-browser sale predictor (fallback when the backend is unavailable).
+  // Separate from the rental `xgbPredictor`, so the two never share state.
+  let saleXgbPredictor = null;
+
+  // detectTenure(url, propertyData) -> 'sale' | 'rent' (default 'rent').
+  // A PARALLEL predicate alongside isPropertyPage — it does NOT alter the rental SPA
+  // watcher. Returns 'sale' on a clearly for-sale page; otherwise 'rent' so the rental
+  // path runs unchanged.
+  function detectTenure(url, propertyData) {
+    try {
+      const u = String(url || '');
+      // Foxtons: dedicated for-sale URL path (the one genuinely-new manifest match).
+      if (currentSite === SITES.FOXTONS && /\/properties-for-sale\//.test(u)) {
+        return 'sale';
+      }
+      // Chestertons: sale detail lives under /properties/<id>/sales/<ref>.
+      if (currentSite === SITES.CHESTERTONS && /\/properties\/\d+\/sales\//.test(u)) {
+        return 'sale';
+      }
+      // Rightmove / Savills / Knight Frank: sale detail paths are SHARED with rental,
+      // so the URL alone can't decide — read a page-data sale marker. A rental listing
+      // carries a per-week/per-month price frequency (lettings); a SALE listing does not.
+      if (currentSite === SITES.RIGHTMOVE ||
+          currentSite === SITES.SAVILLS ||
+          currentSite === SITES.KNIGHTFRANK) {
+        const pd = propertyData || {};
+        // Rightmove transactionType / channel: RES_BUY (or BUY) => sale.
+        const txn = String(pd.transactionType || pd.channel || '').toUpperCase();
+        if (txn.includes('BUY') || txn.includes('SALE')) return 'sale';
+        // Explicit sale flags some blobs expose.
+        if (pd.tenure && /sale|buy|freehold|leasehold/i.test(String(pd.tenure)) &&
+            !pd.lettings && !(pd.prices && /pcm|pw|per\s*(?:week|month)/i.test(
+              String(pd.prices.primaryPrice || '')))) {
+          return 'sale';
+        }
+        // Visible price string carries no rental frequency AND the URL is an explicit
+        // for-sale/buy path => treat as sale (defensive; rental price strings always
+        // carry pcm/pw on these sites).
+        const priceStr = String(pd.prices?.primaryPrice || '');
+        const hasRentalFrequency = /pcm|pw|per\s*(?:calendar\s*)?(?:week|month)|weekly|monthly/i.test(priceStr);
+        if (!hasRentalFrequency && /(for-sale|\/buy\/|to-buy)/i.test(u)) {
+          return 'sale';
+        }
+      }
+    } catch (e) {
+      logError(' detectTenure error (defaulting to rent):', e);
+    }
+    return 'rent';
+  }
+
+  // Read is_new_build (1/0) from the property blob. Defaults to 0 when unknown.
+  function extractIsNewBuild(propertyData) {
+    const pd = propertyData || {};
+    if (typeof pd.is_new_build === 'number') return pd.is_new_build ? 1 : 0;
+    if (typeof pd.newHome === 'boolean') return pd.newHome ? 1 : 0;
+    if (typeof pd.isNewHome === 'boolean') return pd.isNewHome ? 1 : 0;
+    const hay = [
+      pd.text?.description || '',
+      pd.text?.propertyPhrase || '',
+      ...(pd.keyFeatures || []),
+    ].join(' ').toLowerCase();
+    if (/new build|new home|newly built|brand new|new development/.test(hay)) return 1;
+    return 0;
+  }
+
+  // Read the sale price qualifier (e.g. 'POA', 'Guide Price', 'Offers in Excess Of').
+  // Returns a string ('' when unknown). The sale feature builder only special-cases POA.
+  function extractPriceQualifier(propertyData) {
+    const pd = propertyData || {};
+    const direct = pd.price_qualifier || pd.priceQualifier ||
+                   pd.prices?.priceQualifier || pd.prices?.qualifier || '';
+    if (direct && String(direct).trim()) return String(direct).trim();
+    // 'Price on application' rendered into the visible price string.
+    const priceStr = String(pd.prices?.primaryPrice || '').toUpperCase();
+    if (priceStr.includes('POA') || priceStr.includes('PRICE ON APPLICATION')) return 'POA';
+    return '';
+  }
+
+  // analyzeSale(propertyData, askingPrice) — sale analogue of analyzeProperty.
+  // Builds the Inc3 10-field input union, asks the backend /api/predict-sale (PRIMARY),
+  // and falls back to the in-browser sale predictor. Returns a sale result object, or
+  // null after injecting a specific error. NEVER calls the rental predictor.
+  async function analyzeSale(propertyData, askingPrice) {
+    // The sale predictor (sale_xgboost.js) must have loaded its globals.
+    if (!window.SaleXGBFeatures || !window.SaleXGBoostPredictor) {
+      logError(' SaleXGBFeatures/SaleXGBoostPredictor not available — sale_xgboost.js failed to load');
+      injectError('Sale model failed to load');
+      return null;
+    }
+
+    injectLoadingState('Loading sale estimate...');
+
+    // Extract the 10 Inc3 input fields, reusing the existing pure read-only helpers.
+    const beds = propertyData.bedrooms || 1;
+    const baths = propertyData.bathrooms || 1;
+    const postcode = extractPostcode(propertyData);          // null when no real postcode
+    const propertyType = extractPropertyType(propertyData);
+    const address = propertyData.address?.displayAddress || '';
+    const lat = propertyData.location?.latitude;
+    const lon = propertyData.location?.longitude;
+    const isNewBuild = extractIsNewBuild(propertyData);
+    const priceQualifier = extractPriceQualifier(propertyData);
+
+    // Size: read from the page only (sale OCR not wired in 4a). The predictor applies
+    // the 700-sqft single-row fallback when size is absent (estimated_size = true).
+    const sizeSqft = extractSqftFromPage(propertyData);      // null when not on page
+
+    // The /api/predict-sale request contract (Inc3 input fields). Empty/absent size
+    // is allowed — the route normalizes and surfaces estimated_size.
+    const saleFields = {
+      postcode: postcode || '',
+      bedrooms: beds,
+      bathrooms: baths,
+      size_sqft: (sizeSqft && sizeSqft > 0) ? sizeSqft : undefined,
+      property_type: propertyType,
+      address: address,
+      is_new_build: isNewBuild,
+      latitude: lat,
+      longitude: lon,
+      price_qualifier: priceQualifier,
+    };
+
+    // PRIMARY: backend sale model. Returns {predicted_price, low_confidence, district,
+    // estimated_size, ...} or null on error/timeout.
+    injectLoadingState('Calculating fair value...');
+    const serverSale = await fetchSaleServerEstimate(saleFields);
+    if (serverSale && serverSale.predicted_price > 0) {
+      return {
+        asking_price: askingPrice,
+        fair_value: Math.round(serverSale.predicted_price),
+        low_confidence: !!serverSale.low_confidence,
+        estimated_size: !!serverSale.estimated_size,
+        district: serverSale.district || normalizeDistrict(postcode),
+        beds: beds,
+        baths: baths,
+        size_sqft: (sizeSqft && sizeSqft > 0) ? sizeSqft : null,
+        predictor_source: 'server',
+      };
+    }
+
+    log(' Sale server estimate unavailable — falling back to in-browser sale model (approximate)');
+
+    // FALLBACK: in-browser sale XGBoost (uses the SEPARATE sale predictor + cache).
+    if (!saleXgbPredictor) {
+      injectLoadingState('Loading sale model...');
+      saleXgbPredictor = new window.SaleXGBoostPredictor();
+      await saleXgbPredictor.load(CONFIG.SALE_MODEL_URL, CONFIG.SALE_FEATURES_URL);
+    }
+    const features = window.SaleXGBFeatures.buildFeatures(saleFields);
+    const predLog = saleXgbPredictor.predict(features);
+    const fairValue = Math.round(Math.expm1(predLog));
+
+    // Mirror the route's UX layer in JS (do NOT call Python): estimated_size when no
+    // positive size on the page; low_confidence when size estimated OR district UNKNOWN.
+    const district = normalizeDistrict(postcode) || 'UNKNOWN';
+    const estimatedSize = !(sizeSqft && sizeSqft > 0);
+    const lowConfidence = estimatedSize || district === 'UNKNOWN';
+
+    return {
+      asking_price: askingPrice,
+      fair_value: fairValue,
+      low_confidence: lowConfidence,
+      estimated_size: estimatedSize,
+      district: district === 'UNKNOWN' ? '' : district,
+      beds: beds,
+      baths: baths,
+      size_sqft: (sizeSqft && sizeSqft > 0) ? sizeSqft : null,
+      predictor_source: 'fallback',
+    };
+  }
+
+  // Ask the backend (sale model) for the estimate. Returns the parsed JSON
+  // ({predicted_price, low_confidence, district, estimated_size, ...}) or null on any
+  // error/timeout so analyzeSale falls back to the in-browser sale model. Mirrors
+  // fetchServerEstimate but targets PREDICT_SALE_URL and never the rental endpoint.
+  async function fetchSaleServerEstimate(saleFields) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CONFIG.PREDICT_TIMEOUT);
+    try {
+      const res = await fetch(CONFIG.PREDICT_SALE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(saleFields),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        log(' /api/predict-sale HTTP ' + res.status);
+        return null;
+      }
+      const data = await res.json();
+      if (!data || !(data.predicted_price > 0)) {
+        log(' /api/predict-sale returned no estimate');
+        return null;
+      }
+      return data;
+    } catch (e) {
+      log(' /api/predict-sale failed: ' + (e.name === 'AbortError' ? 'timeout' : e.message));
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // displaySaleResult(r) — sale analogue of displayResult. Renders the FOR SALE FAIR
+  // VALUE popup (lump-sum prices, no "/mo"). Reuses createContainer() and the shared
+  // formatNum/escapeHtml helpers unchanged. Uses an sfv-* class namespace so the
+  // rental rfv-* styling/behaviour is untouched (existing rfv-* classes still apply
+  // where reused for layout parity).
+  async function displaySaleResult(r) {
+    const askingPrice = r.asking_price;
+    const fairValue = r.fair_value;
+    const premiumPct = fairValue
+      ? Math.round((askingPrice / fairValue - 1) * 100 * 10) / 10
+      : 0;
+    const sign = premiumPct > 0 ? '+' : '';
+
+    // Suppress a confident verdict when the size was estimated or the location is
+    // unknown (mirrors the rental size-caveat discipline): show a neutral state.
+    const softVerdict = r.low_confidence || r.estimated_size;
+    const assessment = premiumPct > 15 ? 'overpriced' : premiumPct < -10 ? 'good_deal' : 'fair';
+    const colorClass = assessment === 'overpriced' ? 'rfv-overpriced' :
+                       assessment === 'good_deal' ? 'rfv-good-deal' : 'rfv-fair';
+    const label = assessment.replace('_', ' ').toUpperCase();
+
+    // Sale range band (tighter than rental): ±15%.
+    const rangeLow = Math.round(fairValue * 0.85);
+    const rangeHigh = Math.round(fairValue * 1.15);
+
+    const caveatHtml = softVerdict
+      ? `<div class="rfv-size-caveat">${escapeHtml(
+          r.estimated_size
+            ? 'Size not found on page — valuation approximate'
+            : 'Limited data for this location — valuation approximate'
+        )}</div>`
+      : '';
+
+    const assessmentHtml = softVerdict
+      ? `<div class="rfv-assessment rfv-fair rfv-estimated">
+           <div class="rfv-assessment-value rfv-estimated-pct">~${sign}${premiumPct}%</div>
+           <div class="rfv-assessment-label">LOW CONFIDENCE — EST. ONLY</div>
+         </div>`
+      : `<div class="rfv-assessment ${colorClass}">
+           <div class="rfv-assessment-value">${sign}${premiumPct}%</div>
+           <div class="rfv-assessment-label">${label}</div>
+         </div>`;
+
+    const sizeNote = (r.size_sqft && r.size_sqft > 0)
+      ? `${r.size_sqft} sqft`
+      : 'Size estimated from beds';
+
+    const el = createContainer();
+    el.innerHTML = `
+      <div class="rfv-container sfv-container">
+        <div class="rfv-header">FOR SALE FAIR VALUE</div>
+
+        <div class="rfv-label">Asking</div>
+        <div class="rfv-price">£${formatNum(askingPrice)}</div>
+
+        <hr class="rfv-divider">
+
+        ${caveatHtml}
+
+        <div class="rfv-label">Model Estimate</div>
+        <div class="rfv-price">£${formatNum(fairValue)}</div>
+        <div class="rfv-range">Range: £${formatNum(rangeLow)} – £${formatNum(rangeHigh)}</div>
+
+        ${assessmentHtml}
+
+        <div class="rfv-size-note">${escapeHtml(sizeNote)}</div>
+
+        <div id="sfv-similar-placeholder"></div>
+
+        <div class="rfv-footer">${
+          r.predictor_source === 'fallback'
+            ? 'Sale model · ~estimate (offline)'
+            : 'Sale model · Live'
+        }</div>
+      </div>
+    `;
+
+    // Comps via /api/similar-sale (degrades to empty by contract — Inc4b wires prod
+    // rows). Only attempt when we have a real district + beds + an asking price.
+    if (r.district && r.beds && askingPrice) {
+      loadSaleComps(r).then(html => {
+        if (html) {
+          const placeholder = document.getElementById('sfv-similar-placeholder');
+          if (placeholder) placeholder.innerHTML = html;
+        }
+      }).catch(err => {
+        log(' Sale comps error:', err);
+      });
+    }
+  }
+
+  // Fetch sale comps from /api/similar-sale. Query params: postcode, beds, price
+  // (asking) required; sqft, type optional. Returns rendered HTML or '' (empty/none).
+  async function loadSaleComps(r) {
+    try {
+      const params = new URLSearchParams({
+        postcode: r.district,
+        beds: String(r.beds),
+        price: String(r.asking_price),
+      });
+      if (r.size_sqft && r.size_sqft > 0) params.set('sqft', String(r.size_sqft));
+      const res = await fetch(`${CONFIG.SIMILAR_SALE_URL}?${params.toString()}`);
+      if (!res.ok) {
+        log(' /api/similar-sale HTTP ' + res.status);
+        return '';
+      }
+      const data = await res.json();
+      const peers = (data && Array.isArray(data.peers)) ? data.peers : [];
+      if (peers.length === 0) return '';  // graceful-empty (pre-Inc4b prod data)
+      const items = peers.slice(0, 3).map(p => {
+        const addr = truncateAddress(p.address || 'Property', 35);
+        const price = Number(p.asking_price || p.price || 0);
+        const specs = `${p.bedrooms ?? p.beds ?? '?'}bed${p.size_sqft ? ` · ${p.size_sqft}sqft` : ''}`;
+        return `
+          <a href="${escapeHtml(p.url || '#')}" class="rfv-similar-item" target="_blank" rel="noopener">
+            <div class="rfv-similar-address">${escapeHtml(addr)}</div>
+            <div class="rfv-similar-details">
+              <span class="rfv-similar-price">£${formatNum(price)}</span>
+              <span class="rfv-similar-specs">${escapeHtml(specs)}</span>
+            </div>
+          </a>`;
+      }).join('');
+      return `
+        <div class="rfv-similar-section">
+          <div class="rfv-similar-title">Similar For-Sale Properties</div>
+          <div class="rfv-similar-list">${items}</div>
+        </div>`;
+    } catch (e) {
+      log(' Sale comps fetch failed:', e.message);
+      return '';
+    }
   }
 
   // Ask our backend (canonical v20) for the estimate. Returns the parsed JSON

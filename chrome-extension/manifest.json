@@ -18,9 +18,10 @@
         "https://www.knightfrank.co.uk/properties/*",
         "https://www.chestertons.co.uk/properties/*",
         "https://search.savills.com/property-detail/*",
-        "https://www.foxtons.co.uk/properties-to-rent/*"
+        "https://www.foxtons.co.uk/properties-to-rent/*",
+        "https://www.foxtons.co.uk/properties-for-sale/*"
       ],
-      "js": ["vendor/tesseract.min.js", "xgboost.js", "content.js"],
+      "js": ["vendor/tesseract.min.js", "xgboost.js", "sale_xgboost.js", "content.js"],
       "css": ["sidebar.css"],
       "run_at": "document_idle"
     }

@@ -319,11 +319,37 @@ _GOLDEN_INPUTS: tuple[dict, ...] = (
      "size_sqft": 4500, "property_type": "House", "address": "A Road, London, NW3"},
     {"label": "coordless_maisonette", "postcode": "W8", "bedrooms": 3, "bathrooms": 2,
      "size_sqft": 1500, "property_type": "Maisonette", "address": "A Street, London, W8"},
+    # ── INC4 BLOCKER-2 / AMENDMENT FIX 3 coverage rows — make the parity gate NON-VACUOUS.
+    # (a) postcode district IS a key in the trained district_freq map (SW3 → 0.10033..., NOT
+    #     the baked default), so district_freq is exercised via a real baked-map HIT.
+    {"label": "in_map_district_sw3", "postcode": "SW3 4TX", "bedrooms": 3, "bathrooms": 2,
+     "size_sqft": 1600, "property_type": "Flat", "address": "Some Road, London, SW3"},
+    # (b) REAL latitude/longitude (~central London) so the haversine ACTIVE path runs (the
+    #     center_distance_* family is NO LONGER the coordless DEFAULT for this sample).
+    {"label": "real_coords_haversine", "postcode": "SW7", "bedrooms": 2, "bathrooms": 2,
+     "size_sqft": 1100, "property_type": "Flat", "address": "A Street, London, SW7",
+     "latitude": 51.49, "longitude": -0.16},
+    # (c) price_qualifier='POA' so price_qualifier_poa == 1 (the POA branch is exercised).
+    {"label": "poa_qualifier", "postcode": "W11", "bedrooms": 4, "bathrooms": 3,
+     "size_sqft": 2400, "property_type": "Flat", "address": "A Street, London, W11",
+     "price_qualifier": "POA"},
+    # (d) size_sqft=0 — pins the single-row size handling: Python KEEPS the literal 0 (only
+    #     NaN/absent maps to 700), so the JS predictor must NOT fall back to 700 here.
+    {"label": "size_zero_literal", "postcode": "SW10", "bedrooms": 2, "bathrooms": 1,
+     "size_sqft": 0, "property_type": "Flat", "address": "A Street, London, SW10"},
 )
 
 
 def gen_sale_feature_parity_golden(
-    model, feature_cols, sample_rows=None, golden_path: Path | str | None = None
+    model,
+    feature_cols,
+    sample_rows=None,
+    golden_path: Path | str | None = None,
+    *,
+    freq_map: dict | None = None,
+    freq_default: float | None = None,
+    area_freq_map: dict | None = None,
+    area_freq_default: float | None = None,
 ):
     """Write sale_feature_parity_golden.json — the Python golden Inc4's sale_fixture_diff.mjs
     diffs key-by-key (mirrors the rental golden BY VALUE; £ lump sum, not pcm).
@@ -333,15 +359,35 @@ def gen_sale_feature_parity_golden(
     is caught at a TIGHT tolerance. The samples span the easy-to-get-wrong branches.
     `sample_rows` is accepted for signature parity but the golden uses fixed deterministic
     inputs (no dependence on the training fixture order).
+
+    BLOCKER 1 (Inc4 amendment): features are built with inference=True using the BAKED maps
+    (freq_map / freq_default / area_freq_map / area_freq_default from the train result), the
+    SAME path the JS serving predictor + predict_one_default use. A single-row inference=False
+    recompute would degenerate to district_freq==1.0 / postcode_area_freq==1.0 and diverge
+    from serving by up to ~44% — so there is exactly ONE correct golden writer (this one), and
+    it is the inference=True writer. When the maps are absent the function FAILS LOUDLY rather
+    than silently writing a degenerate inference=False golden.
     """
     if golden_path is None:
         golden_path = _paths()["golden"]
     golden_path = Path(golden_path)
 
+    assert freq_map is not None and area_freq_map is not None, (
+        "gen_sale_feature_parity_golden must be given the baked freq maps (inference=True). "
+        "A None map would silently produce a degenerate inference=False golden (BLOCKER 1)."
+    )
+
     samples = []
     for inp in _GOLDEN_INPUTS:
         row = {k: v for k, v in inp.items() if k != "label"}
-        X, _ = sale_price_model.build_features([row])
+        X, _ = sale_price_model.build_features(
+            [row],
+            inference=True,
+            freq_map=freq_map,
+            freq_default=freq_default,
+            area_freq_map=area_freq_map,
+            area_freq_default=area_freq_default,
+        )
         X = X.reindex(columns=feature_cols, fill_value=0.0).astype(float)
         price = float(np.expm1(model.predict(X))[0])
         feat_values = {c: float(X.iloc[0][c]) for c in feature_cols}
@@ -431,8 +477,18 @@ def run_sale_retrain(
     # d. sale_api Booster JSON + features.json.
     export_sale_to_chrome(model, feature_cols, paths["api_dir"])
 
-    # e. feature-parity golden.
-    gen_sale_feature_parity_golden(model, feature_cols, rows, paths["golden"])
+    # e. feature-parity golden — inference=True with the BAKED maps (BLOCKER 1 fix), the
+    #    SAME path the JS serving predictor uses, so the gate is non-degenerate.
+    gen_sale_feature_parity_golden(
+        model,
+        feature_cols,
+        rows,
+        paths["golden"],
+        freq_map=result["freq_map"],
+        freq_default=result["freq_default"],
+        area_freq_map=result["area_freq_map"],
+        area_freq_default=result["area_freq_default"],
+    )
 
     return result
 

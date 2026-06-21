@@ -41,6 +41,12 @@ const REQUIRED_HARNESSES = [
   'foxtons_ocr_skip_test.mjs',
   'similar_properties_test.mjs', // comps location HARD-gate (findSimilarProperties)
   'content_load_test.mjs',       // content.js load + log-recursion + SPA-retry guards
+  'sale_fixture_diff.mjs',       // SALE JS↔Python £/feature parity (Inc4a). NOTE: ends in
+                                 // neither '_test.mjs' nor '== fixture_diff.mjs', so the
+                                 // orphan glob (Invariant 2) does NOT match it — REQUIRED_HARNESSES
+                                 // membership is the ONLY thing pinning it to disk + ci.yml, and is
+                                 // sufficient. Do NOT widen the orphan glob (that would edit the
+                                 // rental-guard behavior for a sale-only file).
 ];
 
 // Helpers / non-standalone files that are imported, not invoked as a `node …` harness.
