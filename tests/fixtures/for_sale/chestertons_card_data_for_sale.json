@@ -1,0 +1,20 @@
+[
+  {
+    "href": "/properties/12345/sales/ABC123",
+    "address": "Oakfield Street, Chelsea, SW10",
+    "letType": "For Sale",
+    "textContent": "For Sale\nOakfield Street, Chelsea, SW10\n5\n4\n2540 ft\n£4,950,000"
+  },
+  {
+    "href": "/properties/23456/sales/DEF456",
+    "address": "Cadogan Square, Knightsbridge, SW1X",
+    "letType": "Under Offer",
+    "textContent": "Under Offer\nCadogan Square, Knightsbridge, SW1X\n3\n2\n1820 ft\n£3,750,000"
+  },
+  {
+    "href": "/properties/34567/sales/GHI789",
+    "address": "Chelsea Island, Chelsea, SW10",
+    "letType": "New",
+    "textContent": "New\nChelsea Island, Chelsea, SW10\n2\n2\n£2,450,000"
+  }
+]

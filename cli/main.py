@@ -93,6 +93,12 @@ def get_db_path() -> Path:
     return PROJECT_ROOT / "output" / "rentals.db"
 
 
+def get_sale_db_path() -> Path:
+    """Path to the ISOLATED for-sale SQLite DB. Mirrors get_db_path() but the
+    sales vertical's separate file. Rental get_db_path() is UNCHANGED."""
+    return PROJECT_ROOT / "output" / "sales.db"
+
+
 # === Issue #5 FIX: Parse scrapy stats from log file ===
 def _parse_scrapy_stats(log_file: Path) -> dict:
     """Parse scrapy stats from log file to extract item counts.
@@ -171,6 +177,7 @@ def run_spider(
     fetch_floorplans: bool = False,
     audit_run_id: str | None = None,
     use_postgres: bool = False,
+    listing_type: str = "rent",
 ) -> tuple[bool, str, bool, dict]:
     """
     Run a spider using subprocess (avoids Twisted reactor issues).
@@ -205,6 +212,10 @@ def run_spider(
     # Fetch floorplan URLs from detail pages
     if fetch_floorplans:
         cmd.extend(["-a", "fetch_floorplans=true"])
+
+    # For-sale vertical: only sale mode adds a -a; rental cmd is byte-identical to today
+    if listing_type == "sale":
+        cmd.extend(["-a", "listing_type=sale"])
 
     # Choose settings based on spider type and database backend
     if use_postgres:
@@ -476,10 +487,22 @@ def scrape(
     fetch_floorplans: bool = typer.Option(False, "--fetch-floorplans", "-f", help="Fetch floorplan URLs from detail pages"),
     full: bool = typer.Option(False, "--full", help="Enable both --fetch-details and --fetch-floorplans for maximum data"),
     postgres: bool = typer.Option(False, "--postgres", help="Write to Vercel Postgres instead of SQLite"),
+    listing_type: str = typer.Option(
+        "rent", "--listing-type",
+        help="Vertical to scrape: 'rent' (default, writes output/rentals.db) or 'sale' (writes output/sales.db, sale_listings table). Any other value is coerced to 'rent'.",
+    ),
 ):
     """Run property scrapers."""
     if not all and not source:
         console.print("[red]Error:[/red] Must specify --all or --source")
+        raise typer.Exit(1)
+
+    # For-sale vertical: only an exact (case-insensitive) 'sale' selects sale mode;
+    # anything else is coerced to rent so the rental path is unchanged.
+    listing_type = "sale" if str(listing_type).lower() == "sale" else "rent"
+
+    if listing_type == "sale" and postgres:
+        console.print("[red]Error:[/red] --listing-type sale is SQLite-only in Inc2 (writes output/sales.db). Drop --postgres.")
         raise typer.Exit(1)
 
     # --full enables both fetch options
@@ -540,6 +563,7 @@ def scrape(
                 fetch_floorplans=fetch_floorplans,
                 audit_run_id=audit_run_id,
                 use_postgres=postgres,
+                listing_type=listing_type,
             )
 
             progress.remove_task(task)

@@ -93,8 +93,16 @@ class ChestertonsSpider(scrapy.Spider):
     # Safety limit for detail page fetching (Playwright is slow, 1400+ pages would take hours)
     MAX_DETAIL_PAGES = 100
 
-    def __init__(self, max_properties=None, fetch_details=False, fetch_floorplans=False, *args, **kwargs):
+    def __init__(self, max_properties=None, fetch_details=False, fetch_floorplans=False,
+                 listing_type='rent', *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Listing vertical: 'rent' (default — UNCHANGED rental behaviour, points at the
+        # /properties/lettings section) or 'sale' (the separate FOR-SALE vertical, pointed
+        # at /properties/sales). Any value other than the explicit 'sale' falls back to
+        # 'rent' so a typo can never silently switch the rental scrape to sale. See
+        # start_url_for / parse_card_data_for_sale below.
+        self.listing_type = 'sale' if str(listing_type).lower() == 'sale' else 'rent'
 
         # Parse max_properties (None = unlimited)
         if max_properties is None or str(max_properties).lower() in ('none', '0', ''):
@@ -150,11 +158,45 @@ class ChestertonsSpider(scrapy.Spider):
         self.logger.info("[CONFIG] Using Playwright for Cloudflare bypass")
         self.logger.info("=" * 70)
 
+    # ------------------------------------------------------------------ #
+    # FOR-SALE vertical (additive — default rental path is untouched)    #
+    # ------------------------------------------------------------------ #
+    def start_url_for(self, area: str) -> str:
+        """Build the Chestertons search URL for the configured vertical.
+
+        Rental (default): the SAME /properties/lettings URL the spider has always used
+        (Chestertons lists everything in one Load-More grid — `area` is accepted for a
+        uniform signature but not part of the URL). Sale: the /properties/sales section —
+        the only change is which part of Chestertons the (otherwise identical) spider
+        points at. Pure/standalone so the sale-mode tests can assert the URL without a
+        crawl.
+        """
+        section = 'sales' if self.listing_type == 'sale' else 'lettings'
+        return f'https://www.chestertons.co.uk/properties/{section}'
+
+    def parse_card_data_for_sale(self, card_data: dict, area: str):
+        """DELEGATE one FOR-SALE card to the pure for_sale.listing_parse seam.
+
+        Returns a plain dict for the sale data-layer path (asking_price in sale
+        magnitude, never price_pcm/price_pw); a POA card yields asking_price None
+        (normalised at this spider boundary). None when the seam can't derive an id.
+        Imported lazily so a pure rental crawl never imports the for-sale package.
+        """
+        from for_sale.listing_parse import parse_chestertons_for_sale
+
+        sale_item = parse_chestertons_for_sale(card_data, area)
+        if sale_item is None:
+            return None
+        item = dict(sale_item)
+        if not item.get('asking_price'):
+            item['asking_price'] = None
+        return item
+
     def start_requests(self):
         """Generate initial requests using Playwright."""
-        url = 'https://www.chestertons.co.uk/properties/lettings'
+        url = self.start_url_for('uk')
 
-        self.logger.info(f"[REQUEST] Starting: {url}")
+        self.logger.info(f"[REQUEST] Starting: {url} (listing_type={self.listing_type})")
 
         yield scrapy.Request(
             url,

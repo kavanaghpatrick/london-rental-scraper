@@ -47,6 +47,10 @@ class CleanDataPipeline:
         logger.info("[PIPELINE:Clean] Initialized - will normalize prices, clean text, generate fingerprints")
 
     def process_item(self, item, spider):
+        # For-sale items are routed by SaleListingPipeline; the rental cleaner
+        # normalizes price_pcm/price_pw fields that sale items do not carry.
+        if ItemAdapter(item).get('listing_type') == 'sale':
+            return item
         adapter = ItemAdapter(item)
         fixes = []
 
@@ -161,6 +165,9 @@ class DuplicateFilterPipeline:
         logger.info("[PIPELINE:Dedupe] Initialized - tracking IDs and content signatures")
 
     def process_item(self, item, spider):
+        # For-sale items are persisted by SaleListingPipeline only.
+        if ItemAdapter(item).get('listing_type') == 'sale':
+            return item
         from scrapy.exceptions import DropItem
         adapter = ItemAdapter(item)
         source = adapter.get('source', '')
@@ -215,6 +222,9 @@ class JsonWriterPipeline:
         logger.info(f"[PIPELINE:JSON] Initialized - writing to {self.output_dir}/")
 
     def process_item(self, item, spider):
+        # Keep for-sale items out of the rental *_listings.jsonl files.
+        if ItemAdapter(item).get('listing_type') == 'sale':
+            return item
         adapter = ItemAdapter(item)
         area = adapter.get('area', 'unknown')
 
@@ -475,6 +485,10 @@ class SQLitePipeline:
         - Price changes: Log to price_history, increment price_change_count
         - Uses SAVEPOINT for per-item atomicity (Gemini recommendation)
         """
+        # For-sale items are persisted by SaleListingPipeline only — never the
+        # rental listings table.
+        if ItemAdapter(item).get('listing_type') == 'sale':
+            return item   # for-sale items are persisted by SaleListingPipeline only
         adapter = ItemAdapter(item)
         now = datetime.utcnow().isoformat()
 
@@ -945,3 +959,57 @@ class SQLitePipeline:
                 logger.debug("[PIPELINE:SQLite] Database connection closed")
             except Exception as e:
                 logger.error(f"[PIPELINE:SQLite] Error closing connection: {e}")
+
+
+class SaleListingPipeline:
+    """Persist FOR-SALE items into the ISOLATED output/sales.db / sale_listings table.
+
+    This is the WRITE seam for the for-sale vertical (Inc2). It reuses the spider's
+    OUTPUT_DIR but writes a SEPARATE database file (sales.db, not rentals.db) via the
+    connection-injected for_sale.sale_data data layer. Routing is by a per-item
+    `listing_type == "sale"` discriminator, so this pipeline IGNORES rental items and
+    the rental pipelines (CleanData/Dup/Json/SQLite) skip sale items — the rental write
+    path is byte-unchanged when no sale item is present.
+    """
+
+    def __init__(self):
+        self.conn = None
+        self.db_path = None
+        self._sale_data = None
+        self.written = 0
+
+    def open_spider(self, spider):
+        # Lazy import keeps for_sale isolated and import-time decoupled from the rental stack.
+        from for_sale import sale_data
+        self._sale_data = sale_data
+
+        output_dir = spider.settings.get('OUTPUT_DIR', 'output')
+        os.makedirs(output_dir, exist_ok=True)
+        self.db_path = os.path.join(output_dir, 'sales.db')
+        self.conn = sqlite3.connect(self.db_path, timeout=60)
+        self._sale_data.create_schema(self.conn)
+        logger.info(f"[PIPELINE:Sale] Initialized - {self.db_path}")
+
+    def process_item(self, item, spider):
+        # Only persist for-sale items; rental items pass through untouched.
+        if ItemAdapter(item).get('listing_type') != 'sale':
+            return item
+        try:
+            self._sale_data.upsert_sale_listing(self.conn, dict(ItemAdapter(item)))
+            self.written += 1
+        except Exception as e:
+            logger.error(f"[PIPELINE:Sale] Error upserting sale listing: {e}")
+        return item
+
+    def close_spider(self, spider):
+        try:
+            if self.conn:
+                self.conn.commit()
+        except Exception as e:
+            logger.debug(f"[PIPELINE:Sale] Error committing: {e}")
+        try:
+            if self.conn:
+                self.conn.close()
+        except Exception as e:
+            logger.error(f"[PIPELINE:Sale] Error closing connection: {e}")
+        logger.info(f"[PIPELINE:Sale] Complete - {self.written} sale listings written")

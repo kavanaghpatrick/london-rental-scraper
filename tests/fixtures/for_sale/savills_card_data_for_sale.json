@@ -1,0 +1,35 @@
+[
+  {
+    "href": "https://search.savills.com/property-detail/gbcrres240123",
+    "text": "Lower Sloane Street, Chelsea, London SW1W 8AA\n1 Bedroom 1 Bathroom 466 sq ft\nApartment\nGuide Price £875,000",
+    "address": "Lower Sloane Street, Chelsea, London SW1W 8AA",
+    "sqft": "466",
+    "price": 875000,
+    "beds": "1",
+    "baths": "1",
+    "postcode": "SW1W 8AA",
+    "furnished": null
+  },
+  {
+    "href": "https://search.savills.com/property-detail/gbcrres240456",
+    "text": "Cadogan Square, Knightsbridge, London SW1X 0HT\n3 Bedrooms 2 Bathrooms 1,820 sq ft\nFlat\nOffers in Excess of £4,250,000",
+    "address": "Cadogan Square, Knightsbridge, London SW1X 0HT",
+    "sqft": "1,820",
+    "price": 4250000,
+    "beds": "3",
+    "baths": "2",
+    "postcode": "SW1X 0HT",
+    "furnished": null
+  },
+  {
+    "href": "https://search.savills.com/property-detail/gbcrres240789",
+    "text": "Oakfield Street, Chelsea, London SW10\n2 Bedrooms 2 Bathrooms\nHouse\nGuide Price £2,150,000",
+    "address": "Oakfield Street, Chelsea, London SW10",
+    "sqft": "",
+    "price": 2150000,
+    "beds": "2",
+    "baths": "2",
+    "postcode": "SW10",
+    "furnished": null
+  }
+]

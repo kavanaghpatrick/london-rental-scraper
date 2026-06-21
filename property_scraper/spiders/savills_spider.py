@@ -95,8 +95,16 @@ class SavillsSpider(scrapy.Spider):
         'NW1', 'NW3', 'NW8',  # St John's Wood, Hampstead
     ]
 
-    def __init__(self, max_properties=None, max_pages=None, fetch_floorplans=False, *args, **kwargs):
+    def __init__(self, max_properties=None, max_pages=None, fetch_floorplans=False,
+                 listing_type='rent', *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Listing vertical: 'rent' (default — UNCHANGED rental behaviour, points at the
+        # site's property-to-rent section) or 'sale' (the separate FOR-SALE vertical,
+        # pointed at property-for-sale). Any value other than the explicit 'sale' falls
+        # back to 'rent' so a typo can never silently switch the rental scrape to sale.
+        # See start_url_for / parse_card_data_for_sale below.
+        self.listing_type = 'sale' if str(listing_type).lower() == 'sale' else 'rent'
 
         # Parse max_properties (None = unlimited)
         if max_properties is None or str(max_properties).lower() in ('none', '0', ''):
@@ -146,10 +154,44 @@ class SavillsSpider(scrapy.Spider):
         self.logger.info("[CONFIG] Using Playwright with CLICK-based pagination")
         self.logger.info("=" * 70)
 
+    # ------------------------------------------------------------------ #
+    # FOR-SALE vertical (additive — default rental path is untouched)    #
+    # ------------------------------------------------------------------ #
+    def start_url_for(self, area: str) -> str:
+        """Build the Savills search URL for the configured vertical.
+
+        Rental (default): the SAME /list/property-to-rent/uk URL the spider has always
+        used (Savills lists all UK areas in one paginated grid — `area` is accepted for a
+        uniform signature but not part of the URL). Sale: the /list/property-for-sale/uk
+        section — the only change is which part of Savills the (otherwise identical)
+        spider points at. Pure/standalone so the sale-mode tests can assert the URL
+        without a crawl.
+        """
+        section = 'property-for-sale' if self.listing_type == 'sale' else 'property-to-rent'
+        return f'https://search.savills.com/list/{section}/uk'
+
+    def parse_card_data_for_sale(self, card_data: dict, area: str):
+        """DELEGATE one FOR-SALE card to the pure for_sale.listing_parse seam.
+
+        Returns a plain dict for the sale data-layer path (asking_price in sale
+        magnitude, never price_pcm/price_pw); a POA / amount-0 card yields asking_price
+        None (normalised at this spider boundary). None when the seam can't derive an id.
+        Imported lazily so a pure rental crawl never imports the for-sale package.
+        """
+        from for_sale.listing_parse import parse_savills_for_sale
+
+        sale_item = parse_savills_for_sale(card_data, area)
+        if sale_item is None:
+            return None
+        item = dict(sale_item)
+        if not item.get('asking_price'):
+            item['asking_price'] = None
+        return item
+
     def start_requests(self):
         """Generate initial request for page 1."""
-        url = 'https://search.savills.com/list/property-to-rent/uk'
-        self.logger.info(f"[REQUEST] Starting: {url}")
+        url = self.start_url_for('uk')
+        self.logger.info(f"[REQUEST] Starting: {url} (listing_type={self.listing_type})")
 
         yield scrapy.Request(
             url,

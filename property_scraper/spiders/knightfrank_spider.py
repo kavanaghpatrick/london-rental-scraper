@@ -89,8 +89,16 @@ class KnightFrankSpider(scrapy.Spider):
         'NW1', 'NW3', 'NW8',  # St John's Wood, Hampstead
     ]
 
-    def __init__(self, max_properties=None, fetch_details=False, fetch_floorplans=False, *args, **kwargs):
+    def __init__(self, max_properties=None, fetch_details=False, fetch_floorplans=False,
+                 listing_type='rent', *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Listing vertical: 'rent' (default — UNCHANGED rental behaviour, points at the
+        # site's to-let section) or 'sale' (the separate FOR-SALE vertical, pointed at the
+        # for-sale section). Any value other than the explicit 'sale' falls back to 'rent'
+        # so a typo can never silently switch the rental scrape to sale. See start_url_for
+        # / parse_card_data_for_sale below.
+        self.listing_type = 'sale' if str(listing_type).lower() == 'sale' else 'rent'
 
         # Parse max_properties (None = unlimited, use high cap)
         if max_properties is None or str(max_properties).lower() in ('none', '0', ''):
@@ -146,13 +154,47 @@ class KnightFrankSpider(scrapy.Spider):
         self.logger.info("[CONFIG] Using Playwright for JS rendering")
         self.logger.info("=" * 70)
 
+    # ------------------------------------------------------------------ #
+    # FOR-SALE vertical (additive — default rental path is untouched)    #
+    # ------------------------------------------------------------------ #
+    def start_url_for(self, area: str) -> str:
+        """Build the Knight Frank search base URL for the configured vertical.
+
+        Rental (default): the SAME .../residential/to-let/uk/all-types/all-beds URL the
+        spider has always used (KF lists all UK areas in one offset-paginated grid —
+        `area` is accepted for a uniform signature but not part of the URL). Sale: the
+        .../residential/for-sale/... section — the only change is which part of KF the
+        (otherwise identical) spider points at. Pure/standalone so the sale-mode tests
+        can assert the URL without a crawl.
+        """
+        section = 'for-sale' if self.listing_type == 'sale' else 'to-let'
+        return f'https://www.knightfrank.co.uk/properties/residential/{section}/uk/all-types/all-beds'
+
+    def parse_card_data_for_sale(self, card_data: dict, area: str):
+        """DELEGATE one FOR-SALE card to the pure for_sale.listing_parse seam.
+
+        Returns a plain dict for the sale data-layer path (asking_price in sale
+        magnitude, never price_pcm/price_pw); a POA card yields asking_price None
+        (normalised at this spider boundary). None when the seam can't derive an id.
+        Imported lazily so a pure rental crawl never imports the for-sale package.
+        """
+        from for_sale.listing_parse import parse_knightfrank_for_sale
+
+        sale_item = parse_knightfrank_for_sale(card_data, area)
+        if sale_item is None:
+            return None
+        item = dict(sale_item)
+        if not item.get('asking_price'):
+            item['asking_price'] = None
+        return item
+
     def start_requests(self):
         """Generate requests for each page using offset parameter.
 
         Issue #6 FIX: Start with reasonable estimate (20 pages ~960 properties),
         actual stopping handled dynamically in parse_search via empty page detection.
         """
-        base_url = 'https://www.knightfrank.co.uk/properties/residential/to-let/uk/all-types/all-beds'
+        base_url = self.start_url_for('uk')
 
         # Calculate how many pages we need (48 per page)
         # === Issue #6 FIX: Use conservative estimate, rely on empty page detection ===

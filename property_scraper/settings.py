@@ -90,6 +90,7 @@ ITEM_PIPELINES = {
     'property_scraper.pipelines.DuplicateFilterPipeline': 200,
     'property_scraper.pipelines.JsonWriterPipeline': 300,
     'property_scraper.pipelines.SQLitePipeline': 400,  # SQLite database
+    'property_scraper.pipelines.SaleListingPipeline': 500,  # For-sale vertical -> output/sales.db
 }
 
 # =============================================================================

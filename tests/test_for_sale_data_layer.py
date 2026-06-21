@@ -370,3 +370,20 @@ def test_sale_data_layer_does_not_write_rental_listings_table(sale_data):
         assert cur.fetchone() is None
     finally:
         conn.close()
+
+
+def test_sale_data_layer_path_is_caller_supplied(sale_data):
+    """CONNECTION-INJECTED DESIGN LOCK (Inc2): the data layer must take a caller-supplied
+    sqlite3 connection and NEVER hardcode a DB path of its own. The sales.db filename is
+    the PIPELINE's seam (output/sales.db); sale_data.py must therefore not mention
+    'rentals.db' and must not resolve/open a path itself — so it stays trivially testable
+    against an in-memory DB and can never collide with the rental file."""
+    import for_sale.sale_data as m
+    src = Path(m.__file__).read_text()
+    assert "rentals.db" not in src, "sale_data must not reference the rental DB file"
+    # No path resolver / self-opened DB: the connection is always injected by the caller.
+    assert "sqlite3.connect(" not in src, (
+        "sale_data must be connection-injected (caller supplies the sqlite3 connection), "
+        "not open its own DB path"
+    )
+    assert ".db" not in src, "sale_data must not hardcode any .db filename of its own"

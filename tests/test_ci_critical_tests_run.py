@@ -64,6 +64,23 @@ CRITICAL_TESTS = [
     #     canonical_predict). If this silently went dark a sale model could re-couple to the
     #     parity-gated rental chain or regress to a leaky/rent-magnitude baseline.
     "tests/test_for_sale_sale_model.py",
+    #     Inc2: the for-sale CLI + PIPELINE ROUTING contract. The --listing-type seam,
+    #     get_sale_db_path() read seam, the SaleListingPipeline (writes output/sales.db),
+    #     and the per-item discriminator guard that keeps sale items OUT of the rental
+    #     listings table. CI-safe (CliRunner + in-memory/tmp sqlite; no DB/PG/OCR/node).
+    #     Carries the CORE no-leak guard + the AMENDMENT-4 end-to-end regression; must
+    #     never go dark, or a sale row could leak into rentals.db/listings.
+    "tests/test_for_sale_cli_routing.py",
+    #     Inc2: the three Playwright for-sale PARSE SEAMS (savills/knightfrank/chestertons
+    #     parse_*_for_sale). Pins the sale-magnitude/no-price_pcm isolation, the MANDATORY
+    #     Chestertons /sales/ stable-id fix, and the rental-model isolation guard. CI-safe
+    #     (committed card-dict fixtures + in-memory parse; no DB/network/node).
+    "tests/test_for_sale_playwright_parse.py",
+    #     Inc2: the Playwright spider SALE-MODE WIRING (listing_type kwarg + coercion,
+    #     the for-sale start-URL section seam, and the delegating parse_card_data_for_sale
+    #     that routes to the pure seam with the 0->None boundary). Pins the zero-regression
+    #     default-rental section. CI-safe (no crawl/network; committed fixtures).
+    "tests/test_for_sale_playwright_spider_mode.py",
     # --- Data-layer safety (the destructive-op guards / _safe_delete)
     "tests/test_safe_delete.py",
     "tests/test_data_layer_safety.py",
