@@ -47,6 +47,11 @@ CRITICAL_TESTS = [
     # --- Data-layer safety (the destructive-op guards / _safe_delete)
     "tests/test_safe_delete.py",
     "tests/test_data_layer_safety.py",
+    # --- Cycle-relative mark-inactive (the recurring nightly prod is_active wipe).
+    #     Pure file-parse + in-memory SQLite — no DB/PG/node. Pins the SHIPPED
+    #     daily-scrape.yml SQL to MAX(last_seen), not wall-clock NOW(); must never
+    #     silently stop running, or the wall-clock-wipe footgun could return unguarded.
+    "tests/test_mark_inactive_cycle_relative.py",
     # --- Cross-source dedupe identity core (pure, no DB)
     "tests/test_dedupe_postgres.py::test_distinct_streets_not_merged",
     "tests/test_dedupe_postgres.py::test_true_cross_source_dupe_still_caught",

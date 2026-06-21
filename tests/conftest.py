@@ -155,41 +155,30 @@ def _structural_suites_have_db() -> bool:
     return _path_ok(_ACTIVE_DB_PATH)
 
 
-def _wire_fixture_into_modules():
-    """Point the two fixture-backed modules' DB-path constants at the fixture variants,
+def _wire_fixture_into_modules(items):
+    """Repoint the two fixture-backed modules' DB-path constants at the fixture variants
     so their STRUCTURAL asserts run against the fixture in PR CI — WITHOUT touching the
-    shared SCRAPER_DB_PATH env (which other data tests read). Live mode leaves the real
-    DB in place (no-op). Idempotent."""
+    shared SCRAPER_DB_PATH env (other data tests read it). Patches the COLLECTED item
+    modules DIRECTLY (robust to pytest's package-qualified collection names AND to subset
+    runs that don't collect these modules — then there is simply nothing to wire). Live
+    mode is a no-op. The anti-silent-skip guards (test_ci_critical_tests_run + the
+    structural-not-skipped meta-test) separately enforce that these suites RUN in CI."""
     if not _on_fixture():
         return
-    import sys
-
     backfilled = _ensure_backfilled_fixture_db()
-
-    def _patch(basename, attrs):
-        # pytest collects these as 'tests.test_scrape_validation' (package-qualified,
-        # because tests/__init__.py exists), NOT the bare name — so look up the ALREADY
-        # IMPORTED module in sys.modules by exact OR suffix match and patch THAT object.
-        # Fail LOUDLY in fixture mode if it isn't found (a silent except here previously
-        # let the fixture path never reach the tests, so they ran against the real DB).
-        mod = next(
-            (m for n, m in list(sys.modules.items())
-             if m is not None and (n == basename or n.endswith("." + basename))),
-            None,
-        )
+    done = set()
+    for item in items:
+        mod = getattr(item, "module", None)
         if mod is None:
-            raise RuntimeError(
-                f"fixture wiring failed: collected test module for '{basename}' not in "
-                f"sys.modules — cannot repoint its DB path. (Check the package-qualified "
-                f"collection name / tests/__init__.py.)"
-            )
-        for k, v in attrs.items():
-            setattr(mod, k, v)
-
-    # test_scrape_validation reads its own module-level DB_PATH; repoint it.
-    _patch("test_scrape_validation", {"DB_PATH": backfilled})
-    # test_backfill_acceptance: LIVE = backfilled (post), BASELINE = committed (pre).
-    _patch("test_backfill_acceptance", {"LIVE_DB": backfilled, "BASELINE_DB": _FIXTURE_DB_PATH})
+            continue
+        base = getattr(mod, "__name__", "").rsplit(".", 1)[-1]
+        if base == "test_scrape_validation" and base not in done:
+            mod.DB_PATH = backfilled          # repoint its module-level DB_PATH
+            done.add(base)
+        elif base == "test_backfill_acceptance" and base not in done:
+            mod.LIVE_DB = backfilled           # LIVE = backfilled (post)
+            mod.BASELINE_DB = _FIXTURE_DB_PATH  # BASELINE = committed (pre)
+            done.add(base)
 
 
 # POST-scrape tests that are only valid INSIDE a fresh snapshot -> scrape -> validate
@@ -267,7 +256,7 @@ def pytest_collection_modifyitems(config, items):
     # committed mini fixture. Wire it into THOSE modules only (never the shared env), so
     # other `data` tests are unaffected.
     if _on_fixture():
-        _wire_fixture_into_modules()
+        _wire_fixture_into_modules(items)
 
         # The POST-scrape tests are snapshot/freshness COMPARISONS — they diff against
         # tests/scrape_snapshot.json (captured from the real 20MB DB) and assert a scrape
