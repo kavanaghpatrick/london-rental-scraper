@@ -28,6 +28,7 @@ is unchanged. CI-SAFE: marker `for_sale`; no network/crawl; in-memory + tmp SQLi
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -43,6 +44,13 @@ pytestmark = pytest.mark.for_sale
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures" / "for_sale"
 runner = CliRunner()
+
+
+def _plain(s):
+    """Strip ANSI escapes + collapse all whitespace so substring checks survive
+    Rich's terminal-width/version-dependent wrapping (a CI-vs-local rendering
+    flake, not a behavioural contract)."""
+    return re.sub(r"\s+", " ", re.sub(r"\x1b\[[0-9;]*m", "", s or ""))
 
 
 # ── Test doubles ──────────────────────────────────────────────────────────────────
@@ -121,10 +129,44 @@ def _count(db_path, table):
 # ── 1. The --listing-type option ──────────────────────────────────────────────────
 
 def test_scrape_has_listing_type_option_default_rent():
-    """`scrape` exposes a --listing-type option defaulting to 'rent'."""
-    result = runner.invoke(cli_main.app, ["scrape", "--help"])
-    assert result.exit_code == 0
-    assert "--listing-type" in result.stdout
+    """`scrape` exposes a --listing-type option defaulting to 'rent'.
+
+    Introspects the registered Click params directly instead of grepping the
+    Rich-rendered --help text: that help table wraps/ANSI-formats differently
+    across Rich versions and terminal widths (an 80-col CI runner split the
+    option name out of the captured string), which is a rendering flake, not a
+    behavioural contract. The param + its default ARE the contract.
+    """
+    import click
+    import typer
+
+    command = typer.main.get_command(cli_main.app)
+    candidates = (
+        list(command.commands.values()) if hasattr(command, "commands") else [command]
+    )
+    scrape_cmd = next(
+        (
+            c
+            for c in candidates
+            if c.name == "scrape"
+            or any(
+                isinstance(p, click.Option) and "--listing-type" in p.opts
+                for p in c.params
+            )
+        ),
+        None,
+    )
+    assert scrape_cmd is not None, "scrape command not found on the Typer app"
+    opt = next(
+        (
+            p
+            for p in scrape_cmd.params
+            if isinstance(p, click.Option) and "--listing-type" in p.opts
+        ),
+        None,
+    )
+    assert opt is not None, "scrape must expose a --listing-type option"
+    assert opt.default == "rent", f"--listing-type default must be 'rent', got {opt.default!r}"
 
 
 def test_listing_type_coerces_unknown_to_rent(monkeypatch):
@@ -280,7 +322,9 @@ def test_postgres_plus_sale_is_rejected():
         ["scrape", "--source", "rightmove", "--listing-type", "sale", "--postgres"],
     )
     assert result.exit_code != 0
-    assert "SQLite-only" in result.stdout
+    # exit_code != 0 is the binding contract; message check is ANSI/wrap-normalized
+    # ("SQLite" is one token so it can't be split across a Rich line wrap).
+    assert "SQLite" in _plain(result.output)
 
 
 def test_registry_unchanged_by_inc2():
