@@ -1,0 +1,194 @@
+[
+  {
+    "id": 89029677,
+    "propertyUrl": "/properties/89029677#/?channel=RES_BUY",
+    "price": {
+      "amount": 875000,
+      "frequency": "not specified",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "£875,000",
+          "displayPriceQualifier": "Guide Price"
+        }
+      ]
+    },
+    "displayAddress": "Lower Sloane Street, Chelsea, London",
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "propertySubType": "Flat",
+    "displaySize": "466 sq. ft.",
+    "location": {
+      "latitude": 51.49193,
+      "longitude": -0.157682
+    },
+    "displayStatus": "",
+    "customer": {
+      "branchDisplayName": "Strutt & Parker, Knightsbridge & Belgravia",
+      "contactTelephone": "020 3872 6003"
+    },
+    "addedOrReduced": "Added on 28/05/2026",
+    "summary": "Situated on Lower Sloane Street, moments from Sloane Square and newly refurbished throughout.",
+    "channel": "BUY"
+  },
+  {
+    "id": 88781454,
+    "propertyUrl": "/properties/88781454#/?channel=RES_BUY",
+    "price": {
+      "amount": 40000000,
+      "frequency": "not specified",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "£40,000,000",
+          "displayPriceQualifier": "Guide Price"
+        }
+      ]
+    },
+    "displayAddress": "Hans Place, Knightsbridge, London",
+    "bedrooms": 6,
+    "bathrooms": 8,
+    "propertySubType": "Flat",
+    "displaySize": "11,316 sq. ft.",
+    "location": {
+      "latitude": 51.498535,
+      "longitude": -0.160706
+    },
+    "displayStatus": "",
+    "customer": {
+      "branchDisplayName": "Strutt & Parker, Knightsbridge & Belgravia",
+      "contactTelephone": "020 3872 6003"
+    },
+    "addedOrReduced": "Added on 21/05/2026",
+    "summary": "Presenting an extraordinary opportunity to acquire one of the largest and most elegant apartments in Knightsbridge, situated within a boutique super-prime development on Hans Place.",
+    "channel": "BUY"
+  },
+  {
+    "id": 87951738,
+    "propertyUrl": "/properties/87951738#/?channel=RES_BUY",
+    "price": {
+      "amount": 38000000,
+      "frequency": "not specified",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "£38,000,000",
+          "displayPriceQualifier": ""
+        }
+      ]
+    },
+    "displayAddress": "Manresa Road, Knightsbridge, London, SW3",
+    "bedrooms": 6,
+    "bathrooms": 6,
+    "propertySubType": "Town House",
+    "displaySize": "8,155 sq. ft.",
+    "location": {
+      "latitude": 51.48741,
+      "longitude": -0.17196
+    },
+    "displayStatus": "",
+    "customer": {
+      "branchDisplayName": "United Kingdom Sotheby's International Realty, Knightsbridge",
+      "contactTelephone": "020 4538 9747"
+    },
+    "addedOrReduced": "Added on 01/05/2026",
+    "summary": "A Chelsea Penthouse with a Roof Terrace and Two Studio Apartments",
+    "channel": "BUY"
+  },
+  {
+    "id": 152997359,
+    "propertyUrl": "/properties/152997359#/?channel=RES_BUY",
+    "price": {
+      "amount": 28000000,
+      "frequency": "not specified",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "£28,000,000",
+          "displayPriceQualifier": ""
+        }
+      ]
+    },
+    "displayAddress": "Tregunter Road, Chelsea, London, SW10, United Kingdom",
+    "bedrooms": 7,
+    "bathrooms": 7,
+    "propertySubType": "House",
+    "displaySize": "8,304 sq. ft.",
+    "location": {
+      "latitude": 51.48779,
+      "longitude": -0.18462
+    },
+    "displayStatus": "",
+    "customer": {
+      "branchDisplayName": "United Kingdom Sotheby's International Realty, Kensington",
+      "contactTelephone": "020 4572 8934"
+    },
+    "addedOrReduced": "Reduced on 05/03/2026",
+    "summary": "Impeccably finished family home with an indoor swimming pool",
+    "channel": "BUY"
+  },
+  {
+    "id": 172554509,
+    "propertyUrl": "/properties/172554509#/?channel=RES_BUY",
+    "price": {
+      "amount": 28000000,
+      "frequency": "not specified",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "£28,000,000",
+          "displayPriceQualifier": "Guide Price"
+        }
+      ]
+    },
+    "displayAddress": "Tregunter Road, Chelsea, London",
+    "bedrooms": 7,
+    "bathrooms": 7,
+    "propertySubType": "House",
+    "displaySize": "7,351 sq. ft.",
+    "location": {
+      "latitude": 51.487765,
+      "longitude": -0.184739
+    },
+    "displayStatus": "",
+    "customer": {
+      "branchDisplayName": "Strutt & Parker, Chelsea",
+      "contactTelephone": "020 4572 5354"
+    },
+    "addedOrReduced": "Reduced on 05/03/2026",
+    "summary": "An impressive seven bedroom Freehold house with a beautiful garden and swimming pool, set back from the street behind secure gates, with off street parking for two cars, This immaculately refurbished house is ideal for flexible family living.",
+    "channel": "BUY"
+  },
+  {
+    "id": 174579905,
+    "propertyUrl": "/properties/174579905#/?channel=RES_BUY",
+    "price": {
+      "amount": 25000000,
+      "frequency": "not specified",
+      "currencyCode": "GBP",
+      "displayPrices": [
+        {
+          "displayPrice": "£25,000,000",
+          "displayPriceQualifier": ""
+        }
+      ]
+    },
+    "displayAddress": "Cheyne Walk, Chelsea, London, SW3",
+    "bedrooms": 8,
+    "bathrooms": 6,
+    "propertySubType": "House",
+    "displaySize": "8,000 sq. ft.",
+    "location": {
+      "latitude": 51.48486,
+      "longitude": -0.16399
+    },
+    "displayStatus": "",
+    "customer": {
+      "branchDisplayName": "United Kingdom Sotheby's International Realty, Wimbledon",
+      "contactTelephone": "020 4634 0199"
+    },
+    "addedOrReduced": "Added on 17/04/2026",
+    "summary": "A Remarkable Grade II Listed Townhouse on Cheyne Walk",
+    "channel": "BUY"
+  }
+]

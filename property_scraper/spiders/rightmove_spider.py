@@ -50,8 +50,17 @@ class RightmoveSpider(scrapy.Spider):
         'Hampstead', 'St-Johns-Wood', 'Mayfair', 'Marylebone'
     ]
 
-    def __init__(self, areas=None, max_pages=None, fetch_details=True, fetch_floorplans=False, *args, **kwargs):
+    def __init__(self, areas=None, max_pages=None, fetch_details=True, fetch_floorplans=False,
+                 listing_type='rent', *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Listing vertical: 'rent' (default — UNCHANGED rental behaviour) or 'sale'
+        # (the separate FOR-SALE vertical, pointed at the site's /property-for-sale/
+        # section). Any value other than the explicit 'sale' falls back to 'rent' so a
+        # typo can never silently switch the rental scrape to sale. This is the ONLY
+        # knob that changes which part of the site is scraped; the rest of the spider
+        # is shared infra. See parse_for_sale_property / start_url_for below.
+        self.listing_type = 'sale' if str(listing_type).lower() == 'sale' else 'rent'
 
         # Parse areas argument
         if areas:
@@ -114,15 +123,58 @@ class RightmoveSpider(scrapy.Spider):
             self.logger.info(f"[CONFIG] Estimated max listings: ~{len(self.areas) * self.max_pages * 24}")
         else:
             self.logger.info(f"[CONFIG] Scraping all available pages")
+        self.logger.info(f"[CONFIG] Listing type: {self.listing_type}")
         self.logger.info("=" * 70)
+
+    # ------------------------------------------------------------------ #
+    # FOR-SALE vertical (additive — default rental path is untouched)    #
+    # ------------------------------------------------------------------ #
+    def start_url_for(self, area: str) -> str:
+        """Build the search URL for `area` in the configured vertical.
+
+        Rental (default): the SAME /property-to-rent/ URL the spider has always used.
+        Sale: the site's /property-for-sale/ section — the only change is which part of
+        Rightmove we point the (otherwise identical) spider at. Pure/standalone so the
+        for-sale parse tests can assert the URL without a crawl.
+        """
+        section = 'property-for-sale' if self.listing_type == 'sale' else 'property-to-rent'
+        return f'https://www.rightmove.co.uk/{section}/{area}.html'
+
+    def parse_for_sale_property(self, prop: dict, area: str):
+        """Parse a single FOR-SALE property from the __NEXT_DATA__ search results.
+
+        DELEGATES to for_sale.listing_parse.parse_rightmove_for_sale — the pure,
+        independently-tested SINGLE SOURCE OF TRUTH for the for-sale parse (so the spider
+        mode and the unit tests never drift on a duplicated copy of the logic). Returns a
+        plain dict for the spider/data-layer path (asking_price in sale magnitude, never
+        price_pcm/price_pw); a POA/amount-0 row yields asking_price None. None if no id.
+        """
+        # Import lazily so the for-sale package is only required when sale mode is used —
+        # a pure rental crawl never imports it.
+        from for_sale.listing_parse import parse_rightmove_for_sale
+
+        sale_item = parse_rightmove_for_sale(prop, area)
+        if sale_item is None:
+            self.logger.warning(f"[FOR-SALE][VALIDATION] property missing ID in {area}")
+            return None
+
+        item = dict(sale_item)  # SaleListingItem -> plain dict for the yield/persist path
+        # listing_parse stores amount 0 for POA; normalise to None at the spider boundary
+        # so unpriced comps are explicitly skippable downstream (and never look like £0).
+        if not item.get('asking_price'):
+            item['asking_price'] = None
+        return item
 
     def start_requests(self):
         """Generate initial requests for all target areas."""
-        self.logger.info(f"[START] Launching {len(self.areas)} parallel area scrapers...")
+        self.logger.info(
+            f"[START] Launching {len(self.areas)} parallel area scrapers "
+            f"(listing_type={self.listing_type})..."
+        )
 
         for i, area in enumerate(self.areas):
             self.stats['by_area'][area] = {'count': 0, 'total_available': 0, 'pages': 0}
-            url = f'https://www.rightmove.co.uk/property-to-rent/{area}.html'
+            url = self.start_url_for(area)
 
             self.logger.info(f"[REQUEST] [{i+1}/{len(self.areas)}] Starting: {area} -> {url}")
 
@@ -251,6 +303,21 @@ class RightmoveSpider(scrapy.Spider):
         price_sum = 0
 
         for prop in properties:
+            if self.listing_type == 'sale':
+                # FOR-SALE vertical: yield the sale dict directly (no rental detail
+                # fetch / floorplan path) so the sale magnitude never touches the rental
+                # PropertyItem/pipeline. The sale data layer owns persistence.
+                item = self.parse_for_sale_property(prop, area)
+                if item:
+                    parsed_count += 1
+                    self.stats['total'] += 1
+                    self.stats['by_area'][area]['count'] += 1
+                    if item.get('asking_price'):
+                        price_sum += item['asking_price']
+                        self.stats['prices'].append(item['asking_price'])
+                    yield item
+                continue
+
             item = self.parse_property(prop, area)
             if item:
                 parsed_count += 1
@@ -298,7 +365,7 @@ class RightmoveSpider(scrapy.Spider):
         should_continue = next_index and (self.max_pages is None or page < self.max_pages - 1)
 
         if should_continue:
-            next_url = f'https://www.rightmove.co.uk/property-to-rent/{area}.html?index={next_index}'
+            next_url = f'{self.start_url_for(area)}?index={next_index}'
 
             self.logger.debug(f"[PAGINATION] {area}: Following to page {page+2} (index={next_index})")
 

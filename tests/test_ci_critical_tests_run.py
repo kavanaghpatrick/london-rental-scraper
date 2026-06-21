@@ -44,6 +44,26 @@ CRITICAL_TESTS = [
     "tests/test_model_inference.py::test_coordless_row_distance_is_numeric_no_log1p_crash",
     # --- Spider selector-regression (site markup/JSON-shape drift)
     "tests/test_spider_parsing.py",
+    # --- FOR-SALE vertical data layer (the separate sale-price tool's foundation):
+    #     the for-sale parse seam + isolated sale_listings schema. CI-safe (reads the
+    #     committed for-sale __NEXT_DATA__ fixture + in-memory sqlite; no DB/PG/OCR/node)
+    #     so it ALWAYS runs and gates the PR. Includes the rental-isolation + no-pcm-leak
+    #     guards — must never silently go dark, or a sale price could leak into the rent
+    #     magnitude / the for-sale layer could couple to the parity-gated rental model.
+    "tests/test_for_sale_data_layer.py",
+    #     Companion: the for-sale PARSE-SEAM + isolated-item/validator contract
+    #     (Rightmove+Foxtons __NEXT_DATA__ for-sale fixtures). Same CI-safety profile
+    #     (committed fixtures, no DB/network); pins the sale-magnitude validator (rejects
+    #     a rent leaking in) and the no-price_pcm-field isolation of the sale item.
+    "tests/test_for_sale_scrape_layer.py",
+    #     Companion: the BASELINE SALE-PRICE model (for_sale/sale_price_model.py) — the
+    #     for-sale analogue of the rental v20 model, trained on the COMMITTED deterministic
+    #     for-sale sample (no DB/network/node). Pins the leak-safety guard (asking_price is
+    #     never a feature; no target-derived branch), the sale-magnitude/ppsf bounds, and
+    #     the hard rental-isolation guard (must not import rental_price_models_v20 /
+    #     canonical_predict). If this silently went dark a sale model could re-couple to the
+    #     parity-gated rental chain or regress to a leaky/rent-magnitude baseline.
+    "tests/test_for_sale_sale_model.py",
     # --- Data-layer safety (the destructive-op guards / _safe_delete)
     "tests/test_safe_delete.py",
     "tests/test_data_layer_safety.py",

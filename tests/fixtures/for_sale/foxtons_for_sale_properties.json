@@ -1,0 +1,116 @@
+[
+  {
+    "propertyId": "category-983",
+    "propertyReference": "nwca5232210",
+    "instructionType": "sale",
+    "priceFrom": "13858000",
+    "priceTo": "13858000",
+    "bedrooms": 5,
+    "bathrooms": 3,
+    "searchPropertyType": null,
+    "typeGroup": null,
+    "postcodeShort": "SW10",
+    "streetName": "Chelsea Waterfront",
+    "locationName": "Chelsea",
+    "isNewHome": true,
+    "isUnderOffer": false,
+    "propertyBlob": {
+      "floorArea": null
+    }
+  },
+  {
+    "propertyId": "category-230",
+    "propertyReference": "nwca5272518",
+    "instructionType": "sale",
+    "priceFrom": "10056000",
+    "priceTo": "10056000",
+    "bedrooms": 6,
+    "bathrooms": 5,
+    "searchPropertyType": null,
+    "typeGroup": null,
+    "postcodeShort": "SW10",
+    "streetName": "Chelsea Waterfront",
+    "locationName": "Chelsea",
+    "isNewHome": true,
+    "isUnderOffer": false,
+    "propertyBlob": {
+      "floorArea": null
+    }
+  },
+  {
+    "propertyId": "category-229",
+    "propertyReference": "nwca5272517",
+    "instructionType": "sale",
+    "priceFrom": "5811000",
+    "priceTo": "5811000",
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "searchPropertyType": null,
+    "typeGroup": null,
+    "postcodeShort": "SW10",
+    "streetName": "Chelsea Waterfront",
+    "locationName": "Chelsea",
+    "isNewHome": true,
+    "isUnderOffer": false,
+    "propertyBlob": {
+      "floorArea": null
+    }
+  },
+  {
+    "propertyId": "instruction-1359006",
+    "propertyReference": "chpk2514513",
+    "instructionType": "sale",
+    "priceFrom": "5150000",
+    "priceTo": "5150000",
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "searchPropertyType": "houses",
+    "typeGroup": "houses",
+    "postcodeShort": "SW7",
+    "streetName": "Roland Way",
+    "locationName": "South Kensington",
+    "isNewHome": false,
+    "isUnderOffer": false,
+    "propertyBlob": {
+      "floorArea": 3401
+    }
+  },
+  {
+    "propertyId": "instruction-1311439",
+    "propertyReference": "chpk0472647",
+    "instructionType": "sale",
+    "priceFrom": "4950000",
+    "priceTo": "4950000",
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "searchPropertyType": "houses",
+    "typeGroup": "houses",
+    "postcodeShort": "SW10",
+    "streetName": "Oakfield Street",
+    "locationName": "Chelsea",
+    "isNewHome": false,
+    "isUnderOffer": false,
+    "propertyBlob": {
+      "floorArea": 2540
+    }
+  },
+  {
+    "propertyId": "category-114",
+    "propertyReference": "nwca4355079",
+    "instructionType": "sale",
+    "priceFrom": "4750000",
+    "priceTo": "4750000",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "searchPropertyType": null,
+    "typeGroup": null,
+    "postcodeShort": "SW10",
+    "streetName": "Chelsea Island",
+    "locationName": "Chelsea",
+    "isNewHome": true,
+    "isUnderOffer": false,
+    "propertyBlob": {
+      "floorArea": null
+    }
+  }
+]
