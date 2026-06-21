@@ -85,11 +85,18 @@ def build(n: int = 300, seed: int = 7) -> list[dict]:
         ptype = rng.choice(["Flat", "Flat", "Flat", "House", "Town House",
                             "Apartment", "Penthouse", "Maisonette"])
 
+        # New-build flag carries a modest, learnable price premium (realistic ~8%).
+        # Drawn deterministically (~18% of rows) so the model can learn a NON-ZERO
+        # is_new_build effect — gate G4c requires toggling it to move the prediction.
+        # The premium is small enough that R² / seed-stability gates keep their headroom.
+        is_new_build = 1 if rng.random() < 0.18 else 0
+        new_build_mult = 1.08 if is_new_build else 1.0
+
         base_ppsf = DISTRICT_PPSF.get(district, DISTRICT_PPSF["UNKNOWN"])
         type_mult = TYPE_MULT.get(ptype, 1.0)
         prestige_mult = PRESTIGE_STREETS.get(street.lower(), 1.0)
         noise = 1.0 + rng.gauss(0, 0.05)  # ±5% bounded asking-price scatter
-        price = int(size * base_ppsf * type_mult * prestige_mult * noise)
+        price = int(size * base_ppsf * type_mult * prestige_mult * new_build_mult * noise)
         price = max(120_000, min(price, 55_000_000))
 
         rows.append({
@@ -101,6 +108,7 @@ def build(n: int = 300, seed: int = 7) -> list[dict]:
             "bathrooms": baths,
             "size_sqft": size,
             "property_type": ptype,
+            "is_new_build": is_new_build,
             "asking_price": price,
         })
     return rows

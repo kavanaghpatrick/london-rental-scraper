@@ -64,6 +64,16 @@ CRITICAL_TESTS = [
     #     canonical_predict). If this silently went dark a sale model could re-couple to the
     #     parity-gated rental chain or regress to a leaky/rent-magnitude baseline.
     "tests/test_for_sale_sale_model.py",
+    #     Inc3: the FULL sale-price model (for_sale/sale_retrain.py + sale_predict.py +
+    #     sale_features.py + the freq-map/inference plumbing in sale_price_model.py). The
+    #     for-sale analogue of the rental v20 retrain/serving chain, trained on the
+    #     COMMITTED deterministic sale sample (no DB/network/node), seed=42, artifacts to
+    #     tmp_path. Pins the baked-freq inference fix (BLOCKER-1), the monotone size
+    #     constraint, the artifact round-trip + Booster-JSON contract, determinism/seed
+    #     stability, and the rental-isolation guard (now also banning retrain_canonical).
+    #     If this went dark, the sale model could re-couple to the parity-gated rental
+    #     chain or regress to the single-row freq degeneracy.
+    "tests/test_for_sale_inc3_model.py",
     #     Inc2: the for-sale CLI + PIPELINE ROUTING contract. The --listing-type seam,
     #     get_sale_db_path() read seam, the SaleListingPipeline (writes output/sales.db),
     #     and the per-item discriminator guard that keeps sale items OUT of the rental

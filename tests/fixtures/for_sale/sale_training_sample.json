@@ -8,6 +8,7 @@
     "bathrooms": 3,
     "size_sqft": 1280,
     "property_type": "Flat",
+    "is_new_build": 0,
     "asking_price": 4187242
   },
   {
@@ -15,11 +16,12 @@
     "property_id": "S0001",
     "address": "Lowndes Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1443,
-    "property_type": "Flat",
-    "asking_price": 4126086
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 681,
+    "property_type": "Penthouse",
+    "is_new_build": 1,
+    "asking_price": 2732505
   },
   {
     "source": "synthetic",
@@ -28,9 +30,10 @@
     "postcode": "SW7",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 592,
-    "property_type": "Penthouse",
-    "asking_price": 1802377
+    "size_sqft": 470,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1127226
   },
   {
     "source": "synthetic",
@@ -39,20 +42,22 @@
     "postcode": "SW10",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 730,
-    "property_type": "Flat",
-    "asking_price": 1346772
+    "size_sqft": 637,
+    "property_type": "House",
+    "is_new_build": 1,
+    "asking_price": 1535272
   },
   {
     "source": "synthetic",
     "property_id": "S0004",
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1346,
-    "property_type": "Flat",
-    "asking_price": 2954402
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 859,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2375512
   },
   {
     "source": "synthetic",
@@ -61,31 +66,34 @@
     "postcode": "W11",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1027,
-    "property_type": "Town House",
-    "asking_price": 2427501
+    "size_sqft": 840,
+    "property_type": "Apartment",
+    "is_new_build": 1,
+    "asking_price": 1663337
   },
   {
     "source": "synthetic",
     "property_id": "S0006",
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 2016,
-    "property_type": "House",
-    "asking_price": 4006233
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 745,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 1470795
   },
   {
     "source": "synthetic",
     "property_id": "S0007",
     "address": "Choumert Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 3,
+    "bedrooms": 4,
     "bathrooms": 3,
-    "size_sqft": 1268,
-    "property_type": "Flat",
-    "asking_price": 945939
+    "size_sqft": 1730,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 1586327
   },
   {
     "source": "synthetic",
@@ -94,42 +102,46 @@
     "postcode": "E14",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 936,
+    "size_sqft": 859,
     "property_type": "Apartment",
-    "asking_price": 891216
+    "is_new_build": 0,
+    "asking_price": 835370
   },
   {
     "source": "synthetic",
     "property_id": "S0009",
     "address": "Fulham Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "size_sqft": 1730,
-    "property_type": "House",
-    "asking_price": 2643879
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 1049,
+    "property_type": "Penthouse",
+    "is_new_build": 1,
+    "asking_price": 1835262
   },
   {
     "source": "synthetic",
     "property_id": "S0010",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 999,
-    "property_type": "Town House",
-    "asking_price": 2865686
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1424,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 3344794
   },
   {
     "source": "synthetic",
     "property_id": "S0011",
     "address": "Chesham Place, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 2087,
-    "property_type": "Town House",
-    "asking_price": 6721981
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1255,
+    "property_type": "Maisonette",
+    "is_new_build": 1,
+    "asking_price": 3732874
   },
   {
     "source": "synthetic",
@@ -138,9 +150,10 @@
     "postcode": "SW7",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 598,
-    "property_type": "Apartment",
-    "asking_price": 1646768
+    "size_sqft": 495,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1382550
   },
   {
     "source": "synthetic",
@@ -148,120 +161,131 @@
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
     "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 719,
-    "property_type": "Flat",
-    "asking_price": 1674302
+    "bathrooms": 1,
+    "size_sqft": 829,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 1843522
   },
   {
     "source": "synthetic",
     "property_id": "S0014",
     "address": "Phillimore Gardens, London, W8",
     "postcode": "W8",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 2003,
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1146,
     "property_type": "Apartment",
-    "asking_price": 4011867
+    "is_new_build": 1,
+    "asking_price": 2988202
   },
   {
     "source": "synthetic",
     "property_id": "S0015",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1095,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 861,
     "property_type": "Flat",
-    "asking_price": 2084380
+    "is_new_build": 0,
+    "asking_price": 1686533
   },
   {
     "source": "synthetic",
     "property_id": "S0016",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 495,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1431,
     "property_type": "Flat",
-    "asking_price": 751385
+    "is_new_build": 0,
+    "asking_price": 2083737
   },
   {
     "source": "synthetic",
     "property_id": "S0017",
     "address": "Nunhead Lane, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 829,
-    "property_type": "Maisonette",
-    "asking_price": 629618
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 2115,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1815502
   },
   {
     "source": "synthetic",
     "property_id": "S0018",
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 855,
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1535,
     "property_type": "Flat",
-    "asking_price": 896782
+    "is_new_build": 1,
+    "asking_price": 1519122
   },
   {
     "source": "synthetic",
     "property_id": "S0019",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1659,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 979,
     "property_type": "Flat",
-    "asking_price": 2118787
+    "is_new_build": 0,
+    "asking_price": 1215749
   },
   {
     "source": "synthetic",
     "property_id": "S0020",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1052,
-    "property_type": "Penthouse",
-    "asking_price": 4552375
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 569,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1886705
   },
   {
     "source": "synthetic",
     "property_id": "S0021",
     "address": "Eaton Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 4,
+    "bedrooms": 5,
     "bathrooms": 4,
-    "size_sqft": 1691,
-    "property_type": "Town House",
-    "asking_price": 8441550
+    "size_sqft": 1839,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 7055765
   },
   {
     "source": "synthetic",
     "property_id": "S0022",
     "address": "Queens Gate, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1053,
-    "property_type": "Penthouse",
-    "asking_price": 3052539
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 1853,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 4608841
   },
   {
     "source": "synthetic",
     "property_id": "S0023",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1535,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 744,
     "property_type": "Flat",
-    "asking_price": 2531870
+    "is_new_build": 1,
+    "asking_price": 1466658
   },
   {
     "source": "synthetic",
@@ -270,20 +294,22 @@
     "postcode": "W8",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 772,
+    "size_sqft": 738,
     "property_type": "Flat",
-    "asking_price": 1799704
+    "is_new_build": 0,
+    "asking_price": 1623668
   },
   {
     "source": "synthetic",
     "property_id": "S0025",
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "size_sqft": 1670,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 786,
     "property_type": "Flat",
-    "asking_price": 3290627
+    "is_new_build": 0,
+    "asking_price": 1420235
   },
   {
     "source": "synthetic",
@@ -292,42 +318,46 @@
     "postcode": "NW3",
     "bedrooms": 3,
     "bathrooms": 2,
-    "size_sqft": 1204,
-    "property_type": "Flat",
-    "asking_price": 1891464
+    "size_sqft": 1269,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2037232
   },
   {
     "source": "synthetic",
     "property_id": "S0027",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 5,
+    "bedrooms": 4,
     "bathrooms": 4,
-    "size_sqft": 1839,
-    "property_type": "Maisonette",
-    "asking_price": 1349955
+    "size_sqft": 1579,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1186794
   },
   {
     "source": "synthetic",
     "property_id": "S0028",
     "address": "Marsh Wall, London, E14",
     "postcode": "E14",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1853,
-    "property_type": "Maisonette",
-    "asking_price": 2003843
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1023,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 996297
   },
   {
     "source": "synthetic",
     "property_id": "S0029",
     "address": "Munster Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1436,
-    "property_type": "Maisonette",
-    "asking_price": 2138406
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 2040,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2677086
   },
   {
     "source": "synthetic",
@@ -335,10 +365,11 @@
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
     "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 968,
-    "property_type": "Flat",
-    "asking_price": 2355426
+    "bathrooms": 1,
+    "size_sqft": 1111,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 3062940
   },
   {
     "source": "synthetic",
@@ -346,43 +377,47 @@
     "address": "Lowndes Square, London, SW1X",
     "postcode": "SW1X",
     "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1081,
-    "property_type": "Flat",
-    "asking_price": 3112439
+    "bathrooms": 2,
+    "size_sqft": 1010,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 2655260
   },
   {
     "source": "synthetic",
     "property_id": "S0032",
     "address": "Cornwall Gardens, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 618,
-    "property_type": "Town House",
-    "asking_price": 1701805
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1071,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2849400
   },
   {
     "source": "synthetic",
     "property_id": "S0033",
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1269,
-    "property_type": "Maisonette",
-    "asking_price": 2982507
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1586,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 3611611
   },
   {
     "source": "synthetic",
     "property_id": "S0034",
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1579,
-    "property_type": "Flat",
-    "asking_price": 3481263
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 902,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1928467
   },
   {
     "source": "synthetic",
@@ -390,43 +425,47 @@
     "address": "Ladbroke Grove, London, W11",
     "postcode": "W11",
     "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1289,
-    "property_type": "Flat",
-    "asking_price": 2678199
+    "bathrooms": 3,
+    "size_sqft": 1325,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 3257803
   },
   {
     "source": "synthetic",
     "property_id": "S0036",
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 2032,
-    "property_type": "Apartment",
-    "asking_price": 3408824
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "size_sqft": 1794,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2673905
   },
   {
     "source": "synthetic",
     "property_id": "S0037",
     "address": "Choumert Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 962,
-    "property_type": "Town House",
-    "asking_price": 877468
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1461,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 1477647
   },
   {
     "source": "synthetic",
     "property_id": "S0038",
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 751,
-    "property_type": "Flat",
-    "asking_price": 713529
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1088,
+    "property_type": "Apartment",
+    "is_new_build": 1,
+    "asking_price": 1134789
   },
   {
     "source": "synthetic",
@@ -435,9 +474,10 @@
     "postcode": "SW6",
     "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1105,
-    "property_type": "Apartment",
-    "asking_price": 1356844
+    "size_sqft": 1073,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 1550428
   },
   {
     "source": "synthetic",
@@ -445,142 +485,155 @@
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
     "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1121,
-    "property_type": "House",
-    "asking_price": 3931040
+    "bathrooms": 2,
+    "size_sqft": 1141,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 4022891
   },
   {
     "source": "synthetic",
     "property_id": "S0041",
     "address": "Chesham Place, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 984,
-    "property_type": "Maisonette",
-    "asking_price": 2789438
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "size_sqft": 1694,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 5065558
   },
   {
     "source": "synthetic",
     "property_id": "S0042",
     "address": "Onslow Square, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1338,
-    "property_type": "Town House",
-    "asking_price": 4515024
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 669,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2244851
   },
   {
     "source": "synthetic",
     "property_id": "S0043",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1686,
-    "property_type": "Apartment",
-    "asking_price": 3228826
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 988,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2315546
   },
   {
     "source": "synthetic",
     "property_id": "S0044",
     "address": "Phillimore Gardens, London, W8",
     "postcode": "W8",
-    "bedrooms": 4,
+    "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1928,
-    "property_type": "Apartment",
-    "asking_price": 4201940
+    "size_sqft": 1091,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2337615
   },
   {
     "source": "synthetic",
     "property_id": "S0045",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 778,
-    "property_type": "Apartment",
-    "asking_price": 1528067
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1194,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2718212
   },
   {
     "source": "synthetic",
     "property_id": "S0046",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 806,
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 1806,
     "property_type": "Flat",
-    "asking_price": 1117750
+    "is_new_build": 0,
+    "asking_price": 2676240
   },
   {
     "source": "synthetic",
     "property_id": "S0047",
     "address": "Nunhead Lane, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "size_sqft": 1534,
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 1204,
     "property_type": "Flat",
-    "asking_price": 1219088
+    "is_new_build": 1,
+    "asking_price": 977398
   },
   {
     "source": "synthetic",
     "property_id": "S0048",
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1310,
-    "property_type": "Flat",
-    "asking_price": 1235309
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 838,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 905108
   },
   {
     "source": "synthetic",
     "property_id": "S0049",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1203,
-    "property_type": "Penthouse",
-    "asking_price": 2107387
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 743,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 939326
   },
   {
     "source": "synthetic",
     "property_id": "S0050",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1627,
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 1762,
     "property_type": "Flat",
-    "asking_price": 3822618
+    "is_new_build": 0,
+    "asking_price": 4093699
   },
   {
     "source": "synthetic",
     "property_id": "S0051",
     "address": "Eaton Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1148,
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "size_sqft": 1766,
     "property_type": "Maisonette",
-    "asking_price": 4779565
+    "is_new_build": 0,
+    "asking_price": 7226233
   },
   {
     "source": "synthetic",
     "property_id": "S0052",
     "address": "Queens Gate, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1145,
-    "property_type": "Apartment",
-    "asking_price": 2306288
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "size_sqft": 1803,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 4918318
   },
   {
     "source": "synthetic",
@@ -588,21 +641,23 @@
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
     "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 966,
-    "property_type": "Flat",
-    "asking_price": 2114745
+    "bathrooms": 2,
+    "size_sqft": 1029,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2418519
   },
   {
     "source": "synthetic",
     "property_id": "S0054",
     "address": "Kensington Court, London, W8",
     "postcode": "W8",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 2067,
-    "property_type": "House",
-    "asking_price": 5561458
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1150,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2613469
   },
   {
     "source": "synthetic",
@@ -610,43 +665,47 @@
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
     "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 988,
-    "property_type": "House",
-    "asking_price": 2444187
+    "bathrooms": 1,
+    "size_sqft": 918,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2048246
   },
   {
     "source": "synthetic",
     "property_id": "S0056",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1091,
-    "property_type": "Flat",
-    "asking_price": 1593828
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1628,
+    "property_type": "Maisonette",
+    "is_new_build": 1,
+    "asking_price": 2707675
   },
   {
     "source": "synthetic",
     "property_id": "S0057",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1194,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 885,
     "property_type": "Penthouse",
-    "asking_price": 1072978
+    "is_new_build": 0,
+    "asking_price": 729875
   },
   {
     "source": "synthetic",
     "property_id": "S0058",
     "address": "Marsh Wall, London, E14",
     "postcode": "E14",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1806,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 909,
     "property_type": "Flat",
-    "asking_price": 1784160
+    "is_new_build": 0,
+    "asking_price": 975100
   },
   {
     "source": "synthetic",
@@ -655,64 +714,70 @@
     "postcode": "SW6",
     "bedrooms": 4,
     "bathrooms": 4,
-    "size_sqft": 1468,
-    "property_type": "Flat",
-    "asking_price": 1734943
+    "size_sqft": 1595,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2317738
   },
   {
     "source": "synthetic",
     "property_id": "S0060",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 799,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 880,
     "property_type": "Flat",
-    "asking_price": 2623249
+    "is_new_build": 1,
+    "asking_price": 3053902
   },
   {
     "source": "synthetic",
     "property_id": "S0061",
     "address": "Lowndes Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 3,
+    "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1158,
+    "size_sqft": 1053,
     "property_type": "Flat",
-    "asking_price": 3218653
+    "is_new_build": 0,
+    "asking_price": 2896384
   },
   {
     "source": "synthetic",
     "property_id": "S0062",
     "address": "Cornwall Gardens, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1950,
-    "property_type": "Flat",
-    "asking_price": 4665574
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1149,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 3025865
   },
   {
     "source": "synthetic",
     "property_id": "S0063",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1762,
-    "property_type": "Flat",
-    "asking_price": 3070274
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 841,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2021063
   },
   {
     "source": "synthetic",
     "property_id": "S0064",
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1521,
-    "property_type": "House",
-    "asking_price": 4021513
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 846,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1736033
   },
   {
     "source": "synthetic",
@@ -721,9 +786,10 @@
     "postcode": "W11",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 772,
-    "property_type": "House",
-    "asking_price": 1824977
+    "size_sqft": 984,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1917022
   },
   {
     "source": "synthetic",
@@ -732,152 +798,166 @@
     "postcode": "NW3",
     "bedrooms": 5,
     "bathrooms": 5,
-    "size_sqft": 2174,
-    "property_type": "House",
-    "asking_price": 3875401
+    "size_sqft": 2034,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 3237234
   },
   {
     "source": "synthetic",
     "property_id": "S0067",
     "address": "Choumert Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1526,
-    "property_type": "Apartment",
-    "asking_price": 1173069
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1081,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 804676
   },
   {
     "source": "synthetic",
     "property_id": "S0068",
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
-    "bedrooms": 1,
+    "bedrooms": 2,
     "bathrooms": 1,
-    "size_sqft": 672,
+    "size_sqft": 921,
     "property_type": "Town House",
-    "asking_price": 835786
+    "is_new_build": 0,
+    "asking_price": 1212857
   },
   {
     "source": "synthetic",
     "property_id": "S0069",
     "address": "Fulham Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 830,
-    "property_type": "Apartment",
-    "asking_price": 1009858
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 976,
+    "property_type": "Town House",
+    "is_new_build": 1,
+    "asking_price": 1620090
   },
   {
     "source": "synthetic",
     "property_id": "S0070",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1222,
-    "property_type": "House",
-    "asking_price": 3343734
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 380,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 952900
   },
   {
     "source": "synthetic",
     "property_id": "S0071",
     "address": "Chesham Place, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 723,
-    "property_type": "House",
-    "asking_price": 2480596
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1535,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 4238660
   },
   {
     "source": "synthetic",
     "property_id": "S0072",
     "address": "Onslow Square, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 858,
-    "property_type": "Apartment",
-    "asking_price": 2427544
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1280,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 4559687
   },
   {
     "source": "synthetic",
     "property_id": "S0073",
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1277,
-    "property_type": "Apartment",
-    "asking_price": 2852635
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1329,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 3122362
   },
   {
     "source": "synthetic",
     "property_id": "S0074",
     "address": "Phillimore Gardens, London, W8",
     "postcode": "W8",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 548,
-    "property_type": "Flat",
-    "asking_price": 1183960
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1016,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2957958
   },
   {
     "source": "synthetic",
     "property_id": "S0075",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1210,
-    "property_type": "Flat",
-    "asking_price": 2288483
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 994,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2065508
   },
   {
     "source": "synthetic",
     "property_id": "S0076",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 725,
-    "property_type": "Town House",
-    "asking_price": 1321228
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1104,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1657793
   },
   {
     "source": "synthetic",
     "property_id": "S0077",
     "address": "Nunhead Lane, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1053,
-    "property_type": "Flat",
-    "asking_price": 775817
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 1960,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2026111
   },
   {
     "source": "synthetic",
     "property_id": "S0078",
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
-    "bedrooms": 3,
+    "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1348,
-    "property_type": "Flat",
-    "asking_price": 1300680
+    "size_sqft": 964,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1197242
   },
   {
     "source": "synthetic",
     "property_id": "S0079",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 1781,
-    "property_type": "Flat",
-    "asking_price": 2152078
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 978,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1491228
   },
   {
     "source": "synthetic",
@@ -886,9 +966,10 @@
     "postcode": "SW3",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1013,
-    "property_type": "Flat",
-    "asking_price": 3182702
+    "size_sqft": 887,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 3415117
   },
   {
     "source": "synthetic",
@@ -897,42 +978,46 @@
     "postcode": "SW1X",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 846,
+    "size_sqft": 863,
     "property_type": "Flat",
-    "asking_price": 3093296
+    "is_new_build": 0,
+    "asking_price": 3276619
   },
   {
     "source": "synthetic",
     "property_id": "S0082",
     "address": "Queens Gate, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 984,
-    "property_type": "Flat",
-    "asking_price": 2320605
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1284,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 3396133
   },
   {
     "source": "synthetic",
     "property_id": "S0083",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 3,
+    "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1078,
-    "property_type": "Flat",
-    "asking_price": 2046935
+    "size_sqft": 1076,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2340025
   },
   {
     "source": "synthetic",
     "property_id": "S0084",
     "address": "Kensington Court, London, W8",
     "postcode": "W8",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 598,
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 2119,
     "property_type": "Flat",
-    "asking_price": 1165407
+    "is_new_build": 0,
+    "asking_price": 4452739
   },
   {
     "source": "synthetic",
@@ -941,31 +1026,34 @@
     "postcode": "W11",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1106,
-    "property_type": "Town House",
-    "asking_price": 2833733
+    "size_sqft": 1052,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 2009191
   },
   {
     "source": "synthetic",
     "property_id": "S0086",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1914,
-    "property_type": "Flat",
-    "asking_price": 3034738
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1152,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2105414
   },
   {
     "source": "synthetic",
     "property_id": "S0087",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1118,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 728,
     "property_type": "Flat",
-    "asking_price": 710878
+    "is_new_build": 0,
+    "asking_price": 502677
   },
   {
     "source": "synthetic",
@@ -974,31 +1062,34 @@
     "postcode": "E14",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 653,
-    "property_type": "House",
-    "asking_price": 764890
+    "size_sqft": 662,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 636852
   },
   {
     "source": "synthetic",
     "property_id": "S0089",
     "address": "Munster Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1953,
-    "property_type": "Penthouse",
-    "asking_price": 3346297
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 993,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 1256150
   },
   {
     "source": "synthetic",
     "property_id": "S0090",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 4,
+    "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1690,
-    "property_type": "Town House",
-    "asking_price": 4735188
+    "size_sqft": 1129,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2736631
   },
   {
     "source": "synthetic",
@@ -1007,31 +1098,34 @@
     "postcode": "SW1X",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 865,
-    "property_type": "Flat",
-    "asking_price": 2613107
+    "size_sqft": 902,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 3000128
   },
   {
     "source": "synthetic",
     "property_id": "S0092",
     "address": "Cornwall Gardens, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1537,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 852,
     "property_type": "Flat",
-    "asking_price": 3496857
+    "is_new_build": 0,
+    "asking_price": 1972056
   },
   {
     "source": "synthetic",
     "property_id": "S0093",
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 664,
-    "property_type": "Flat",
-    "asking_price": 1402218
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1604,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 3551892
   },
   {
     "source": "synthetic",
@@ -1040,53 +1134,58 @@
     "postcode": "W8",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 610,
-    "property_type": "Town House",
-    "asking_price": 1568182
+    "size_sqft": 774,
+    "property_type": "Maisonette",
+    "is_new_build": 1,
+    "asking_price": 2184469
   },
   {
     "source": "synthetic",
     "property_id": "S0095",
     "address": "Ladbroke Grove, London, W11",
     "postcode": "W11",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 954,
-    "property_type": "Flat",
-    "asking_price": 1909471
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1763,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 3099357
   },
   {
     "source": "synthetic",
     "property_id": "S0096",
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1104,
-    "property_type": "Apartment",
-    "asking_price": 1657793
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1549,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2189182
   },
   {
     "source": "synthetic",
     "property_id": "S0097",
     "address": "Choumert Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1960,
-    "property_type": "Town House",
-    "asking_price": 2026111
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 696,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 512286
   },
   {
     "source": "synthetic",
     "property_id": "S0098",
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1034,
-    "property_type": "Flat",
-    "asking_price": 1076643
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 2091,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2480814
   },
   {
     "source": "synthetic",
@@ -1095,20 +1194,22 @@
     "postcode": "SW6",
     "bedrooms": 4,
     "bathrooms": 4,
-    "size_sqft": 1549,
-    "property_type": "Flat",
-    "asking_price": 1935123
+    "size_sqft": 1640,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2153918
   },
   {
     "source": "synthetic",
     "property_id": "S0100",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 697,
-    "property_type": "Flat",
-    "asking_price": 2200847
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1292,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 5162511
   },
   {
     "source": "synthetic",
@@ -1117,20 +1218,22 @@
     "postcode": "SW1X",
     "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1258,
-    "property_type": "Flat",
-    "asking_price": 3758663
+    "size_sqft": 1260,
+    "property_type": "Penthouse",
+    "is_new_build": 1,
+    "asking_price": 5154134
   },
   {
     "source": "synthetic",
     "property_id": "S0102",
     "address": "Onslow Square, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1845,
-    "property_type": "Penthouse",
-    "asking_price": 6180834
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 1186,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 4017612
   },
   {
     "source": "synthetic",
@@ -1138,87 +1241,95 @@
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
     "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1377,
-    "property_type": "Flat",
-    "asking_price": 2471844
+    "bathrooms": 3,
+    "size_sqft": 1470,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 2644661
   },
   {
     "source": "synthetic",
     "property_id": "S0104",
     "address": "Phillimore Gardens, London, W8",
     "postcode": "W8",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 801,
-    "property_type": "Flat",
-    "asking_price": 1684458
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 982,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2677800
   },
   {
     "source": "synthetic",
     "property_id": "S0105",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 1750,
-    "property_type": "Flat",
-    "asking_price": 3198033
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1116,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 2099858
   },
   {
     "source": "synthetic",
     "property_id": "S0106",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1052,
-    "property_type": "Apartment",
-    "asking_price": 1586203
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1473,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2697811
   },
   {
     "source": "synthetic",
     "property_id": "S0107",
     "address": "Nunhead Lane, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 748,
-    "property_type": "Flat",
-    "asking_price": 530220
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "size_sqft": 1964,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 1952478
   },
   {
     "source": "synthetic",
     "property_id": "S0108",
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 1953,
-    "property_type": "Maisonette",
-    "asking_price": 2130846
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 1084,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 1121369
   },
   {
     "source": "synthetic",
     "property_id": "S0109",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 903,
-    "property_type": "Flat",
-    "asking_price": 1079143
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1291,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2042934
   },
   {
     "source": "synthetic",
     "property_id": "S0110",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1946,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 812,
     "property_type": "Flat",
-    "asking_price": 4405847
+    "is_new_build": 1,
+    "asking_price": 2121206
   },
   {
     "source": "synthetic",
@@ -1227,9 +1338,10 @@
     "postcode": "SW1X",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 979,
+    "size_sqft": 1058,
     "property_type": "Maisonette",
-    "asking_price": 3894157
+    "is_new_build": 0,
+    "asking_price": 4811687
   },
   {
     "source": "synthetic",
@@ -1238,119 +1350,130 @@
     "postcode": "SW7",
     "bedrooms": 4,
     "bathrooms": 4,
-    "size_sqft": 1863,
-    "property_type": "Town House",
-    "asking_price": 5493845
+    "size_sqft": 1761,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 4045396
   },
   {
     "source": "synthetic",
     "property_id": "S0113",
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 616,
-    "property_type": "Flat",
-    "asking_price": 1319420
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1059,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 2457436
   },
   {
     "source": "synthetic",
     "property_id": "S0114",
     "address": "Kensington Court, London, W8",
     "postcode": "W8",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1203,
-    "property_type": "Flat",
-    "asking_price": 2480953
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 997,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2878848
   },
   {
     "source": "synthetic",
     "property_id": "S0115",
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 758,
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 1872,
     "property_type": "Flat",
-    "asking_price": 1461394
+    "is_new_build": 0,
+    "asking_price": 3669713
   },
   {
     "source": "synthetic",
     "property_id": "S0116",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 801,
-    "property_type": "Town House",
-    "asking_price": 1473338
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1252,
+    "property_type": "House",
+    "is_new_build": 1,
+    "asking_price": 2391821
   },
   {
     "source": "synthetic",
     "property_id": "S0117",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1571,
-    "property_type": "House",
-    "asking_price": 1480576
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 884,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 834744
   },
   {
     "source": "synthetic",
     "property_id": "S0118",
     "address": "Marsh Wall, London, E14",
     "postcode": "E14",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1010,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 854,
     "property_type": "Maisonette",
-    "asking_price": 1056614
+    "is_new_build": 0,
+    "asking_price": 910884
   },
   {
     "source": "synthetic",
     "property_id": "S0119",
     "address": "Munster Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 798,
-    "property_type": "Town House",
-    "asking_price": 1203717
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1878,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2591018
   },
   {
     "source": "synthetic",
     "property_id": "S0120",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1549,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1001,
     "property_type": "Flat",
-    "asking_price": 4728633
+    "is_new_build": 0,
+    "asking_price": 3335123
   },
   {
     "source": "synthetic",
     "property_id": "S0121",
     "address": "Lowndes Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 668,
-    "property_type": "Apartment",
-    "asking_price": 1797541
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1597,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 4451404
   },
   {
     "source": "synthetic",
     "property_id": "S0122",
     "address": "Cornwall Gardens, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 2,
+    "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 1051,
-    "property_type": "Flat",
-    "asking_price": 2286991
+    "size_sqft": 602,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1478036
   },
   {
     "source": "synthetic",
@@ -1358,65 +1481,71 @@
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
     "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1064,
-    "property_type": "Penthouse",
-    "asking_price": 2493136
+    "bathrooms": 2,
+    "size_sqft": 1314,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2819758
   },
   {
     "source": "synthetic",
     "property_id": "S0124",
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 809,
-    "property_type": "Maisonette",
-    "asking_price": 1871242
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 975,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 2520912
   },
   {
     "source": "synthetic",
     "property_id": "S0125",
     "address": "Ladbroke Grove, London, W11",
     "postcode": "W11",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1292,
-    "property_type": "Penthouse",
-    "asking_price": 3027398
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 971,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2405069
   },
   {
     "source": "synthetic",
     "property_id": "S0126",
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1313,
-    "property_type": "Apartment",
-    "asking_price": 1964595
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 995,
+    "property_type": "Town House",
+    "is_new_build": 1,
+    "asking_price": 2216553
   },
   {
     "source": "synthetic",
     "property_id": "S0127",
     "address": "Choumert Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1383,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1119,
     "property_type": "Flat",
-    "asking_price": 1024624
+    "is_new_build": 0,
+    "asking_price": 799150
   },
   {
     "source": "synthetic",
     "property_id": "S0128",
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 906,
-    "property_type": "Flat",
-    "asking_price": 938555
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1314,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1331122
   },
   {
     "source": "synthetic",
@@ -1424,21 +1553,23 @@
     "address": "Fulham Road, London, SW6",
     "postcode": "SW6",
     "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1318,
+    "bathrooms": 2,
+    "size_sqft": 1298,
     "property_type": "Town House",
-    "asking_price": 1812838
+    "is_new_build": 0,
+    "asking_price": 1986433
   },
   {
     "source": "synthetic",
     "property_id": "S0130",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 719,
-    "property_type": "Flat",
-    "asking_price": 1664616
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 2038,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 6725818
   },
   {
     "source": "synthetic",
@@ -1447,20 +1578,22 @@
     "postcode": "SW1X",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 893,
-    "property_type": "Apartment",
-    "asking_price": 2542860
+    "size_sqft": 898,
+    "property_type": "Town House",
+    "is_new_build": 1,
+    "asking_price": 3341239
   },
   {
     "source": "synthetic",
     "property_id": "S0132",
     "address": "Onslow Square, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 3,
+    "bedrooms": 4,
     "bathrooms": 3,
-    "size_sqft": 1374,
-    "property_type": "House",
-    "asking_price": 4430709
+    "size_sqft": 1662,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 6159006
   },
   {
     "source": "synthetic",
@@ -1469,9 +1602,10 @@
     "postcode": "SW10",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 782,
-    "property_type": "Flat",
-    "asking_price": 1681411
+    "size_sqft": 742,
+    "property_type": "House",
+    "is_new_build": 1,
+    "asking_price": 2287220
   },
   {
     "source": "synthetic",
@@ -1480,20 +1614,22 @@
     "postcode": "W8",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1251,
-    "property_type": "Flat",
-    "asking_price": 2847508
+    "size_sqft": 1030,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2962399
   },
   {
     "source": "synthetic",
     "property_id": "S0135",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 2,
+    "bedrooms": 3,
     "bathrooms": 2,
-    "size_sqft": 906,
-    "property_type": "Town House",
-    "asking_price": 2143655
+    "size_sqft": 1346,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2591346
   },
   {
     "source": "synthetic",
@@ -1501,131 +1637,143 @@
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
     "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 933,
-    "property_type": "Penthouse",
-    "asking_price": 1755428
+    "bathrooms": 1,
+    "size_sqft": 1172,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1700921
   },
   {
     "source": "synthetic",
     "property_id": "S0137",
     "address": "Nunhead Lane, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 640,
-    "property_type": "Maisonette",
-    "asking_price": 496197
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1439,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 1159654
   },
   {
     "source": "synthetic",
     "property_id": "S0138",
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1846,
-    "property_type": "Maisonette",
-    "asking_price": 1963683
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 811,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 892299
   },
   {
     "source": "synthetic",
     "property_id": "S0139",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1224,
-    "property_type": "Flat",
-    "asking_price": 1513074
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 851,
+    "property_type": "Penthouse",
+    "is_new_build": 1,
+    "asking_price": 1602181
   },
   {
     "source": "synthetic",
     "property_id": "S0140",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1384,
-    "property_type": "Town House",
-    "asking_price": 5580204
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1442,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 6310213
   },
   {
     "source": "synthetic",
     "property_id": "S0141",
     "address": "Eaton Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 989,
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1568,
     "property_type": "Penthouse",
-    "asking_price": 4779920
+    "is_new_build": 1,
+    "asking_price": 8389965
   },
   {
     "source": "synthetic",
     "property_id": "S0142",
     "address": "Queens Gate, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1872,
-    "property_type": "Flat",
-    "asking_price": 4442284
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 919,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2689766
   },
   {
     "source": "synthetic",
     "property_id": "S0143",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1528,
-    "property_type": "House",
-    "asking_price": 3364905
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 619,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1151844
   },
   {
     "source": "synthetic",
     "property_id": "S0144",
     "address": "Kensington Court, London, W8",
     "postcode": "W8",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 764,
-    "property_type": "Maisonette",
-    "asking_price": 1712326
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1253,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 3204685
   },
   {
     "source": "synthetic",
     "property_id": "S0145",
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1451,
-    "property_type": "Flat",
-    "asking_price": 2529039
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 692,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 1742499
   },
   {
     "source": "synthetic",
     "property_id": "S0146",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 808,
-    "property_type": "Maisonette",
-    "asking_price": 1321547
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1404,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2197351
   },
   {
     "source": "synthetic",
     "property_id": "S0147",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1878,
-    "property_type": "Maisonette",
-    "asking_price": 1554611
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 1013,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 708346
   },
   {
     "source": "synthetic",
@@ -1634,42 +1782,46 @@
     "postcode": "E14",
     "bedrooms": 4,
     "bathrooms": 4,
-    "size_sqft": 1647,
-    "property_type": "Flat",
-    "asking_price": 1589645
+    "size_sqft": 1664,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 1943183
   },
   {
     "source": "synthetic",
     "property_id": "S0149",
     "address": "Munster Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 2123,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 844,
     "property_type": "Maisonette",
-    "asking_price": 2950951
+    "is_new_build": 0,
+    "asking_price": 1151677
   },
   {
     "source": "synthetic",
     "property_id": "S0150",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 671,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1556,
     "property_type": "Flat",
-    "asking_price": 1606249
+    "is_new_build": 0,
+    "asking_price": 3686493
   },
   {
     "source": "synthetic",
     "property_id": "S0151",
     "address": "Lowndes Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 2,
+    "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 1141,
-    "property_type": "Town House",
-    "asking_price": 3762320
+    "size_sqft": 785,
+    "property_type": "Maisonette",
+    "is_new_build": 1,
+    "asking_price": 2575907
   },
   {
     "source": "synthetic",
@@ -1677,10 +1829,11 @@
     "address": "Cornwall Gardens, London, SW7",
     "postcode": "SW7",
     "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 988,
-    "property_type": "Flat",
-    "asking_price": 2433986
+    "bathrooms": 2,
+    "size_sqft": 744,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2193761
   },
   {
     "source": "synthetic",
@@ -1689,31 +1842,34 @@
     "postcode": "SW10",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 580,
-    "property_type": "House",
-    "asking_price": 1773489
+    "size_sqft": 627,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1462603
   },
   {
     "source": "synthetic",
     "property_id": "S0154",
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1336,
-    "property_type": "Flat",
-    "asking_price": 3135693
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 918,
+    "property_type": "House",
+    "is_new_build": 1,
+    "asking_price": 2758937
   },
   {
     "source": "synthetic",
     "property_id": "S0155",
     "address": "Ladbroke Grove, London, W11",
     "postcode": "W11",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 2046,
-    "property_type": "Apartment",
-    "asking_price": 3883821
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1073,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2586796
   },
   {
     "source": "synthetic",
@@ -1721,32 +1877,35 @@
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
     "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 841,
+    "bathrooms": 1,
+    "size_sqft": 1052,
     "property_type": "Flat",
-    "asking_price": 1248453
+    "is_new_build": 1,
+    "asking_price": 1588475
   },
   {
     "source": "synthetic",
     "property_id": "S0157",
     "address": "Choumert Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1286,
-    "property_type": "House",
-    "asking_price": 1189200
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1773,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1205564
   },
   {
     "source": "synthetic",
     "property_id": "S0158",
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "size_sqft": 1600,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1144,
     "property_type": "House",
-    "asking_price": 1967163
+    "is_new_build": 0,
+    "asking_price": 1460156
   },
   {
     "source": "synthetic",
@@ -1754,32 +1913,35 @@
     "address": "Fulham Road, London, SW6",
     "postcode": "SW6",
     "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1314,
-    "property_type": "Apartment",
-    "asking_price": 1663902
+    "bathrooms": 2,
+    "size_sqft": 1397,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2043718
   },
   {
     "source": "synthetic",
     "property_id": "S0160",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1277,
-    "property_type": "Town House",
-    "asking_price": 4894856
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 547,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1666324
   },
   {
     "source": "synthetic",
     "property_id": "S0161",
     "address": "Chesham Place, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 2038,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1361,
     "property_type": "Town House",
-    "asking_price": 7846787
+    "is_new_build": 1,
+    "asking_price": 5152698
   },
   {
     "source": "synthetic",
@@ -1788,31 +1950,34 @@
     "postcode": "SW7",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 898,
-    "property_type": "Town House",
-    "asking_price": 3049543
+    "size_sqft": 1041,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 2739389
   },
   {
     "source": "synthetic",
     "property_id": "S0163",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 592,
-    "property_type": "House",
-    "asking_price": 1333141
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1051,
+    "property_type": "Maisonette",
+    "is_new_build": 1,
+    "asking_price": 2328220
   },
   {
     "source": "synthetic",
     "property_id": "S0164",
     "address": "Phillimore Gardens, London, W8",
     "postcode": "W8",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1664,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 634,
     "property_type": "Flat",
-    "asking_price": 3627506
+    "is_new_build": 0,
+    "asking_price": 1360142
   },
   {
     "source": "synthetic",
@@ -1820,21 +1985,23 @@
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
     "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1384,
-    "property_type": "Flat",
-    "asking_price": 2975459
+    "bathrooms": 2,
+    "size_sqft": 1262,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 3357472
   },
   {
     "source": "synthetic",
     "property_id": "S0166",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1290,
-    "property_type": "Maisonette",
-    "asking_price": 1968995
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 662,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 1157066
   },
   {
     "source": "synthetic",
@@ -1843,9 +2010,10 @@
     "postcode": "SE15",
     "bedrooms": 3,
     "bathrooms": 2,
-    "size_sqft": 1346,
-    "property_type": "Flat",
-    "asking_price": 1022899
+    "size_sqft": 1373,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 1385383
   },
   {
     "source": "synthetic",
@@ -1854,20 +2022,22 @@
     "postcode": "E14",
     "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1420,
-    "property_type": "Maisonette",
-    "asking_price": 1651591
+    "size_sqft": 1112,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 1507337
   },
   {
     "source": "synthetic",
     "property_id": "S0169",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 610,
-    "property_type": "Apartment",
-    "asking_price": 730555
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1319,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1605703
   },
   {
     "source": "synthetic",
@@ -1876,42 +2046,46 @@
     "postcode": "SW3",
     "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1314,
-    "property_type": "Town House",
-    "asking_price": 3860141
+    "size_sqft": 1063,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 2615898
   },
   {
     "source": "synthetic",
     "property_id": "S0171",
     "address": "Eaton Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 451,
-    "property_type": "House",
-    "asking_price": 2320418
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 718,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2772047
   },
   {
     "source": "synthetic",
     "property_id": "S0172",
     "address": "Queens Gate, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1322,
-    "property_type": "Penthouse",
-    "asking_price": 3784127
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1191,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 3122243
   },
   {
     "source": "synthetic",
     "property_id": "S0173",
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 648,
-    "property_type": "Maisonette",
-    "asking_price": 1446786
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1447,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 3052428
   },
   {
     "source": "synthetic",
@@ -1919,54 +2093,59 @@
     "address": "Kensington Court, London, W8",
     "postcode": "W8",
     "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 821,
-    "property_type": "Flat",
-    "asking_price": 1951234
+    "bathrooms": 1,
+    "size_sqft": 798,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 1944129
   },
   {
     "source": "synthetic",
     "property_id": "S0175",
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1387,
-    "property_type": "Flat",
-    "asking_price": 2427251
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 872,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2230471
   },
   {
     "source": "synthetic",
     "property_id": "S0176",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1099,
-    "property_type": "Flat",
-    "asking_price": 1681792
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1206,
+    "property_type": "House",
+    "is_new_build": 1,
+    "asking_price": 2401032
   },
   {
     "source": "synthetic",
     "property_id": "S0177",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 985,
-    "property_type": "Apartment",
-    "asking_price": 659742
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "size_sqft": 2172,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1665887
   },
   {
     "source": "synthetic",
     "property_id": "S0178",
     "address": "Marsh Wall, London, E14",
     "postcode": "E14",
-    "bedrooms": 3,
+    "bedrooms": 4,
     "bathrooms": 3,
-    "size_sqft": 1158,
-    "property_type": "Flat",
-    "asking_price": 1281584
+    "size_sqft": 1751,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2115806
   },
   {
     "source": "synthetic",
@@ -1974,32 +2153,35 @@
     "address": "Munster Road, London, SW6",
     "postcode": "SW6",
     "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 968,
-    "property_type": "Town House",
-    "asking_price": 1413220
+    "bathrooms": 2,
+    "size_sqft": 901,
+    "property_type": "Maisonette",
+    "is_new_build": 1,
+    "asking_price": 1316357
   },
   {
     "source": "synthetic",
     "property_id": "S0180",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 961,
-    "property_type": "Flat",
-    "asking_price": 2907492
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 803,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2718510
   },
   {
     "source": "synthetic",
     "property_id": "S0181",
     "address": "Lowndes Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 818,
-    "property_type": "Maisonette",
-    "asking_price": 2523916
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1675,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 4827371
   },
   {
     "source": "synthetic",
@@ -2008,42 +2190,46 @@
     "postcode": "SW7",
     "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1498,
+    "size_sqft": 1418,
     "property_type": "Flat",
-    "asking_price": 3281870
+    "is_new_build": 1,
+    "asking_price": 3625963
   },
   {
     "source": "synthetic",
     "property_id": "S0183",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1907,
-    "property_type": "Town House",
-    "asking_price": 4214246
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1081,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 2058611
   },
   {
     "source": "synthetic",
     "property_id": "S0184",
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1010,
-    "property_type": "Maisonette",
-    "asking_price": 2564070
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 1829,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 3735210
   },
   {
     "source": "synthetic",
     "property_id": "S0185",
     "address": "Ladbroke Grove, London, W11",
     "postcode": "W11",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1379,
-    "property_type": "Flat",
-    "asking_price": 2661471
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 839,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2093837
   },
   {
     "source": "synthetic",
@@ -2051,10 +2237,11 @@
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
     "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1018,
-    "property_type": "Apartment",
-    "asking_price": 1534928
+    "bathrooms": 1,
+    "size_sqft": 1056,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1406356
   },
   {
     "source": "synthetic",
@@ -2063,75 +2250,82 @@
     "postcode": "SE15",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1255,
-    "property_type": "Town House",
-    "asking_price": 1034361
+    "size_sqft": 915,
+    "property_type": "Maisonette",
+    "is_new_build": 1,
+    "asking_price": 826190
   },
   {
     "source": "synthetic",
     "property_id": "S0188",
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 785,
-    "property_type": "Maisonette",
-    "asking_price": 851821
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 1974,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2560572
   },
   {
     "source": "synthetic",
     "property_id": "S0189",
     "address": "Fulham Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1079,
-    "property_type": "House",
-    "asking_price": 1755418
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 699,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1094747
   },
   {
     "source": "synthetic",
     "property_id": "S0190",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 1962,
-    "property_type": "Town House",
-    "asking_price": 5245979
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1334,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 3080534
   },
   {
     "source": "synthetic",
     "property_id": "S0191",
     "address": "Chesham Place, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 884,
-    "property_type": "Town House",
-    "asking_price": 2960226
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1161,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 3178045
   },
   {
     "source": "synthetic",
     "property_id": "S0192",
     "address": "Onslow Square, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 991,
-    "property_type": "Flat",
-    "asking_price": 2837758
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "size_sqft": 2071,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 5349290
   },
   {
     "source": "synthetic",
     "property_id": "S0193",
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1006,
-    "property_type": "Town House",
-    "asking_price": 2740858
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1375,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 3127048
   },
   {
     "source": "synthetic",
@@ -2140,31 +2334,34 @@
     "postcode": "W8",
     "bedrooms": 2,
     "bathrooms": 1,
-    "size_sqft": 818,
-    "property_type": "Flat",
-    "asking_price": 1778155
+    "size_sqft": 988,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2610108
   },
   {
     "source": "synthetic",
     "property_id": "S0195",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1738,
-    "property_type": "House",
-    "asking_price": 4268178
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1341,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2548275
   },
   {
     "source": "synthetic",
     "property_id": "S0196",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1726,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1055,
     "property_type": "Flat",
-    "asking_price": 2616082
+    "is_new_build": 0,
+    "asking_price": 1569116
   },
   {
     "source": "synthetic",
@@ -2173,42 +2370,46 @@
     "postcode": "SE15",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 488,
-    "property_type": "House",
-    "asking_price": 432167
+    "size_sqft": 816,
+    "property_type": "Town House",
+    "is_new_build": 1,
+    "asking_price": 823857
   },
   {
     "source": "synthetic",
     "property_id": "S0198",
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 595,
-    "property_type": "Town House",
-    "asking_price": 724094
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1335,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1422203
   },
   {
     "source": "synthetic",
     "property_id": "S0199",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 547,
-    "property_type": "Apartment",
-    "asking_price": 642872
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1816,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 3087102
   },
   {
     "source": "synthetic",
     "property_id": "S0200",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 945,
-    "property_type": "House",
-    "asking_price": 3904853
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1691,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 6756956
   },
   {
     "source": "synthetic",
@@ -2217,20 +2418,22 @@
     "postcode": "SW1X",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 848,
-    "property_type": "House",
-    "asking_price": 3978738
+    "size_sqft": 1198,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 4846575
   },
   {
     "source": "synthetic",
     "property_id": "S0202",
     "address": "Queens Gate, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 572,
-    "property_type": "Town House",
-    "asking_price": 1646908
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "size_sqft": 1810,
+    "property_type": "House",
+    "is_new_build": 1,
+    "asking_price": 5444254
   },
   {
     "source": "synthetic",
@@ -2239,9 +2442,10 @@
     "postcode": "SW10",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 807,
-    "property_type": "Maisonette",
-    "asking_price": 1542756
+    "size_sqft": 695,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1256331
   },
   {
     "source": "synthetic",
@@ -2250,53 +2454,58 @@
     "postcode": "W8",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 766,
-    "property_type": "Flat",
-    "asking_price": 1735470
+    "size_sqft": 821,
+    "property_type": "House",
+    "is_new_build": 1,
+    "asking_price": 2450329
   },
   {
     "source": "synthetic",
     "property_id": "S0205",
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1880,
-    "property_type": "Town House",
-    "asking_price": 4177865
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 878,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2087665
   },
   {
     "source": "synthetic",
     "property_id": "S0206",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1248,
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 953,
     "property_type": "Flat",
-    "asking_price": 1787332
+    "is_new_build": 0,
+    "asking_price": 1485744
   },
   {
     "source": "synthetic",
     "property_id": "S0207",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 886,
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "size_sqft": 1516,
     "property_type": "Penthouse",
-    "asking_price": 847368
+    "is_new_build": 0,
+    "asking_price": 1460971
   },
   {
     "source": "synthetic",
     "property_id": "S0208",
     "address": "Marsh Wall, London, E14",
     "postcode": "E14",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 596,
-    "property_type": "Penthouse",
-    "asking_price": 744405
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1623,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 1917560
   },
   {
     "source": "synthetic",
@@ -2305,20 +2514,22 @@
     "postcode": "SW6",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 925,
-    "property_type": "Flat",
-    "asking_price": 1169811
+    "size_sqft": 951,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1421026
   },
   {
     "source": "synthetic",
     "property_id": "S0210",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 1,
+    "bedrooms": 2,
     "bathrooms": 1,
-    "size_sqft": 569,
-    "property_type": "Flat",
-    "asking_price": 1335058
+    "size_sqft": 868,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2496407
   },
   {
     "source": "synthetic",
@@ -2327,20 +2538,22 @@
     "postcode": "SW1X",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1053,
-    "property_type": "Penthouse",
-    "asking_price": 3866832
+    "size_sqft": 1005,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 3412501
   },
   {
     "source": "synthetic",
     "property_id": "S0212",
     "address": "Cornwall Gardens, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 586,
-    "property_type": "Flat",
-    "asking_price": 1302742
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 987,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2819881
   },
   {
     "source": "synthetic",
@@ -2349,20 +2562,22 @@
     "postcode": "SW10",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 959,
-    "property_type": "Flat",
-    "asking_price": 2230965
+    "size_sqft": 1131,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2506879
   },
   {
     "source": "synthetic",
     "property_id": "S0214",
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 453,
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "size_sqft": 1977,
     "property_type": "House",
-    "asking_price": 1252459
+    "is_new_build": 0,
+    "asking_price": 5439276
   },
   {
     "source": "synthetic",
@@ -2371,42 +2586,46 @@
     "postcode": "W11",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1008,
-    "property_type": "Maisonette",
-    "asking_price": 1985371
+    "size_sqft": 866,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 1851284
   },
   {
     "source": "synthetic",
     "property_id": "S0216",
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1176,
-    "property_type": "Flat",
-    "asking_price": 1685470
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 886,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1423930
   },
   {
     "source": "synthetic",
     "property_id": "S0217",
     "address": "Choumert Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 2,
+    "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 1008,
-    "property_type": "Penthouse",
-    "asking_price": 948853
+    "size_sqft": 848,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 648637
   },
   {
     "source": "synthetic",
     "property_id": "S0218",
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1024,
-    "property_type": "Penthouse",
-    "asking_price": 1373813
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 796,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 928904
   },
   {
     "source": "synthetic",
@@ -2414,10 +2633,11 @@
     "address": "Fulham Road, London, SW6",
     "postcode": "SW6",
     "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1904,
-    "property_type": "House",
-    "asking_price": 3025921
+    "bathrooms": 4,
+    "size_sqft": 2170,
+    "property_type": "Penthouse",
+    "is_new_build": 1,
+    "asking_price": 3962571
   },
   {
     "source": "synthetic",
@@ -2426,20 +2646,22 @@
     "postcode": "SW3",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1161,
+    "size_sqft": 1014,
     "property_type": "Flat",
-    "asking_price": 3520570
+    "is_new_build": 0,
+    "asking_price": 3313488
   },
   {
     "source": "synthetic",
     "property_id": "S0221",
     "address": "Chesham Place, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1208,
-    "property_type": "Town House",
-    "asking_price": 4271773
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1034,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 3667219
   },
   {
     "source": "synthetic",
@@ -2448,53 +2670,58 @@
     "postcode": "SW7",
     "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1200,
-    "property_type": "Apartment",
-    "asking_price": 3225463
+    "size_sqft": 1302,
+    "property_type": "Town House",
+    "is_new_build": 1,
+    "asking_price": 4954378
   },
   {
     "source": "synthetic",
     "property_id": "S0223",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 4,
+    "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1605,
+    "size_sqft": 1329,
     "property_type": "Maisonette",
-    "asking_price": 3045910
+    "is_new_build": 0,
+    "asking_price": 2342572
   },
   {
     "source": "synthetic",
     "property_id": "S0224",
     "address": "Phillimore Gardens, London, W8",
     "postcode": "W8",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1472,
-    "property_type": "Maisonette",
-    "asking_price": 3477736
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 812,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1807470
   },
   {
     "source": "synthetic",
     "property_id": "S0225",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 953,
-    "property_type": "Apartment",
-    "asking_price": 1830478
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 496,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 912302
   },
   {
     "source": "synthetic",
     "property_id": "S0226",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1418,
-    "property_type": "Flat",
-    "asking_price": 2189591
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 855,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1601902
   },
   {
     "source": "synthetic",
@@ -2503,20 +2730,22 @@
     "postcode": "SE15",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 855,
-    "property_type": "Apartment",
-    "asking_price": 694144
+    "size_sqft": 638,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 487267
   },
   {
     "source": "synthetic",
     "property_id": "S0228",
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 2083,
-    "property_type": "Penthouse",
-    "asking_price": 2761508
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1290,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1762241
   },
   {
     "source": "synthetic",
@@ -2525,42 +2754,46 @@
     "postcode": "SW6",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1239,
+    "size_sqft": 1133,
     "property_type": "Flat",
-    "asking_price": 1346912
+    "is_new_build": 0,
+    "asking_price": 1560706
   },
   {
     "source": "synthetic",
     "property_id": "S0230",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1128,
-    "property_type": "Flat",
-    "asking_price": 2689156
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 1871,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 5640498
   },
   {
     "source": "synthetic",
     "property_id": "S0231",
     "address": "Eaton Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1072,
-    "property_type": "Town House",
-    "asking_price": 4821576
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 690,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 3356381
   },
   {
     "source": "synthetic",
     "property_id": "S0232",
     "address": "Queens Gate, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 2,
+    "bedrooms": 3,
     "bathrooms": 2,
-    "size_sqft": 1066,
-    "property_type": "Maisonette",
-    "asking_price": 2511911
+    "size_sqft": 1192,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 3425748
   },
   {
     "source": "synthetic",
@@ -2568,87 +2801,95 @@
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
     "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 720,
-    "property_type": "House",
-    "asking_price": 1973305
+    "bathrooms": 1,
+    "size_sqft": 837,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1759742
   },
   {
     "source": "synthetic",
     "property_id": "S0234",
     "address": "Kensington Court, London, W8",
     "postcode": "W8",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 884,
-    "property_type": "Flat",
-    "asking_price": 1941583
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1439,
+    "property_type": "Apartment",
+    "is_new_build": 1,
+    "asking_price": 3691576
   },
   {
     "source": "synthetic",
     "property_id": "S0235",
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 849,
-    "property_type": "Town House",
-    "asking_price": 2047787
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "size_sqft": 1653,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2936325
   },
   {
     "source": "synthetic",
     "property_id": "S0236",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1412,
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 1026,
     "property_type": "Flat",
-    "asking_price": 2279968
+    "is_new_build": 0,
+    "asking_price": 1599844
   },
   {
     "source": "synthetic",
     "property_id": "S0237",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1875,
-    "property_type": "Maisonette",
-    "asking_price": 1423882
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 922,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 728751
   },
   {
     "source": "synthetic",
     "property_id": "S0238",
     "address": "Marsh Wall, London, E14",
     "postcode": "E14",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 1732,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1181,
     "property_type": "Flat",
-    "asking_price": 1645613
+    "is_new_build": 1,
+    "asking_price": 1259459
   },
   {
     "source": "synthetic",
     "property_id": "S0239",
     "address": "Munster Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 2,
+    "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 907,
-    "property_type": "Apartment",
-    "asking_price": 1092427
+    "size_sqft": 412,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 688295
   },
   {
     "source": "synthetic",
     "property_id": "S0240",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1147,
-    "property_type": "Apartment",
-    "asking_price": 3701729
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1366,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 4723438
   },
   {
     "source": "synthetic",
@@ -2657,31 +2898,34 @@
     "postcode": "SW1X",
     "bedrooms": 3,
     "bathrooms": 3,
-    "size_sqft": 1240,
-    "property_type": "Flat",
-    "asking_price": 3510411
+    "size_sqft": 1428,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 5253414
   },
   {
     "source": "synthetic",
     "property_id": "S0242",
     "address": "Cornwall Gardens, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 986,
-    "property_type": "Apartment",
-    "asking_price": 2429673
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "size_sqft": 1942,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 5504464
   },
   {
     "source": "synthetic",
     "property_id": "S0243",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 736,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1295,
     "property_type": "Penthouse",
-    "asking_price": 1732562
+    "is_new_build": 0,
+    "asking_price": 2699851
   },
   {
     "source": "synthetic",
@@ -2689,87 +2933,95 @@
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
     "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1285,
-    "property_type": "Maisonette",
-    "asking_price": 3003359
+    "bathrooms": 3,
+    "size_sqft": 1223,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 3150572
   },
   {
     "source": "synthetic",
     "property_id": "S0245",
     "address": "Ladbroke Grove, London, W11",
     "postcode": "W11",
-    "bedrooms": 2,
+    "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 975,
+    "size_sqft": 585,
     "property_type": "Flat",
-    "asking_price": 1836366
+    "is_new_build": 0,
+    "asking_price": 1129232
   },
   {
     "source": "synthetic",
     "property_id": "S0246",
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1398,
-    "property_type": "House",
-    "asking_price": 2697594
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 951,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1620961
   },
   {
     "source": "synthetic",
     "property_id": "S0247",
     "address": "Choumert Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1289,
-    "property_type": "Apartment",
-    "asking_price": 991324
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1865,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1415790
   },
   {
     "source": "synthetic",
     "property_id": "S0248",
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1816,
-    "property_type": "House",
-    "asking_price": 2469682
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1203,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 1347751
   },
   {
     "source": "synthetic",
     "property_id": "S0249",
     "address": "Fulham Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1131,
-    "property_type": "Town House",
-    "asking_price": 1794409
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 2061,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 3458322
   },
   {
     "source": "synthetic",
     "property_id": "S0250",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1349,
-    "property_type": "Apartment",
-    "asking_price": 3226318
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 591,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 1502847
   },
   {
     "source": "synthetic",
     "property_id": "S0251",
     "address": "Chesham Place, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "size_sqft": 1810,
-    "property_type": "House",
-    "asking_price": 6136840
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1201,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 3773519
   },
   {
     "source": "synthetic",
@@ -2778,9 +3030,10 @@
     "postcode": "SW7",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1132,
-    "property_type": "Penthouse",
-    "asking_price": 4129881
+    "size_sqft": 712,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1945363
   },
   {
     "source": "synthetic",
@@ -2789,262 +3042,286 @@
     "postcode": "SW10",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1132,
+    "size_sqft": 958,
     "property_type": "Flat",
-    "asking_price": 2716381
+    "is_new_build": 0,
+    "asking_price": 2129107
   },
   {
     "source": "synthetic",
     "property_id": "S0254",
     "address": "Phillimore Gardens, London, W8",
     "postcode": "W8",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 399,
-    "property_type": "Flat",
-    "asking_price": 844964
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1274,
+    "property_type": "Town House",
+    "is_new_build": 1,
+    "asking_price": 3529941
   },
   {
     "source": "synthetic",
     "property_id": "S0255",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1138,
-    "property_type": "Penthouse",
-    "asking_price": 2787779
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 748,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 1905341
   },
   {
     "source": "synthetic",
     "property_id": "S0256",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 953,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1324,
     "property_type": "Flat",
-    "asking_price": 1485744
+    "is_new_build": 0,
+    "asking_price": 2036772
   },
   {
     "source": "synthetic",
     "property_id": "S0257",
     "address": "Nunhead Lane, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "size_sqft": 1516,
-    "property_type": "Penthouse",
-    "asking_price": 1460971
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 869,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 611191
   },
   {
     "source": "synthetic",
     "property_id": "S0258",
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1623,
-    "property_type": "House",
-    "asking_price": 1917560
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1512,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1508902
   },
   {
     "source": "synthetic",
     "property_id": "S0259",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 673,
-    "property_type": "Apartment",
-    "asking_price": 853012
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1648,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2583232
   },
   {
     "source": "synthetic",
     "property_id": "S0260",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1151,
-    "property_type": "Penthouse",
-    "asking_price": 4959686
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1313,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 5207565
   },
   {
     "source": "synthetic",
     "property_id": "S0261",
     "address": "Eaton Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1872,
-    "property_type": "House",
-    "asking_price": 10183499
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 864,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 3409833
   },
   {
     "source": "synthetic",
     "property_id": "S0262",
     "address": "Queens Gate, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 762,
-    "property_type": "House",
-    "asking_price": 2198877
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1522,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 3619950
   },
   {
     "source": "synthetic",
     "property_id": "S0263",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 987,
-    "property_type": "Penthouse",
-    "asking_price": 2206863
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1201,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2142765
   },
   {
     "source": "synthetic",
     "property_id": "S0264",
     "address": "Kensington Court, London, W8",
     "postcode": "W8",
-    "bedrooms": 3,
+    "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 1327,
-    "property_type": "Maisonette",
-    "asking_price": 3399078
+    "size_sqft": 939,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2000732
   },
   {
     "source": "synthetic",
     "property_id": "S0265",
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "size_sqft": 1553,
-    "property_type": "Penthouse",
-    "asking_price": 3477605
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 1008,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1828083
   },
   {
     "source": "synthetic",
     "property_id": "S0266",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1148,
-    "property_type": "Penthouse",
-    "asking_price": 2107760
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1434,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2348037
   },
   {
     "source": "synthetic",
     "property_id": "S0267",
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 726,
-    "property_type": "Flat",
-    "asking_price": 536410
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "size_sqft": 1992,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 1814972
   },
   {
     "source": "synthetic",
     "property_id": "S0268",
     "address": "Marsh Wall, London, E14",
     "postcode": "E14",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 618,
-    "property_type": "Flat",
-    "asking_price": 605267
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "size_sqft": 1743,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2035507
   },
   {
     "source": "synthetic",
     "property_id": "S0269",
     "address": "Munster Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 848,
-    "property_type": "Flat",
-    "asking_price": 1081061
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 948,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 1245188
   },
   {
     "source": "synthetic",
     "property_id": "S0270",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 896,
-    "property_type": "Apartment",
-    "asking_price": 2211664
+    "bedrooms": 4,
+    "bathrooms": 4,
+    "size_sqft": 1480,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 3838898
   },
   {
     "source": "synthetic",
     "property_id": "S0271",
     "address": "Lowndes Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1024,
-    "property_type": "Penthouse",
-    "asking_price": 3683906
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1263,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 4075783
   },
   {
     "source": "synthetic",
     "property_id": "S0272",
     "address": "Cornwall Gardens, London, SW7",
     "postcode": "SW7",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 686,
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1043,
     "property_type": "Flat",
-    "asking_price": 1614767
+    "is_new_build": 0,
+    "asking_price": 2547848
   },
   {
     "source": "synthetic",
     "property_id": "S0273",
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 577,
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1295,
     "property_type": "Flat",
-    "asking_price": 1213804
+    "is_new_build": 0,
+    "asking_price": 2820749
   },
   {
     "source": "synthetic",
     "property_id": "S0274",
     "address": "Stafford Terrace, London, W8",
     "postcode": "W8",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 699,
-    "property_type": "Penthouse",
-    "asking_price": 2083302
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1172,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 2773976
   },
   {
     "source": "synthetic",
     "property_id": "S0275",
     "address": "Ladbroke Grove, London, W11",
     "postcode": "W11",
-    "bedrooms": 2,
+    "bedrooms": 3,
     "bathrooms": 2,
-    "size_sqft": 826,
-    "property_type": "Flat",
-    "asking_price": 1715239
+    "size_sqft": 1347,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 2600088
   },
   {
     "source": "synthetic",
     "property_id": "S0276",
     "address": "Frognal, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1329,
-    "property_type": "Maisonette",
-    "asking_price": 1952143
+    "bedrooms": 5,
+    "bathrooms": 4,
+    "size_sqft": 1960,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 3691628
   },
   {
     "source": "synthetic",
@@ -3053,9 +3330,10 @@
     "postcode": "SE15",
     "bedrooms": 2,
     "bathrooms": 1,
-    "size_sqft": 984,
-    "property_type": "Flat",
-    "asking_price": 672926
+    "size_sqft": 1083,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 823162
   },
   {
     "source": "synthetic",
@@ -3063,32 +3341,35 @@
     "address": "Manilla Street, London, E14",
     "postcode": "E14",
     "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1325,
-    "property_type": "Flat",
-    "asking_price": 1264498
+    "bathrooms": 3,
+    "size_sqft": 1214,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1212861
   },
   {
     "source": "synthetic",
     "property_id": "S0279",
     "address": "Fulham Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 5,
+    "bedrooms": 4,
     "bathrooms": 4,
-    "size_sqft": 1999,
-    "property_type": "Flat",
-    "asking_price": 2742046
+    "size_sqft": 1578,
+    "property_type": "Town House",
+    "is_new_build": 1,
+    "asking_price": 2698112
   },
   {
     "source": "synthetic",
     "property_id": "S0280",
     "address": "Cadogan Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 855,
-    "property_type": "Town House",
-    "asking_price": 3460108
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 547,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 2390878
   },
   {
     "source": "synthetic",
@@ -3097,9 +3378,10 @@
     "postcode": "SW1X",
     "bedrooms": 1,
     "bathrooms": 1,
-    "size_sqft": 638,
-    "property_type": "Flat",
-    "asking_price": 1819132
+    "size_sqft": 665,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2339844
   },
   {
     "source": "synthetic",
@@ -3108,64 +3390,70 @@
     "postcode": "SW7",
     "bedrooms": 4,
     "bathrooms": 3,
-    "size_sqft": 1500,
-    "property_type": "Town House",
-    "asking_price": 5441490
+    "size_sqft": 1634,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 5760059
   },
   {
     "source": "synthetic",
     "property_id": "S0283",
     "address": "Cathcart Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 1102,
-    "property_type": "House",
-    "asking_price": 2211134
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 834,
+    "property_type": "Flat",
+    "is_new_build": 1,
+    "asking_price": 1649495
   },
   {
     "source": "synthetic",
     "property_id": "S0284",
     "address": "Phillimore Gardens, London, W8",
     "postcode": "W8",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1761,
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 941,
     "property_type": "Flat",
-    "asking_price": 4049768
+    "is_new_build": 0,
+    "asking_price": 2092750
   },
   {
     "source": "synthetic",
     "property_id": "S0285",
     "address": "Lansdowne Road, London, W11",
     "postcode": "W11",
-    "bedrooms": 4,
-    "bathrooms": 3,
-    "size_sqft": 1577,
-    "property_type": "Apartment",
-    "asking_price": 2969865
+    "bedrooms": 2,
+    "bathrooms": 2,
+    "size_sqft": 904,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 2064684
   },
   {
     "source": "synthetic",
     "property_id": "S0286",
     "address": "Belsize Park Gardens, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 3,
-    "bathrooms": 3,
-    "size_sqft": 1212,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 823,
     "property_type": "Flat",
-    "asking_price": 1870939
+    "is_new_build": 0,
+    "asking_price": 1244695
   },
   {
     "source": "synthetic",
     "property_id": "S0287",
     "address": "Nunhead Lane, London, SE15",
     "postcode": "SE15",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1390,
-    "property_type": "Town House",
-    "asking_price": 1278655
+    "bedrooms": 5,
+    "bathrooms": 5,
+    "size_sqft": 2043,
+    "property_type": "Penthouse",
+    "is_new_build": 0,
+    "asking_price": 1838808
   },
   {
     "source": "synthetic",
@@ -3173,43 +3461,47 @@
     "address": "Westferry Road, London, E14",
     "postcode": "E14",
     "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1192,
-    "property_type": "House",
-    "asking_price": 1489455
+    "bathrooms": 3,
+    "size_sqft": 1475,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 1520633
   },
   {
     "source": "synthetic",
     "property_id": "S0289",
     "address": "Wandsworth Bridge Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 4,
-    "bathrooms": 4,
-    "size_sqft": 1432,
-    "property_type": "Flat",
-    "asking_price": 1760465
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "size_sqft": 1448,
+    "property_type": "House",
+    "is_new_build": 0,
+    "asking_price": 2359814
   },
   {
     "source": "synthetic",
     "property_id": "S0290",
     "address": "Tedworth Square, London, SW3",
     "postcode": "SW3",
-    "bedrooms": 3,
-    "bathrooms": 2,
-    "size_sqft": 1277,
-    "property_type": "Maisonette",
-    "asking_price": 3300893
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 852,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2049461
   },
   {
     "source": "synthetic",
     "property_id": "S0291",
     "address": "Eaton Square, London, SW1X",
     "postcode": "SW1X",
-    "bedrooms": 5,
-    "bathrooms": 4,
-    "size_sqft": 1890,
-    "property_type": "Town House",
-    "asking_price": 9490251
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 713,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2741283
   },
   {
     "source": "synthetic",
@@ -3218,20 +3510,22 @@
     "postcode": "SW7",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 903,
-    "property_type": "House",
-    "asking_price": 2756984
+    "size_sqft": 982,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2186232
   },
   {
     "source": "synthetic",
     "property_id": "S0293",
     "address": "Tregunter Road, London, SW10",
     "postcode": "SW10",
-    "bedrooms": 5,
-    "bathrooms": 5,
-    "size_sqft": 1927,
-    "property_type": "Flat",
-    "asking_price": 4584286
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "size_sqft": 995,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2198881
   },
   {
     "source": "synthetic",
@@ -3240,31 +3534,34 @@
     "postcode": "W8",
     "bedrooms": 2,
     "bathrooms": 2,
-    "size_sqft": 962,
-    "property_type": "Apartment",
-    "asking_price": 1974621
+    "size_sqft": 986,
+    "property_type": "Flat",
+    "is_new_build": 0,
+    "asking_price": 2153122
   },
   {
     "source": "synthetic",
     "property_id": "S0295",
     "address": "Elgin Crescent, London, W11",
     "postcode": "W11",
-    "bedrooms": 2,
-    "bathrooms": 2,
-    "size_sqft": 953,
+    "bedrooms": 1,
+    "bathrooms": 1,
+    "size_sqft": 597,
     "property_type": "Flat",
-    "asking_price": 1862432
+    "is_new_build": 0,
+    "asking_price": 1219338
   },
   {
     "source": "synthetic",
     "property_id": "S0296",
     "address": "Fitzjohns Avenue, London, NW3",
     "postcode": "NW3",
-    "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 1084,
-    "property_type": "Flat",
-    "asking_price": 1673723
+    "bedrooms": 4,
+    "bathrooms": 3,
+    "size_sqft": 1736,
+    "property_type": "Maisonette",
+    "is_new_build": 0,
+    "asking_price": 2782206
   },
   {
     "source": "synthetic",
@@ -3272,31 +3569,34 @@
     "address": "Bellenden Road, London, SE15",
     "postcode": "SE15",
     "bedrooms": 2,
-    "bathrooms": 1,
-    "size_sqft": 961,
+    "bathrooms": 2,
+    "size_sqft": 1048,
     "property_type": "Flat",
-    "asking_price": 748308
+    "is_new_build": 0,
+    "asking_price": 781891
   },
   {
     "source": "synthetic",
     "property_id": "S0298",
     "address": "Marsh Wall, London, E14",
     "postcode": "E14",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 702,
-    "property_type": "Flat",
-    "asking_price": 735508
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1151,
+    "property_type": "Town House",
+    "is_new_build": 0,
+    "asking_price": 1485354
   },
   {
     "source": "synthetic",
     "property_id": "S0299",
     "address": "Munster Road, London, SW6",
     "postcode": "SW6",
-    "bedrooms": 1,
-    "bathrooms": 1,
-    "size_sqft": 748,
-    "property_type": "House",
-    "asking_price": 1119130
+    "bedrooms": 3,
+    "bathrooms": 3,
+    "size_sqft": 1278,
+    "property_type": "Apartment",
+    "is_new_build": 0,
+    "asking_price": 1706932
   }
 ]

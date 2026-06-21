@@ -260,3 +260,143 @@ def test_sale_model_artifact_path_is_separate_from_rental(model_mod):
     p = str(model_mod.DEFAULT_MODEL_PATH)
     assert "sale_model" in p
     assert "rental_model" not in p
+
+
+# ════════════════════════════════════════════════════════════════════════════════════
+# INC3 — FULL SALE-PRICE MODEL (feature-engineering expansion on the in-place seam).
+# These tests EXTEND build_features / train in for_sale/sale_price_model.py; the 14
+# baseline tests above stay UNCHANGED and keep passing. RED until OWNER-FE/OWNER-TRAIN
+# implement the expanded FEATURE_COLUMNS, the inference= kwarg, the new feature families
+# (size/bathroom/postcode-area/property-type/coordinates/interactions/sale-only), the
+# extended type classifiers, and the monotone size constraint. (Spec section 6, FILE A.)
+# ════════════════════════════════════════════════════════════════════════════════════
+
+# The 18 baseline columns, in their FROZEN order — must remain an exact-order PREFIX of
+# the expanded Inc3 feature list (so the existing round-trip artifact stays valid).
+_INC3_BASELINE_18 = (
+    "bedrooms", "bathrooms", "size_sqft", "log_sqft", "sqrt_sqft", "size_per_bed",
+    "beds_squared", "size_squared", "bath_ratio", "excess_bathrooms",
+    "bed_bath_interaction", "is_prime_postcode", "prestige_tier", "district_freq",
+    "is_house", "is_flat", "is_new_build", "size_prime_interaction",
+)
+
+# The 16 NEW tenure-agnostic columns Inc3 APPENDS (spec section 1.2 / gate G1).
+_INC3_NEW_16 = (
+    "is_tiny", "is_huge", "has_ensuite_each", "high_bathroom_count",
+    "postcode_area_freq", "is_penthouse", "is_maisonette", "is_terraced", "is_studio",
+    "center_distance_km", "log_center_distance", "center_distance_inv",
+    "size_x_central", "house_size_interaction", "prestige_tier_x_size",
+    "price_qualifier_poa",
+)
+
+
+def test_inc3_feature_columns_expanded(model_mod, sample_rows):
+    """The Inc3 feature set genuinely grew past the 18 baseline: count > 18, the 18
+    baseline names are an EXACT-ORDER prefix, and every one of the 16 new names is
+    present (gate G1)."""
+    _, feature_cols = model_mod.build_features(sample_rows)
+    assert len(feature_cols) > 18, (
+        f"Inc3 FE expansion silently no-op'd: only {len(feature_cols)} columns"
+    )
+    assert tuple(feature_cols[:18]) == _INC3_BASELINE_18, (
+        "the 18 baseline columns must stay an exact-order prefix (round-trip stability)"
+    )
+    for new in _INC3_NEW_16:
+        assert new in feature_cols, f"missing Inc3 feature column: {new}"
+
+
+def test_inc3_banned_columns_absent(model_mod, sample_rows):
+    """No leaky / rental-only column may appear in the expanded set (extends the
+    existing ban; gate G1)."""
+    _, feature_cols = model_mod.build_features(sample_rows)
+    for banned in ("asking_price", "ppsf", "price_pcm", "is_social_housing"):
+        assert banned not in feature_cols, f"banned column present in Inc3 set: {banned}"
+
+
+def test_inc3_no_target_leakage_expanded(model_mod, sample_rows):
+    """Perturbing ONLY the label (×3) must leave the FULL expanded feature matrix
+    byte-identical — covering every NEW feature, not just the baseline 18 (the
+    rental is_social_housing ppsf-branch leak class). The matrix MUST be the expanded
+    width so this genuinely exercises the new columns (it is vacuous on the un-expanded
+    18-column baseline)."""
+    X, feature_cols = model_mod.build_features(sample_rows)
+    # The leak guard only covers the NEW features once the FE has actually expanded.
+    assert len(feature_cols) > 18, (
+        "leak guard is vacuous until the Inc3 FE expansion adds the new columns"
+    )
+    for new in _INC3_NEW_16:
+        assert new in feature_cols, f"expanded leak guard missing new column: {new}"
+    perturbed = [{**r, "asking_price": r["asking_price"] * 3} for r in sample_rows]
+    X2, cols2 = model_mod.build_features(perturbed)
+    assert cols2 == feature_cols
+    assert np.allclose(
+        X[feature_cols].to_numpy(dtype=float),
+        X2[feature_cols].to_numpy(dtype=float),
+        equal_nan=True,
+    ), "a feature changed when only the label was perturbed — target leakage"
+
+
+def test_inc3_coordless_row_builds_finite(model_mod):
+    """A row with NO latitude/longitude must degrade to the FROZEN neutral distance
+    constant (NOT 0, which is out-of-distribution) and log_center_distance must be
+    finite — no np.log1p object-dtype crash. Every new column finite (spec section 1.3)."""
+    from for_sale import sale_features
+
+    X, feature_cols = model_mod.build_features([{
+        "postcode": "SW3", "bedrooms": 2, "bathrooms": 2, "size_sqft": 900,
+        "property_type": "Flat", "address": "Cadogan Gardens, London, SW3",
+        "asking_price": 3_000_000,
+    }])
+    assert X["center_distance_km"].iloc[0] == sale_features.DEFAULT_CENTER_DISTANCE_KM
+    assert np.isfinite(X["log_center_distance"].iloc[0])
+    # Every new column resolved to a finite numeric (no NaN / object dtype).
+    for col in _INC3_NEW_16:
+        val = X[col].iloc[0]
+        assert np.isfinite(float(val)), f"new column {col} is not finite on a coordless row"
+
+
+def test_inc3_new_property_types_classified(model_mod):
+    """The new property-type one-hots fire on the right raw type strings, and a plain
+    Flat sets none of them (spec section 1.2 / fixture vocabulary Finding 3)."""
+    rows = [
+        {"postcode": "SW3", "bedrooms": 2, "bathrooms": 2, "size_sqft": 900,
+         "property_type": "Penthouse", "address": "A St, London, SW3", "asking_price": 3_000_000},
+        {"postcode": "SW3", "bedrooms": 2, "bathrooms": 2, "size_sqft": 900,
+         "property_type": "Maisonette", "address": "B St, London, SW3", "asking_price": 2_000_000},
+        {"postcode": "SW3", "bedrooms": 3, "bathrooms": 2, "size_sqft": 1200,
+         "property_type": "Town House", "address": "C St, London, SW3", "asking_price": 4_000_000},
+        {"postcode": "SW3", "bedrooms": 0, "bathrooms": 1, "size_sqft": 350,
+         "property_type": "Studio", "address": "D St, London, SW3", "asking_price": 600_000},
+        {"postcode": "SW3", "bedrooms": 2, "bathrooms": 1, "size_sqft": 800,
+         "property_type": "Flat", "address": "E St, London, SW3", "asking_price": 1_500_000},
+    ]
+    X, _ = model_mod.build_features(rows)
+    assert int(X["is_penthouse"].iloc[0]) == 1
+    assert int(X["is_maisonette"].iloc[1]) == 1
+    assert int(X["is_terraced"].iloc[2]) == 1   # a Town House is the terraced/house family
+    assert int(X["is_studio"].iloc[3]) == 1
+    # A plain Flat triggers NONE of the four new type flags.
+    flat = X.iloc[4]
+    for col in ("is_penthouse", "is_maisonette", "is_terraced", "is_studio"):
+        assert int(flat[col]) == 0, f"a plain Flat wrongly set {col}"
+
+
+def test_inc3_monotone_size_in_model(model_mod, sample_rows):
+    """On the trained model a LARGER flat predicts >= a smaller flat at EVERY adjacent
+    step across a size sweep, all else equal — now GUARANTEED by the monotone_constraints
+    on size_sqft/log_sqft (gate G4a), not luck. The unconstrained baseline has real local
+    dips (e.g. 700→800 sqft), so this is RED until train() adds the monotone tuple."""
+    trained = model_mod.train(sample_rows, seed=42, test_size=0.25)
+    base = dict(postcode="SW3", bedrooms=3, bathrooms=2,
+                property_type="Flat", address="Onslow Square, London, SW7")
+    sizes = [400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300,
+             1400, 1500, 1600, 1800, 2000, 2500, 3000]
+    preds = [
+        model_mod.predict_one(trained["model"], trained["feature_cols"],
+                              size_sqft=s, **base)
+        for s in sizes
+    ]
+    for (s_lo, p_lo), (s_hi, p_hi) in zip(zip(sizes, preds), zip(sizes[1:], preds[1:])):
+        assert p_hi >= p_lo, (
+            f"size monotonicity violated at {s_lo}->{s_hi} sqft: {p_hi} < {p_lo}"
+        )
