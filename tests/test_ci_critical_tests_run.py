@@ -112,6 +112,13 @@ CRITICAL_TESTS = [
     # --- Cross-source dedupe identity core (pure, no DB)
     "tests/test_dedupe_postgres.py::test_distinct_streets_not_merged",
     "tests/test_dedupe_postgres.py::test_true_cross_source_dupe_still_caught",
+    # --- Wave 2 (A5/A12): the cross-source REMOVE path's cascade-delete +
+    #     price_history-backup safety guard. Pins that dedupe_cross_source.remove_duplicates
+    #     cascade-deletes the orphaned price_history rows AND routes the delete through the
+    #     _safe_delete guard (delta-abort + backup), so the destructive remove path can't
+    #     silently orphan history or bypass the recoverable-backup guard. Pure in-memory
+    #     sqlite + CSV (no live DB/network/node), so it always runs in PR CI.
+    "tests/test_dedupe_cross_source_remove.py",
     # --- M18: the dedupe identity PRIMITIVE itself (address fingerprinting). The whole
     #     cross-source identity rests on these — a regression in normalization/collision
     #     handling silently re-introduces the over-/under-merge bug. Pure-unit (no
@@ -337,4 +344,123 @@ def test_daily_scrape_data_gate_runs_before_commit_and_retrain():
     assert gate_pos < commit_pos, (
         "the `pytest -m data` gate must run BEFORE the model is committed/pushed "
         f"(gate@{gate_pos} commit@{commit_pos})."
+    )
+
+
+# =================================================================================
+# WAVE 2 — CI-CONFIG META-TESTS (group CI-CONFIG, writer 4).
+#
+# These pin the Wave-2 CI hardening so it cannot silently regress, exactly like the A1
+# data-gate meta-tests above. They parse ci.yml / the guard files as TEXT (no PyYAML /
+# no node dep) so they always run in PR CI. Each one was proven RED before the matching
+# ci.yml / guard / allowlist edit landed.
+# =================================================================================
+_CI_YML = ROOT / ".github" / "workflows" / "ci.yml"
+_DASHBOARD_ROUTES_GUARD = ROOT / "dashboard" / "test" / "dashboard_routes_guard.mjs"
+
+# The NEW Wave-2 dashboard route harnesses (Group SERVING, writer 1). These are the
+# ACTUAL filenames SERVING created, mapped to the spec items:
+#   A6  — route-HANDLER tests, split rental + sale (route_handler_test / _sale_test)
+#   A7  — dual-SQL byte-equality (db.ts↔similarQuery.js, saleDb.ts↔saleSimilarQuery.js)
+#   R6/A8 — serving query-bug DOCUMENTING (xfail) tests (no-space postcode + stale peer)
+# CI-CONFIG owns wiring these into ci.yml's dashboard-routes job AND the guard's
+# REQUIRED_HARNESSES so they can never silently skip. This list is kept in lockstep with
+# the files SERVING lands (the guard's orphan check fails on any drift).
+_WAVE2_ROUTE_HARNESSES = [
+    "route_handler_test.mjs",        # A6 — rental route-handler invocation (real route.ts)
+    "route_handler_sale_test.mjs",   # A6 — for-sale route-handler invocation (real route.ts)
+    "dual_sql_equality_test.mjs",    # A7 — db.ts↔similarQuery.js byte-equality (+ sale)
+    "serving_query_bug_doc_test.mjs",# R6/A8 — no-space-postcode + stale-peer xfails
+]
+
+
+def test_ci_python_cov_includes_for_sale():
+    """M15 — ci.yml python-tests must measure coverage of the for_sale/ money-path.
+
+    for_sale/ is a 2180-line vertical that was entirely unmeasured by --cov, so a
+    coverage regression in the sale model/serving/CLI seam was invisible. Pin that
+    `--cov=for_sale` is in the python-tests coverage scope.
+    """
+    text = _CI_YML.read_text(encoding="utf-8")
+    assert re.search(r"--cov=for_sale\b", text), (
+        "ci.yml python-tests does NOT include `--cov=for_sale` in its coverage scope — "
+        "the for_sale/ vertical (2180 lines, the sale money-path) is unmeasured, so a "
+        "coverage regression there is invisible. Add --cov=for_sale to the pytest "
+        "--cov flags in the python-tests job."
+    )
+
+
+def test_min_executed_floor_raised_with_headroom():
+    """M19 — the MIN_EXECUTED silent-collapse floor must be raised toward the real count.
+
+    The original 120 was set when CI executed ~197; the suite now executes ~390+ in CI
+    (no live DB / no tesseract). A floor of 120 would no longer catch a collapse that
+    halves the suite. Require MIN_EXECUTED >= 360 (comfortable headroom below the real
+    CI-executed count, well above the original 120 noise floor) so a silent collapse is
+    actually caught. The value is read from ci.yml's inline python guard.
+    """
+    text = _CI_YML.read_text(encoding="utf-8")
+    m = re.search(r"MIN_EXECUTED\s*=\s*(\d+)", text)
+    assert m, "MIN_EXECUTED assignment not found in ci.yml inline executed-count guard."
+    value = int(m.group(1))
+    assert value >= 360, (
+        f"MIN_EXECUTED={value} is too low to catch a silent suite collapse. CI now "
+        f"executes ~390+ tests; raise the floor to >=360 (with headroom below the real "
+        f"count) so a collapse to a handful of tests fails loudly."
+    )
+
+
+def test_dedupe_cross_source_remove_in_critical_tests():
+    """M18 — the new Wave-2 dedupe cascade/backup safety test must be CI-critical.
+
+    test_dedupe_cross_source_remove pins that the destructive cross-source remove path
+    cascade-deletes price_history and routes through the _safe_delete guard. It is a
+    load-bearing data-safety guard with no DB/network/node dep, so it must always run in
+    PR CI — pin it on the allowlist so it can't silently go dark.
+    """
+    assert "tests/test_dedupe_cross_source_remove.py" in CRITICAL_TESTS, (
+        "tests/test_dedupe_cross_source_remove.py (the dedupe cascade-delete + "
+        "price_history-backup safety guard) is not on CRITICAL_TESTS — add it so the "
+        "anti-silent-skip guard ensures it always runs in PR CI."
+    )
+
+
+def test_wave1_critical_guards_present():
+    """M18 — confirm the Wave-1 additions stayed on the critical allowlist.
+
+    test_fingerprint / the SQLite smart-upsert / the floorplan->OCR wiring guard were
+    added in Wave 1; this pins that they did not silently fall off the allowlist.
+    """
+    expected = [
+        "tests/test_fingerprint.py",
+        "tests/test_pipeline.py::TestSQLitePipelineSmartUpsert",
+        "tests/test_floorplan_pipeline.py::TestWorkflowWiring",
+    ]
+    missing = [e for e in expected if e not in CRITICAL_TESTS]
+    assert not missing, (
+        "Wave-1 critical guards dropped off CRITICAL_TESTS: " + ", ".join(missing)
+    )
+
+
+def test_wave2_route_harnesses_wired_into_ci_and_guard():
+    """The NEW dashboard route harnesses (A6/A7/R6-A8) must be wired into BOTH ci.yml's
+    dashboard-routes job AND the dashboard_routes_guard REQUIRED_HARNESSES.
+
+    Any `*_test.mjs` on disk that the guard's REQUIRED_HARNESSES / ci.yml don't reference
+    fails the guard as an ORPHAN. Pin the wiring here (text-parse, no node) so the
+    serving harnesses can never silently skip while the job stays green.
+    """
+    ci_text = _CI_YML.read_text(encoding="utf-8")
+    guard_text = _DASHBOARD_ROUTES_GUARD.read_text(encoding="utf-8")
+    problems = []
+    for h in _WAVE2_ROUTE_HARNESSES:
+        if h not in ci_text:
+            problems.append(f"{h} not invoked in ci.yml dashboard-routes job")
+        if h not in guard_text:
+            problems.append(f"{h} not in dashboard_routes_guard REQUIRED_HARNESSES")
+    assert not problems, (
+        "Wave-2 dashboard route harness wiring incomplete:\n  - "
+        + "\n  - ".join(problems)
+        + "\n(Group SERVING creates these dashboard/test/*_test.mjs files; CI-CONFIG "
+        "wires them into ci.yml + the guard so they cannot silently skip.)"
     )

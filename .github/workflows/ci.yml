@@ -60,10 +60,14 @@ jobs:
           # catches a REGRESSION without blocking a PR on a number the suite hasn't
           # reached (trajectory + 70%-core-logic target in TEST_SUITE_OVERVIEW.md).
           # Cov scope = the app modules + the root model modules the #47 tests exercise.
+          # M15 (Wave 2): add `for_sale` so the 2180-line for-sale money-path vertical is
+          # MEASURED (was entirely unmeasured — a sale-model/serving/CLI coverage
+          # regression was invisible). Scope only; the --cov-fail-under floor is unchanged.
           pytest \
             -m "not live and not parity" \
             --cov=property_scraper --cov=automation --cov=cli --cov=scripts \
             --cov=canonical_predict --cov=retrain_canonical --cov=rental_price_models_v20 \
+            --cov=for_sale \
             --cov-report=term-missing --cov-report=xml \
             --cov-fail-under=5 \
             --junitxml=pytest-results.xml \
@@ -75,11 +79,15 @@ jobs:
           # Belt-and-braces floor on the silent-skip class: if conftest itself broke, or
           # the env regressed so the whole suite skipped, the count collapses and we fail
           # loudly. This is a coarse global guard; the per-test allowlist meta-test is the
-          # precise one. Keep the floor comfortably BELOW the real executed count
-          # (~190+ in CI) so a normal PR never trips it, but a collapse to a handful does.
+          # precise one. Keep the floor comfortably BELOW the real executed count so a
+          # normal PR never trips it, but a collapse to a handful does.
+          # M19 (Wave 2): the suite grew — CI now executes ~390+ (no live DB / no
+          # tesseract). The old 120 floor was set when CI ran ~197 and would no longer
+          # catch a collapse that halves the suite. Raised to 360 (headroom below the real
+          # ~390+ count, far above the original 120 noise floor).
           python3 - <<'PY'
           import sys, xml.etree.ElementTree as ET
-          MIN_EXECUTED = 120  # CI executes ~197; alarm well below that, above noise.
+          MIN_EXECUTED = 360  # CI executes ~390+; alarm well below that, above noise.
           t = ET.parse("pytest-results.xml").getroot()
           suites = t.iter("testsuite")
           total = skipped = errors = failures = 0
@@ -293,6 +301,19 @@ jobs:
 
       - name: /api/similar-sale — real query vs seeded Postgres (Inc4a; SSTC-exclude + graceful-empty)
         run: node test/similar_sale_query_test.mjs
+
+      # === Wave 2 — route-HANDLER + dual-SQL parity + query-bug documenting harnesses ===
+      - name: A6 — actual Next.js RENTAL route handlers (400 / CORS / 503 / 500-vs-empty)
+        run: node test/route_handler_test.mjs
+
+      - name: A6 — actual Next.js FOR-SALE route handlers (sale-specific 400/503 divergences)
+        run: node test/route_handler_sale_test.mjs
+
+      - name: A7 — dual-SQL byte-equality (db.ts↔similarQuery.js, saleDb.ts↔saleSimilarQuery.js)
+        run: node test/dual_sql_equality_test.mjs
+
+      - name: R6/A8 — serving query-bug DOCUMENTING tests (no-space postcode + stale peer; xfail)
+        run: node test/serving_query_bug_doc_test.mjs
 
       - name: Anti-silent-skip — assert the route harnesses are wired + ran
         run: |

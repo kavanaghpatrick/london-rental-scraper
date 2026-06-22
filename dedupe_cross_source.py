@@ -314,8 +314,19 @@ def mark_canonical(conn, dry_run=True):
     return groups
 
 
-def remove_duplicates(conn, dry_run=True):
-    """Remove duplicate records, keeping only the canonical one."""
+def remove_duplicates(conn, dry_run=True, project_root=None):
+    """Remove duplicate records, keeping only the canonical one.
+
+    The actual deletion CASCADES to price_history (so no orphan history rows are
+    left behind, matching dedupe_same_source.py:190 and daily-scrape.yml:354) and
+    routes BOTH the price_history and the listings deletions through
+    scripts/_safe_delete.guarded_delete, which writes a CSV backup before deleting
+    so an over-deletion is recoverable.
+
+    `project_root` (optional) is forwarded to guarded_delete to control where the
+    backup CSVs land (defaults to the repo root's output/deleted_backups/); tests
+    point it at a tmp dir.
+    """
     groups = mark_canonical(conn, dry_run=True)  # Just analyze
     cursor = conn.cursor()
 
@@ -357,18 +368,65 @@ def remove_duplicates(conn, dry_run=True):
     if not dry_run and to_delete:
         # === DESTRUCTIVE-OP GUARD (#37): delta-abort + backup before delete ===
         import sys, os
+        from pathlib import Path
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
         from _safe_delete import guarded_delete, SafeDeleteAborted
+        # guarded_delete does `project_root / "output"`, so a str path must be coerced.
+        _proot = Path(project_root) if project_root is not None else None
         total = cursor.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
 
-        def _do_delete(ids):
+        def _do_delete_listings(ids):
             ph = ','.join('?' * len(ids))
+            # Defensive cascade: even though the price_history rows for these ids were
+            # already backed-up-and-deleted just above, re-issue the price_history delete
+            # so a single _do_delete is self-contained and can never leave an orphan
+            # (matches dedupe_same_source.py:190 / daily-scrape.yml:354).
+            cursor.execute(f'DELETE FROM price_history WHERE listing_id IN ({ph})', list(ids))
             cursor.execute(f'DELETE FROM listings WHERE id IN ({ph})', list(ids))
 
         try:
+            # 1) CASCADE: back up + delete the price_history rows attached to the doomed
+            #    listings FIRST, through the SAME guard, so the removed history is
+            #    recoverable from a CSV (the old code deleted only `listings`, orphaning
+            #    price_history AND leaving it unbacked-up). The delta-abort is disabled for
+            #    this cascade leg (max_fraction=1.0) — the PRIMARY safety gate is the
+            #    listings delta guard below; price_history simply follows whatever listings
+            #    are (safely) being removed, and its own row-fraction is not a meaningful
+            #    bug signal.
+            ph_listing_ids = [
+                r[0]
+                for r in cursor.execute(
+                    f"SELECT DISTINCT listing_id FROM price_history "
+                    f"WHERE listing_id IN ({','.join('?' * len(to_delete))})",
+                    list(to_delete),
+                ).fetchall()
+            ]
+            if ph_listing_ids:
+                ph_total = cursor.execute("SELECT COUNT(*) FROM price_history").fetchone()[0]
+                ph_ph = ','.join('?' * len(ph_listing_ids))
+
+                def _do_delete_ph(ids):
+                    cursor.execute(
+                        f"DELETE FROM price_history WHERE listing_id IN ({ph_ph})",
+                        list(ids),
+                    )
+
+                guarded_delete(
+                    cursor, "price_history", ph_listing_ids,
+                    total_rows=ph_total, do_delete=_do_delete_ph,
+                    project_root=_proot,
+                    max_fraction=1.0,  # cascade leg — gated by the listings guard below
+                    label="cross-source dedupe --remove (price_history cascade)",
+                    select_sql=(
+                        f"SELECT * FROM price_history WHERE listing_id IN ({ph_ph})"
+                    ),
+                )
+
+            # 2) Back up + delete the listings (the real delta-abort gate lives here).
             guarded_delete(
                 cursor, "listings", to_delete,
-                total_rows=total, do_delete=_do_delete,
+                total_rows=total, do_delete=_do_delete_listings,
+                project_root=_proot,
                 label="cross-source dedupe --remove",
             )
             conn.commit()

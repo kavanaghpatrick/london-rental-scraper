@@ -226,7 +226,16 @@ class TestRightmoveEnricherSqftRegex:
         """The enricher's page-text sqft fallback must tolerate the real
         '675 sq. ft.' search format (periods between 'sq' and 'ft'). The old
         r'(\\d{3,5})\\s*sq\\.?\\s*ft' patterns are period-blind there. RED today:
-        the enricher source carries none of the period-tolerant sq[\\s.]*ft form."""
+        the enricher source carries none of the period-tolerant sq[\\s.]*ft form.
+
+        WAVE-2 TIGHTENING: the original assertion was `r"sq[\\s.]*ft" in src`,
+        which is satisfiable by the token appearing only in a CODE COMMENT (the
+        enricher source carries that exact token in two `# R3:` comments at lines
+        168/181). A regression that deleted the real regex but left the comment
+        would have passed. We now require the period-tolerant token to appear on a
+        NON-COMMENT line that actually constructs a regex — i.e. on a
+        re.compile/search/findall/match call OR inside a raw-string pattern literal
+        (r'...'/r"..."). A comment alone can no longer satisfy this test."""
         import re as _r
         # Anchor on REAL fixture data so this tracks real-site format, not a sample.
         props = load_fixture("rightmove_search_properties.json")
@@ -236,11 +245,53 @@ class TestRightmoveEnricherSqftRegex:
         fixed = _r.compile(r"([\d,]+)\s*sq[\s.]*ft", _r.I)
         for s in period_samples:
             assert fixed.search(s), f"period format {s!r} unmatched by spec regex"
-        # The enricher SOURCE must carry the period-tolerant token (R3 fix).
+
+        # The enricher SOURCE must carry the period-tolerant token (R3 fix) on a
+        # real regex line — NOT merely in a comment.
         src = self._enricher_source()
-        assert r"sq[\s.]*ft" in src, (
-            "rightmove_enricher still lacks a period-tolerant sq[\\s.]*ft sqft "
-            "pattern in its source (R3)."
+        token = r"sq[\s.]*ft"
+        regex_call = _r.compile(r"re\.(?:compile|search|findall|match|sub|fullmatch)\s*\(")
+        raw_string = _r.compile(r"""r['"]""")  # a raw-string pattern literal
+
+        def _strip_comment(line):
+            """Drop the trailing '# ...' comment, ignoring '#' inside a string
+            literal (cheap heuristic: a '#' preceded only by code with balanced
+            quotes). Good enough to exclude the two pure-comment lines here."""
+            # If the line is a full-line comment, it's all comment.
+            if line.lstrip().startswith("#"):
+                return ""
+            # Otherwise cut at the first '#' that is not inside quotes.
+            in_s = in_d = False
+            for i, ch in enumerate(line):
+                if ch == "'" and not in_d:
+                    in_s = not in_s
+                elif ch == '"' and not in_s:
+                    in_d = not in_d
+                elif ch == "#" and not in_s and not in_d:
+                    return line[:i]
+            return line
+
+        token_lines = [ln for ln in src.splitlines() if token in ln]
+        assert token_lines, (
+            "rightmove_enricher carries no period-tolerant sq[\\s.]*ft token at all (R3)."
+        )
+        # Lines that survive comment-stripping AND look like regex construction.
+        live_regex_lines = [
+            ln for ln in token_lines
+            if token in _strip_comment(ln)
+            and (regex_call.search(ln) or raw_string.search(ln))
+        ]
+        # Prove the tightening is real: at least one token occurrence is in a
+        # comment (so the loose `in src` check WAS satisfiable by a comment).
+        comment_only = [ln for ln in token_lines if token not in _strip_comment(ln)]
+        assert comment_only, (
+            "expected the enricher to carry the R3 token in a comment too — the "
+            "test's comment-exclusion guard would otherwise be vacuous."
+        )
+        assert live_regex_lines, (
+            "rightmove_enricher has the period-tolerant sq[\\s.]*ft token only in "
+            "comments, not on a real re.compile/search/findall or raw-string "
+            "pattern line (R3). The production regex must carry it."
         )
 
 
@@ -413,6 +464,197 @@ class TestSelectorRegression:
         # price sub-shape
         for prop in props:
             assert "amount" in prop["price"] and "frequency" in prop["price"]
+
+
+# ---------------------------------------------------------------------------
+# A10/T11 — KnightFrank + Chestertons RENTAL parse_card_data tuple-LOCK.
+#
+# Both card parsers use a FRAGILE line-POSITION bed heuristic over the
+# single-digit tokens (\b\d\b) that appear after the address line:
+#   - KnightFrank: nums[-3] = beds, nums[-2] = baths   (knightfrank_spider.py:544)
+#   - Chestertons: nums[0]  = beds, nums[1]  = baths   (chestertons_spider.py:530)
+# KF's backward index reaches INTO the price: the comma in "£X,XXX" makes the
+# thousands digit a standalone \b\d\b token, so a real 2-bed parses as 1-bed
+# (the documented "3-bed-as-1-bed" / £5,600 trigger). Chestertons' forward index
+# takes the first digits right after the address (beds/baths precede sqft+price)
+# so it is more robust HERE — both behaviours are locked below.
+#
+# These are SELECTOR-REGRESSION / heuristic-lock tests: they assert the EXACT
+# current (postcode, price_pcm, bedrooms, bathrooms, size_sqft) tuple the REAL
+# parser emits. They are NON-VACUOUS — any drift in the card shape or the parse
+# seam (incl. a future fix to the bed heuristic) changes a tuple and fails loudly.
+# Fixtures are DERIVED (labelled in-file) because both sites are browser-only
+# (KF 302->404 / Chestertons Cloudflare SPA — zero card markup over curl).
+# ---------------------------------------------------------------------------
+def load_card_fixture(name):
+    """Loader for the wrapped {_provenance,_warning,cards:[...]} fixture shape."""
+    data = load_fixture(name)
+    assert isinstance(data, dict) and "cards" in data, (
+        f"{name} must be a dict carrying a 'cards' list (and provenance)"
+    )
+    return data["cards"]
+
+
+class TestKnightFrankParsing:
+    @pytest.fixture(scope="class")
+    def spider(self):
+        from property_scraper.spiders.knightfrank_spider import KnightFrankSpider
+        return KnightFrankSpider()
+
+    @pytest.fixture(scope="class")
+    def cards(self):
+        return load_card_fixture("knightfrank_cards.json")
+
+    def test_fixture_present_and_includes_required_shapes(self, cards):
+        """Guard the fixture itself: ≥3 cards, INCLUDING a number-prefixed street
+        ('3 Riverlight Quay') and a short-let card — otherwise the heuristic-lock
+        below would not cover the documented fragile cases."""
+        assert isinstance(cards, list) and len(cards) >= 3
+        texts = [c.get("text", "") for c in cards]
+        assert any("3 Riverlight Quay" in t for t in texts), (
+            "fixture must include a number-prefixed street card (street-no leak guard)"
+        )
+        assert any("Short Let" in t for t in texts), (
+            "fixture must include a short-let card"
+        )
+
+    def test_all_cards_parse(self, spider, cards):
+        for c in cards:
+            item = spider.parse_card_data(c)
+            assert item is not None
+            assert item["source"] == "knightfrank"
+            assert item["property_id"]
+            assert item["url"].startswith("https://www.knightfrank.co.uk/")
+
+    def test_beds_int_or_none(self, spider, cards):
+        for c in cards:
+            beds = spider.parse_card_data(c).get("bedrooms")
+            assert beds is None or isinstance(beds, int)
+
+    def test_number_prefixed_street_not_read_as_beds(self, spider, cards):
+        """'3 Riverlight Quay' — the leading street number sits on the ADDRESS
+        line and must be EXCLUDED from the bed heuristic. The card is a real 1-bed;
+        assert beds==1 (and NOT 3). This pins the street-number-leak guard."""
+        riverlight = next(c for c in cards if "3 Riverlight Quay" in c["text"])
+        item = spider.parse_card_data(riverlight)
+        assert item["bedrooms"] == 1, (
+            "street number '3' leaked into the bed heuristic"
+        )
+        assert item["postcode"] == "SW8"
+
+    def test_short_let_marks_property_type(self, spider, cards):
+        """A 'Short Let' card must set property_type to 'short let'."""
+        short = next(c for c in cards if "Short Let" in c["text"])
+        item = spider.parse_card_data(short)
+        assert item["property_type"] == "short let"
+        assert item["price_period"] == "pw"  # this short-let card is weekly
+
+    def test_exact_tuples_lock_heuristic(self, spider, cards):
+        """Frozen: the derived KF cards must parse to these EXACT tuples
+        (postcode, price_pcm, bedrooms, bathrooms, size_sqft). These LOCK the
+        current fragile nums[-3]/nums[-2] heuristic — including its KNOWN-WRONG
+        bed reads where the '£X,XXX' comma pollutes the digit array (card 1: real
+        2-bed parses as 1; card 3: real 3-bed parses as 2; card 4: real 4-bed
+        parses as 3). When the heuristic is fixed, RE-BASELINE these tuples."""
+        got = [
+            (it["postcode"], it["price_pcm"], it["bedrooms"], it["bathrooms"], it["size_sqft"])
+            for it in (spider.parse_card_data(c) for c in cards)
+        ]
+        expected = [
+            # Alexandra Mansions 2-bed flat, monthly+sqft -> beds mis-read as 1
+            ("SW3", 3098, 1, 1, 625),
+            # "3 Riverlight Quay" 1-bed flat, monthly -> beds correct (1), no leak
+            ("SW8", 2600, 1, 1, 720),
+            # Short Let 3-bed apartment, WEEKLY (£4,750pw -> 20583pcm) -> beds mis-read as 2
+            ("SW1X", 20583, 2, 2, 1420),
+            # House 4-bed, monthly, no sqft -> beds mis-read as 3
+            ("SW10", 8250, 3, 2, None),
+        ]
+        assert got == expected, (
+            "KnightFrank card parsing drifted from the locked tuples — either the "
+            "spider's parse_card_data changed (incl. a bed-heuristic FIX, which "
+            "needs a re-baseline) or the derived fixture shape changed. Review "
+            "before updating."
+        )
+
+
+class TestChestertonsParsing:
+    @pytest.fixture(scope="class")
+    def spider(self):
+        from property_scraper.spiders.chestertons_spider import ChestertonsSpider
+        return ChestertonsSpider()
+
+    @pytest.fixture(scope="class")
+    def cards(self):
+        return load_card_fixture("chestertons_cards.json")
+
+    def test_fixture_present_and_includes_required_shapes(self, cards):
+        assert isinstance(cards, list) and len(cards) >= 3
+        addrs = [c.get("address", "") for c in cards]
+        types = [c.get("letType", "") for c in cards]
+        assert any("3 Riverlight Quay" in a for a in addrs), (
+            "fixture must include a number-prefixed street card"
+        )
+        assert any("short" in t.lower() for t in types), (
+            "fixture must include a short-let card"
+        )
+
+    def test_all_cards_parse(self, spider, cards):
+        for c in cards:
+            item = spider.parse_card_data(c)
+            assert item is not None
+            assert item["source"] == "chestertons"
+            assert item["property_id"]
+            assert item["url"].startswith("https://www.chestertons.co.uk/")
+
+    def test_beds_int_or_none(self, spider, cards):
+        for c in cards:
+            beds = spider.parse_card_data(c).get("bedrooms")
+            assert beds is None or isinstance(beds, int)
+
+    def test_number_prefixed_street_not_read_as_beds(self, spider, cards):
+        """'3 Riverlight Quay' — the leading street number sits on the address
+        line (detected by comma+letters) and must be EXCLUDED from nums[0]. The
+        card is a real 1-bed; assert beds==1 (NOT 3)."""
+        riverlight = next(c for c in cards if "3 Riverlight Quay" in c["address"])
+        item = spider.parse_card_data(riverlight)
+        assert item["bedrooms"] == 1, (
+            "street number '3' leaked into the bed heuristic"
+        )
+        assert item["postcode"] == "SW8"
+
+    def test_short_let_marks_property_type(self, spider, cards):
+        """A 'Short Let' letType must set property_type to 'short let'."""
+        short = next(c for c in cards if "short" in c["letType"].lower())
+        item = spider.parse_card_data(short)
+        assert item["property_type"] == "short let"
+        assert item["price_period"] == "pw"  # this short-let card is weekly
+
+    def test_exact_tuples_lock_heuristic(self, spider, cards):
+        """Frozen: the derived Chestertons cards must parse to these EXACT tuples
+        (postcode, price_pcm, bedrooms, bathrooms, size_sqft). These LOCK the
+        current nums[0]/nums[1] heuristic. Unlike KnightFrank, Chestertons takes
+        the FIRST digits after the address (beds/baths precede sqft+price), so
+        beds/baths parse correctly here — the lock catches any future drift."""
+        got = [
+            (it["postcode"], it["price_pcm"], it["bedrooms"], it["bathrooms"], it["size_sqft"])
+            for it in (spider.parse_card_data(c) for c in cards)
+        ]
+        expected = [
+            # Long Let 2-bed flat, bare-'ft' sqft, monthly
+            ("SW10", 4950, 2, 2, 1450),
+            # "3 Riverlight Quay" 1-bed, monthly -> beds correct (1), no leak
+            ("SW8", 2600, 1, 1, 720),
+            # Short Let 3-bed, WEEKLY (£3,500pw -> 15166pcm)
+            ("SW1X", 15166, 3, 2, 1820),
+            # Long Let 2-bed, monthly, no sqft
+            ("SW1V", 3250, 2, 1, None),
+        ]
+        assert got == expected, (
+            "Chestertons card parsing drifted from the locked tuples — either the "
+            "spider's parse_card_data changed or the derived fixture shape changed. "
+            "Review before updating."
+        )
 
 
 if __name__ == "__main__":

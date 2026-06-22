@@ -1,0 +1,26 @@
+{
+  "_provenance": "DERIVED, not live-captured (2026-06-22). knightfrank.co.uk is a Playwright-only React app: a desktop-UA curl of the to-let search path returns 302->404 with ZERO '.kf-search-result' / '.property-features' card markup (cards are JS-rendered), so a network-free real capture is impossible without a browser. These card text blobs are DERIVED from (a) the documented KF card format at knightfrank_spider.py:475 ('1/13\\nShort Let\\nAddress\\nType\\n, sqft\\nbeds\\nbaths\\nrecs\\nprice\\nperiod'), (b) the real KF PDP innerText fixture tests/fixtures/knightfrank/main_innertext_chq012691683.txt (which confirms the address line ends '...London SW3', prices render as '£3,098 Monthly' / '£715 Weekly', and bed/bath/recs appear as standalone single-digit lines '2\\n1\\n1'), and (c) the committed sale-mode KF card fixture tests/fixtures/for_sale/knightfrank_card_data_for_sale.json. The card dict shape is {text: card.innerText, href} exactly as the harvest evaluate() at knightfrank_spider.py:367-376 emits.",
+  "_warning": "These tuples LOCK the CURRENT (fragile) line-POSITION bed heuristic (nums[-3]/nums[-2] of \\b\\d\\b tokens after the address line). Several derived cards parse beds INCORRECTLY today because the comma in '£X,XXX' makes the thousands digit a standalone \\b\\d\\b token that pollutes the nums array (the documented '3-bed-as-1-bed' / £5,600 class of bug). The assertions in TestKnightFrankParsing pin these EXACT current values; when the heuristic is fixed the test must be re-baselined (and the known-wrong beds annotations flipped). Do NOT 'correct' the tuples to the intuitive bed count without also fixing the spider.",
+  "cards": [
+    {
+      "_note": "Real Alexandra Mansions 2-BED flat, monthly+sqft. nums after addr = ['2','1','1','3'] (the trailing '3' is from £3,098); beds=nums[-3]=1 (KNOWN-WRONG, true beds=2), baths=nums[-2]=1.",
+      "text": "1/13\nAlexandra Mansions, 333 Kings Road, Chelsea, London SW3\nFlat\n625 sqft\n2\n1\n1\n£3,098\nMonthly",
+      "href": "https://www.knightfrank.co.uk/properties/residential/to-let/london/chelsea/chq012691683lg"
+    },
+    {
+      "_note": "NUMBER-PREFIXED STREET '3 Riverlight Quay' — the leading '3' sits on the address line (matched by [A-Z]{1,2}\\d{1,2}) and is correctly EXCLUDED from beds. 1-bed flat. nums=['1','1','1','2'] -> beds=nums[-3]=1 (correct by luck), baths=1.",
+      "text": "2/13\n3 Riverlight Quay, Nine Elms, London SW8\nFlat\n720 sqft\n1\n1\n1\n£2,600\nMonthly",
+      "href": "https://www.knightfrank.co.uk/properties/residential/to-let/london/nine-elms/kfl100200300"
+    },
+    {
+      "_note": "SHORT LET card (property_type forced to 'short let'), WEEKLY price, 3-bed. '1,420 sqft' contributes a stray '1' and '£4,750' a stray '4', so nums=['1','3','2','2','4'] -> beds=nums[-3]=2 (KNOWN-WRONG, true beds=3), baths=nums[-2]=2.",
+      "text": "3/13\nShort Let\nCadogan Gardens, Knightsbridge, London SW1X\nApartment\n1,420 sqft\n3\n2\n2\n£4,750\nWeekly",
+      "href": "https://www.knightfrank.co.uk/properties/residential/to-let/london/knightsbridge/lon067890lg"
+    },
+    {
+      "_note": "House WITHOUT sqft in card (KF ~93% coverage). 4-bed, monthly. nums=['4','3','2','8'] (the '8' is from £8,250) -> beds=nums[-3]=3 (KNOWN-WRONG, true beds=4), baths=nums[-2]=2; size_sqft=None.",
+      "text": "4/13\nOakfield Street, Chelsea, London SW10\nHouse\n4\n3\n2\n£8,250\nMonthly",
+      "href": "https://www.knightfrank.co.uk/properties/residential/to-let/london/chelsea/lon054321lg"
+    }
+  ]
+}

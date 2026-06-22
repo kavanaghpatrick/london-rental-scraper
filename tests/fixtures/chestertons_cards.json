@@ -1,0 +1,34 @@
+{
+  "_provenance": "DERIVED, not live-captured (2026-06-22). chestertons.co.uk is a Cloudflare-gated Next.js SPA: a desktop-UA curl of the property-to-rent path returns the Cloudflare-challenged HTML shell with ZERO '.pegasus-property-card' markup (cards are JS-rendered), so a network-free real capture is impossible without a browser. These card dicts are DERIVED from (a) the documented Chestertons card textContent format at chestertons_spider.py:481 ('Long Let\\nAddress\\nbeds\\nbaths\\nreceptions\\nsqft\\n2\\n£price\\n(pcm)\\nFees apply'), (b) the harvest evaluate() shape {href,address,letType,textContent} at chestertons_spider.py:337-361, and (c) the committed sale-mode card fixture tests/fixtures/for_sale/chestertons_card_data_for_sale.json (same textContent layout, sale mode).",
+  "_warning": "These tuples LOCK the CURRENT line-POSITION bed heuristic (nums[0]/nums[1] = the FIRST two \\b\\d\\b tokens after the address line). Unlike KnightFrank (nums[-3]/nums[-2], which reaches backward into the price), Chestertons takes the first digits immediately after the address (beds/baths precede sqft+price), so these derived cards happen to parse beds/baths CORRECTLY. The assertions in TestChestertonsParsing pin these exact values to catch any drift in the heuristic or the card shape.",
+  "cards": [
+    {
+      "_note": "Long Let 2-bed flat, bare-'ft' sqft (the format Chestertons emits today). nums after addr=['2','2','1','4'] -> beds=nums[0]=2, baths=nums[1]=2; size from '1450 ft'.",
+      "href": "/properties/21263453/lettings/SVL210100",
+      "address": "Oakfield Street, Chelsea, SW10",
+      "letType": "Long Let",
+      "textContent": "Long Let\nOakfield Street, Chelsea, SW10\n2\n2\n1\n1450 ft\n£4,950\n(pcm)\nFees apply"
+    },
+    {
+      "_note": "NUMBER-PREFIXED STREET '3 Riverlight Quay' — the address line is detected by comma+letters, so the leading '3' is EXCLUDED from beds. 1-bed. nums after addr=['1','1','1','2'] -> beds=nums[0]=1, baths=nums[1]=1.",
+      "href": "/properties/30405060/lettings/RIV300100",
+      "address": "3 Riverlight Quay, Nine Elms, SW8",
+      "letType": "Long Let",
+      "textContent": "Long Let\n3 Riverlight Quay, Nine Elms, SW8\n1\n1\n1\n720 ft\n£2,600\n(pcm)\nFees apply"
+    },
+    {
+      "_note": "SHORT LET card (letType 'Short Let' -> property_type 'short let'), WEEKLY price ('pw'), 3-bed. nums=['3','2','2','1','8','2'] -> beds=nums[0]=3, baths=nums[1]=2; size from '1820 ft'.",
+      "href": "/properties/40506070/lettings/CAD400100",
+      "address": "Cadogan Square, Knightsbridge, SW1X",
+      "letType": "Short Let",
+      "textContent": "Short Let\nCadogan Square, Knightsbridge, SW1X\n3\n2\n2\n1820 ft\n£3,500\npw\nFees apply"
+    },
+    {
+      "_note": "Long Let card WITHOUT sqft (~71% Chestertons coverage). 2-bed. nums=['2','1','1','3'] -> beds=nums[0]=2, baths=nums[1]=1; size_sqft=None.",
+      "href": "/properties/50607080/lettings/PIM500100",
+      "address": "Lupus Street, Pimlico, SW1V",
+      "letType": "Long Let",
+      "textContent": "Long Let\nLupus Street, Pimlico, SW1V\n2\n1\n1\n£3,250\n(pcm)\nFees apply"
+    }
+  ]
+}

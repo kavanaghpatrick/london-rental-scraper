@@ -34,10 +34,21 @@ const REQUIRED_HARNESSES = [
   'similar_query_test.mjs',         // /api/similar real query vs service-container Postgres
   'predict_sale_estimate_test.mjs', // /api/predict-sale real sale_v1 estimate (Inc4a; no DB)
   'similar_sale_query_test.mjs',    // /api/similar-sale real query vs Postgres (Inc4a; SSTC+empty)
+  // --- Wave 2 (Group SERVING): the route-HANDLER + dual-SQL parity + query-bug harnesses.
+  // Pinned here so they can't be dropped from ci.yml's dashboard-routes job and silently
+  // stop protecting the serving routes. Membership here is what makes Invariant 1b's
+  // orphan check pass for these *_test.mjs files (they MUST also appear in ci.yml).
+  'route_handler_test.mjs',         // A6 — invoke the real RENTAL Next.js handlers (400/CORS/503/500-vs-empty)
+  'route_handler_sale_test.mjs',    // A6 — invoke the real FOR-SALE handlers (sale-specific 400/503 divergences)
+  'dual_sql_equality_test.mjs',     // A7 — db.ts↔similarQuery.js + saleDb.ts↔saleSimilarQuery.js byte-equality
+  'serving_query_bug_doc_test.mjs', // R6/A8 — no-space-postcode + stale-peer xfail documenting tests
 ];
 
 // Helper/guard files that are NOT standalone `node …` harnesses.
-const NOT_STANDALONE = new Set(['dashboard_routes_guard.mjs']);
+// _route_loader.mjs is the Wave-2 A6 helper (transpiles + loads route.ts, imported by the
+// route-handler harnesses) — it exports a function and is not invoked as a `node …`
+// harness, so it is excluded from the orphan check (it also lacks the `_test.mjs` suffix).
+const NOT_STANDALONE = new Set(['dashboard_routes_guard.mjs', '_route_loader.mjs']);
 
 let failures = 0;
 const fail = (m) => { failures++; console.log(`FAIL ${m}`); };
