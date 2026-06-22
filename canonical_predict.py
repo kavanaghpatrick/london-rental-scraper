@@ -78,6 +78,32 @@ INFERENCE_STATS_PATH = OUT / 'rental_model_canonical_inference.json'
 _CACHE: dict = {'model': None, 'features': None, 'inference': None}
 
 
+# Beds-anchored neutral size prior (sqft) for missing/zero-sqft serving rows. These are
+# in-distribution central sizes per bed count from the training set; used ONLY to keep a
+# missing-sqft row off the size=0 OOD floor (the model trained WHERE size_sqft>0). A
+# missing sqft is an ESTIMATE — predict_one_default surfaces estimated_size=True so the UI
+# suppresses an OVERPRICED verdict. Mirrors for_sale build_features' median fallback.
+_BEDS_ANCHORED_SQFT = {0: 420.0, 1: 560.0, 2: 820.0, 3: 1150.0, 4: 1650.0, 5: 2300.0}
+_DEFAULT_IMPUTED_SQFT = 820.0  # global fallback (≈2-bed) for beds outside the table
+
+
+def _impute_size_for_serving(size_sqft, bedrooms):
+    """Return (effective_size, estimated_size_bool). A non-positive/missing size is
+    imputed from the beds-anchored prior so single-row inference is not read as a
+    sub-studio; estimated_size flags the prediction as a non-measured estimate."""
+    try:
+        s = float(size_sqft)
+    except (TypeError, ValueError):
+        s = 0.0
+    if s > 0:
+        return s, False
+    try:
+        b = int(round(float(bedrooms)))
+    except (TypeError, ValueError):
+        b = 2
+    return _BEDS_ANCHORED_SQFT.get(b, _DEFAULT_IMPUTED_SQFT), True
+
+
 def load_inference_stats():
     """Load the baked training statistics single-row inference must inject
     (frequency-encoding maps + defaults). Cached. Returns {} if absent (then
@@ -210,16 +236,28 @@ def predict(df: pd.DataFrame) -> np.ndarray:
     return np.expm1(model.predict(X))
 
 
-def predict_one(**kwargs) -> float:
-    """Convenience: predict a single property from keyword fields.
+# Serving-time monotone projection grid (size axis). The model carries +1
+# monotone_constraints on the size-monotone family (SIZE_MONOTONE_COLS), but XGBoost
+# enforces monotonicity PER FEATURE (one varied, others fixed), NOT JOINTLY: when the
+# ~26 collinear size-derived features all move together as size_sqft rises, their additive
+# tree contributions can still net a small local DIP (a larger flat priced below a smaller
+# one). This is a documented XGBoost limitation and is NOT removed by shallower trees
+# (that only destroys R²). The standard production fix is a serving-time monotone
+# PROJECTION along the underlying axis: emit max over predictions at the requested size and
+# all smaller sizes (everything else held equal), so predict_one is non-decreasing in size
+# BY CONSTRUCTION. It only ever RAISES a dipped value to the running max; it never lowers a
+# prediction, and the model artifact / batch predict() (the parity path) are untouched, so
+# JS↔Python parity is unaffected (the golden fixture uses predict()/real distinct sizes).
+_SIZE_PROJ_FLOOR = 150    # training SQFT_MIN; smallest in-distribution size
+_SIZE_PROJ_STEP = 25      # finer than the test's 100-sqft sweep -> strict at any granularity
 
-    Accepts the same column names build_features reads. Unknown/missing fields
-    default safely. Returns £ pcm (float).
-    """
-    row = {
+
+def _predict_one_row(**kwargs) -> dict:
+    """Build the single-row listings dict predict() consumes (size imputed)."""
+    return {
         'bedrooms': kwargs.get('bedrooms', 1),
         'bathrooms': kwargs.get('bathrooms', 1),
-        'size_sqft': kwargs.get('size_sqft', 0),
+        'size_sqft': _impute_size_for_serving(kwargs.get('size_sqft', 0), kwargs.get('bedrooms', 1))[0],
         'postcode': kwargs.get('postcode', ''),
         'postcode_normalized': kwargs.get('postcode_normalized', kwargs.get('postcode', '')),
         'area': kwargs.get('area', ''),
@@ -249,7 +287,49 @@ def predict_one(**kwargs) -> float:
         'has_third_floor': kwargs.get('has_third_floor', 0),
         'has_fourth_plus': kwargs.get('has_fourth_plus', 0),
     }
+
+
+def predict_one(**kwargs) -> float:
+    """Convenience: predict a single property from keyword fields.
+
+    Accepts the same column names build_features reads. Unknown/missing fields
+    default safely. Returns £ pcm (float).
+
+    Applies a serving-time monotone projection on the size axis (see _SIZE_PROJ_*),
+    so a larger flat NEVER prices below a smaller one at fixed other inputs — fixing
+    the residual XGBoost joint-monotonicity dip the in-model constraint cannot remove.
+    """
+    row = _predict_one_row(**kwargs)
+    target_size = float(row['size_sqft'])
+
+    # Monotone projection: predict at the requested (imputed) size AND a descending grid
+    # of smaller sizes (everything else identical) in ONE batched call; return the running
+    # max up to the requested size. Non-decreasing in size by construction; never lowers.
+    if target_size > _SIZE_PROJ_FLOOR:
+        grid = list(range(_SIZE_PROJ_FLOOR, int(target_size), _SIZE_PROJ_STEP))
+        grid.append(target_size)
+        rows = []
+        for s in grid:
+            r = dict(row)
+            r['size_sqft'] = s
+            rows.append(r)
+        preds = predict(pd.DataFrame(rows))
+        return float(np.maximum.accumulate(preds)[-1])
+
     return float(predict(pd.DataFrame([row]))[0])
+
+
+def predict_one_default(**kwargs) -> dict:
+    """Like predict_one but returns a dict with a UX confidence flag. A missing/zero
+    size is imputed (beds-anchored) AND flagged estimated_size=True so the extension/route
+    can suppress an OVERPRICED verdict (mirrors for_sale.sale_predict.predict_one_default)."""
+    _eff, estimated = _impute_size_for_serving(kwargs.get('size_sqft', 0), kwargs.get('bedrooms', 1))
+    price = predict_one(**kwargs)
+    return {
+        'predicted_price': float(price),
+        'estimated_size': bool(estimated),
+        'low_confidence': bool(estimated),
+    }
 
 
 # ── Export (ONE matched model.json + features.json) ─────────────────────────

@@ -190,10 +190,12 @@ function loadBridge(html, { hostname, pathname }) {
   // The v20 FE frequency-encodes the postcode district (no per-district one-hot), so a
   // "geography collapse" shows up as postcode_freq snapping to the UNKNOWN/SW3 fallback
   // value instead of the real district's. Reference values from the committed model's
-  // POSTCODE_FREQ map: SW1W=0.027521879…, SW3 fillna=0.084062643…, UNKNOWN=0.122524182…
-  const SW1W_FREQ = 0.027521879318286504;
-  const SW3_FREQ = 0.08406264394288346;
-  const UNKNOWN_FREQ = 0.12252418240442192;
+  // POSTCODE_FREQ map (from the monotone-retrain on rentals.db, n=9402; regenerated
+  // inference.json + re-baked xgboost.js): SW1W=0.027547330…, SW3 fillna=0.082854711…,
+  // UNKNOWN(empty-postcode collapse)=0.144650074…
+  const SW1W_FREQ = 0.027547330355243566;
+  const SW3_FREQ = 0.08285471176345459;
+  const UNKNOWN_FREQ = 0.1446500744522442;
   // What the SAME rawFields would encode to if the postcode collapsed to empty (UNKNOWN)
   // — an independent recompute, so the check fails loudly if the real postcode is lost.
   const collapsed = XGBFeatures.buildFeatures({ ...rawFields, postcode: '', postcode_normalized: '' });

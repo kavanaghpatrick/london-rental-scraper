@@ -1174,7 +1174,8 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
   const safeExcludeId = excludeId ?? '__NO_MATCH__';
 
   // Query for similar listings with similarity scoring
-  // Only include listings seen in the last 7 days to avoid showing stale/removed listings
+  // Only include listings within 7 days of the data's own MAX(last_seen) (cycle-relative;
+  // frozen-snapshot-safe, not wall-clock) to avoid showing stale/removed listings
   const { rows } = await sql<SimilarListing>`
     WITH scored AS (
       SELECT
@@ -1217,7 +1218,17 @@ export async function getSimilarListings(params: SimilarListingsParams): Promise
         )::float as similarity_score
       FROM listings
       WHERE is_active = 1
-        AND SPLIT_PART(postcode, ' ', 1) = ${postcodeDistrict}
+        AND (
+          last_seen IS NULL
+          OR last_seen::timestamp >= (SELECT MAX(last_seen::timestamp) FROM listings) - INTERVAL '7 days'
+        )
+        AND UPPER(
+          COALESCE(
+            SUBSTRING(REPLACE(postcode, ' ', '') FROM '^([A-Z]{1,2}[0-9][0-9A-Z]?)[0-9][A-Z]{2}$'),
+            SUBSTRING(REPLACE(postcode, ' ', '') FROM '^([A-Z]{1,2}[0-9][0-9A-Z]?)$'),
+            SPLIT_PART(postcode, ' ', 1)
+          )
+        ) = ${postcodeDistrict}
         AND bedrooms BETWEEN ${minBedrooms} AND ${maxBedrooms}
         AND price_pcm BETWEEN ${priceRangeMin} AND ${priceRangeMax}
         AND price_pcm > 0

@@ -228,6 +228,20 @@ jobs:
                   AND is_active = 1
               """)
               marked = cursor.rowcount
+              # >50% ABORT (defense-in-depth, mirrors cli/main.py mark_inactive 765-781).
+              # The cycle-relative cutoff already prevents the frozen-snapshot 100% wipe; this
+              # catches a DIFFERENT class — a mis-dated MAX(last_seen) sweeping the cutoff past
+              # most rows. Measure against the ACTIVE set (same dilution lesson as A13). is_active
+              # is reversible so we rollback (never commit a mass flip) and fail the step.
+              cursor.execute("SELECT COUNT(*) FROM listings WHERE is_active = 1")
+              active_after = cursor.fetchone()[0]
+              active_before = active_after + marked
+              if active_before > 0 and marked > 0.5 * active_before:
+                  conn.rollback()
+                  conn.close()
+                  print(f"::error::mark-inactive would flip {marked}/{active_before} "
+                        f"({100*marked/active_before:.0f}%) of active listings (>50%) — refusing, rolled back")
+                  raise SystemExit(1)
               conn.commit()
 
               if marked > 0:
@@ -345,8 +359,10 @@ jobs:
               conn.close()
               raise SystemExit(0)
 
-          # Total rows for the delta guard (whole table, matches the standalone scripts).
-          cur.execute("SELECT COUNT(*) FROM listings")
+          # Denominator MUST be the candidate set the proposal is drawn from (active, priced),
+          # not COUNT(*) whole table — inactive rows dilute the fraction and the 10% guard
+          # never trips on an active-set over-delete (denominator dilution, A13).
+          cur.execute("SELECT COUNT(*) FROM listings WHERE is_active = 1 AND price_pcm > 0")
           total = cur.fetchone()[0]
 
           def _do_delete(ids):

@@ -723,12 +723,13 @@
       if (currentSite === SITES.CHESTERTONS && /\/properties\/\d+\/sales\//.test(u)) {
         return 'sale';
       }
-      // Savills: the /property-detail/ URL is IDENTICAL for rent and sale, and the
-      // page is a Next.js SSG shell whose pageProps hydrate client-side — so the listing
-      // blob carries no transactionType/tenure the extractor can read. The ONLY reliable
-      // STATIC sale marker the capture phase (2026-06-22) found is the <head> og:title /
-      // meta description: "... | Property for sale | Savills" (rental: "... | Property to
-      // rent | Savills"). Read it first; this is the confirmed real-page signal.
+      // Savills: the /property-detail/ URL is IDENTICAL for rent and sale. The listing
+      // blob in __NEXT_DATA__.props.initialReduxState.propertyDetail.property does carry a
+      // BuyOrRent/RentBasis flag (read by extractPropertyDataSavills for the FIELDS), but
+      // detectTenure deliberately stays on the STATIC <head> signal so it works even before
+      // hydration / when the blob is unavailable. The reliable STATIC sale marker the capture
+      // phase (2026-06-22) found is the <head> og:title / meta description: "... | Property
+      // for sale | Savills" (rental: "... | Property to rent | Savills"). Read it first.
       if (currentSite === SITES.SAVILLS) {
         try {
           const og = document.querySelector('meta[property="og:title"]');
@@ -1978,6 +1979,33 @@
     const mainContent = document.querySelector('main, [role="main"], .property-details, article') || document.body;
     const pageText = mainContent.innerText || '';
 
+    // PRIMARY: Savills /property-detail/ is a Next.js shell whose FULL listing blob lives
+    // in __NEXT_DATA__.props.initialReduxState.propertyDetail.property (present on BOTH rent
+    // and sale; pageProps is empty but initialReduxState is NOT). The visible beds render as
+    // <span>4</span><span>Bedrooms</span> (non-adjacent) so the pageText regex misses them,
+    // and there is no <main> so the regex even scopes to a cookie <article>. Read the blob.
+    try {
+      const ndEl = document.getElementById('__NEXT_DATA__');
+      if (ndEl && ndEl.textContent) {
+        const prop = JSON.parse(ndEl.textContent)?.props?.initialReduxState?.propertyDetail?.property;
+        if (prop) {
+          if (Number.isFinite(prop.Bedrooms))   data.bedrooms   = prop.Bedrooms;   // 0 == studio, valid
+          if (Number.isFinite(prop.Bathrooms))  data.bathrooms  = prop.Bathrooms;
+          if (Number.isFinite(prop.Receptions)) data.receptions = prop.Receptions;
+          if (prop.SizeSqFt > 0) data.sizings = [{ minimumSize: Math.round(prop.SizeSqFt), unit: 'sqft' }];
+          const addr = [prop.AddressLine1, prop.AddressLine2].filter(Boolean).join(', ');
+          if (addr) data.address = { displayAddress: addr };
+          if (Number.isFinite(prop.Latitude) && Number.isFinite(prop.Longitude)) {
+            data.location = { latitude: prop.Latitude, longitude: prop.Longitude };
+          }
+          // Lump-sum price string with NO frequency token so detectTenure's no-freq sale path holds.
+          const pstr = prop.InvariantFullPriceText || prop.DisplayPriceText ||
+                       (prop.Price ? `£${Math.round(prop.Price).toLocaleString('en-GB')}` : '');
+          if (pstr) data.prices = { primaryPrice: pstr };
+        }
+      }
+    } catch (e) { /* fall through to the regex/JSON-LD/DOM fallbacks below */ }
+
     // Try JSON-LD first
     for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
       try {
@@ -2008,48 +2036,56 @@
       data.address = { displayAddress: pageTitle };
     }
 
-    // Price - use regex on page text (more reliable)
-    const priceMatch = pageText.match(/£([\d,]+)\s*(?:pcm|pw|per\s*(?:calendar\s*)?month|per\s*week|monthly|weekly)?/i);
-    if (priceMatch) {
-      data.prices = { primaryPrice: priceMatch[0] };
-      log(' Savills price found:', priceMatch[0]);
-    } else {
-      // Fallback to DOM selector
-      const priceEl = document.querySelector('.sv-property-header__price, .sv-pdp-hero__price, .property-price, [class*="price"]');
-      if (priceEl) {
-        data.prices = { primaryPrice: priceEl.textContent.trim() };
+    // Price - use regex on page text (more reliable). Fill-only-if-absent: the
+    // __NEXT_DATA__ blob price (set above) wins; this runs only when the blob is missing.
+    if (!data.prices) {
+      const priceMatch = pageText.match(/£([\d,]+)\s*(?:pcm|pw|per\s*(?:calendar\s*)?month|per\s*week|monthly|weekly)?/i);
+      if (priceMatch) {
+        data.prices = { primaryPrice: priceMatch[0] };
+        log(' Savills price found:', priceMatch[0]);
+      } else {
+        // Fallback to DOM selector
+        const priceEl = document.querySelector('.sv-property-header__price, .sv-pdp-hero__price, .property-price, [class*="price"]');
+        if (priceEl) {
+          data.prices = { primaryPrice: priceEl.textContent.trim() };
+        }
       }
     }
 
-    // Bedrooms/Bathrooms - regex on page text
+    // Bedrooms/Bathrooms - regex on page text. Fill-only-if-absent: the __NEXT_DATA__
+    // blob (set above) wins; these fire only when the blob was missing. Beds can be a
+    // valid 0 (studio) from the blob, so guard on `== null` (NOT falsiness).
     const bedsMatch = pageText.match(/(\d+)\s*(?:bed(?:room)?s?)/i);
-    if (bedsMatch) {
+    if (bedsMatch && data.bedrooms == null) {
       data.bedrooms = parseInt(bedsMatch[1], 10);
     }
     const bathsMatch = pageText.match(/(\d+)\s*(?:bath(?:room)?s?)/i);
-    if (bathsMatch) {
+    if (bathsMatch && data.bathrooms == null) {
       data.bathrooms = parseInt(bathsMatch[1], 10);
     }
     const receptionsMatch = pageText.match(/(\d+)\s*(?:reception)/i);
-    if (receptionsMatch) {
+    if (receptionsMatch && data.receptions == null) {
       data.receptions = parseInt(receptionsMatch[1], 10);
     }
 
-    // Size - Savills usually has good sqft data
-    const sizeMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i);
-    if (sizeMatch) {
-      const sqft = parseInt(sizeMatch[1].replace(/,/g, ''), 10);
-      if (sqft >= 100 && sqft <= 50000) {
-        data.sizings = [{ minimumSize: sqft, unit: 'sqft' }];
-      }
-    }
-    // Also try sqm
+    // Size - Savills usually has good sqft data. Fill-only-if-absent: the __NEXT_DATA__
+    // blob SizeSqFt (set above) wins; this regex runs only when the blob was missing.
     if (!data.sizings) {
-      const sqmMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*m|sqm|m²)/i);
-      if (sqmMatch) {
-        const sqm = parseInt(sqmMatch[1].replace(/,/g, ''), 10);
-        if (sqm >= 10 && sqm <= 5000) {
-          data.sizings = [{ minimumSize: Math.round(sqm * 10.764), unit: 'sqft' }];
+      const sizeMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i);
+      if (sizeMatch) {
+        const sqft = parseInt(sizeMatch[1].replace(/,/g, ''), 10);
+        if (sqft >= 100 && sqft <= 50000) {
+          data.sizings = [{ minimumSize: sqft, unit: 'sqft' }];
+        }
+      }
+      // Also try sqm
+      if (!data.sizings) {
+        const sqmMatch = pageText.match(/(\d{1,5}(?:,\d{3})?)\s*(?:sq\.?\s*m|sqm|m²)/i);
+        if (sqmMatch) {
+          const sqm = parseInt(sqmMatch[1].replace(/,/g, ''), 10);
+          if (sqm >= 10 && sqm <= 5000) {
+            data.sizings = [{ minimumSize: Math.round(sqm * 10.764), unit: 'sqft' }];
+          }
         }
       }
     }

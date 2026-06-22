@@ -65,9 +65,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Extract postcode district using regex (handles "SW3 4AJ" and "SW34AJ" formats)
-    // Matches "SW1A" from "SW1A 1AA", "W1" from "W1 4BB", "EC1" from "EC1A1BB"
-    const postcodeMatch = postcode.match(/^([A-Z]{1,2}[0-9][0-9A-Z]?)/i);
+    // Extract postcode district using regex (handles "SW3 4AJ" and "SW34AJ" formats).
+    // The lookahead `(?=\s|[0-9]|$)` stops the outward code BEFORE the incode digit so a
+    // no-space 'SW34AJ' yields 'SW3' (NOT the greedy 'SW34'). Mirrors the Python _PC_RE.
+    // Matches "SW1A" from "SW1A 1AA", "W1" from "W1 4BB", "EC1A" from "EC1A1BB".
+    const postcodeMatch = postcode.match(/^([A-Z]{1,2}[0-9][0-9A-Z]?)(?=\s|[0-9]|$)/i);
     const postcodeDistrict = postcodeMatch
       ? postcodeMatch[1].toUpperCase()
       : postcode.split(' ')[0].toUpperCase();

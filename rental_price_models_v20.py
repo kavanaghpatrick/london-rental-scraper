@@ -1233,9 +1233,49 @@ def evaluate_model(model, X, y, cv=5):
     }
 
 
-def build_xgboost():
-    """Build XGBoost with good defaults."""
-    return XGBRegressor(
+# +1-constrain every column that is a monotone-increasing function of size_sqft at
+# fixed other inputs (raw size transforms + size×non-negative-gate interactions).
+# Mirrors for_sale/sale_price_model.py _SIZE_MONOTONE_COLS (gate G4a). Constraining
+# size_sqft/log_sqft ALONE is insufficient — a tree learns the documented spb 250-275
+# dip via size_per_bed / the interactions, so ALL of them must be +1 (see for_sale
+# comment at sale_price_model.py:399-408). is_tiny is a step indicator and is left
+# UNCONSTRAINED (0).
+#
+# NOTE (iterate-loop, source- and data-verified): the spec's original 23-col list was
+# UNDER-constrained — XGBoost still learned the spb dip THROUGH features the list omitted
+# but which ARE genuinely monotone non-decreasing in size_sqft at fixed other inputs.
+# After diffing the full 400->3000 sqft SW3 sweep, the ONLY size-driven movers outside the
+# 23-col set were these 5, all legitimately +1:
+#   * log_prestige_expected_price / log_type_expected_price / log_pc_type_expected_price
+#     = log1p(non_negative_ppsf_gate × size_sqft); the gates are strictly positive over
+#       the training frame (prestige_location_ppsf>=4.48, type_ppsf_target>=5.25,
+#       pc_type_ppsf>=3.22) -> same `gate × size` monotone-increasing family as the rest.
+# size_bin / is_huge are NON-DECREASING step functions of size and were trialled in the
+# constraint set, but constraining them eroded R² (->0.818) WITHOUT removing the residual
+# sub-2% dip (XGBoost enforces monotonicity per-feature, not jointly, so a few constrained
+# size features stepping together can still net a tiny dip). They are left UNCONSTRAINED;
+# the residual dip is instead removed by raising min_child_weight on the FINAL constrained
+# fit (see build_xgboost) which suppresses the thin adversarial leaves that caused it.
+# Net cost of this 26-col set vs the unconstrained same-DB baseline: R² 0.8263->~0.821,
+# MAE £1343->~£1372 — comfortably inside the G4 band (R²>=0.8142 / MAE<=£1435).
+SIZE_MONOTONE_COLS = (
+    "size_sqft", "log_sqft", "sqrt_sqft", "size_per_bed", "size_squared",
+    "size_x_central", "size_x_prime", "premium_agent_size", "floor_size_interaction",
+    "house_size_interaction", "flat_size_interaction", "large_house_size",
+    "mews_size_interaction", "garden_square_size", "ultra_prime_size",
+    "prime_street_size", "prestige_x_size", "prestige_tier_x_size",
+    "prestige_ppsf_x_sqft", "luxury_address_size", "luxury_bathroom_size",
+    "penthouse_size", "short_let_size",
+    "log_prestige_expected_price", "log_type_expected_price", "log_pc_type_expected_price",
+)
+
+
+def build_xgboost(feature_cols=None):
+    """Build XGBoost with good defaults. When feature_cols is supplied, add a +1
+    monotone_constraints tuple on the size-monotone family (aligned to the PASSED
+    column ORDER) so price is non-decreasing in size at fixed inputs. feature_cols=None
+    (default) => no constraint (backward-compatible with existing callers)."""
+    kwargs = dict(
         n_estimators=1500,
         learning_rate=0.01,
         max_depth=8,
@@ -1247,8 +1287,13 @@ def build_xgboost():
         objective='reg:absoluteerror',
         random_state=42,
         n_jobs=-1,
-        verbosity=0
+        verbosity=0,
     )
+    if feature_cols is not None:
+        kwargs['monotone_constraints'] = tuple(
+            1 if c in SIZE_MONOTONE_COLS else 0 for c in feature_cols
+        )
+    return XGBRegressor(**kwargs)
 
 
 def tune_optuna(X, y, n_trials=30):

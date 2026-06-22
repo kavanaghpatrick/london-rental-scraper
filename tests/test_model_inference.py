@@ -503,16 +503,18 @@ def test_anchors_within_hand_validated_bands(cp, anchors):
 
 # ── A2/T6: monotonicity in size_sqft ────────────────────────────────────────
 #
-# CURRENT STATE (source-verified on the committed v20 model): NON-MONOTONIC.
-# Sweeping a fixed SW3 3-bed over 400..3000 sqft, predictions DIP at 700->800,
-# 800->900, 900->1000 (the documented size_per_bed spb 250-275 cliff — MEMORY
-# v20-size-per-bed-nonmonotonic). The for-sale model has monotone_constraints on
-# size; the rental model does NOT. We therefore:
-#   * assert the CURRENT (broken) behavior as a HARD gate (locks the known defect
-#     so it can't get *worse* silently and documents exactly where it dips), and
-#   * xfail(strict=False) the DESIRED full-monotonicity assertion so it flips to a
-#     hard gate automatically once a future retrain adds monotone_constraints.
-# We do NOT retrain the production model in this pass.
+# FIXED. Two layers (both shipped this pass):
+#   1. TRAINING: the v20 retrain adds +1 monotone_constraints on the size-monotone
+#      feature family (rental_price_models_v20.SIZE_MONOTONE_COLS), mirroring for_sale
+#      gate G4a. This removes the bulk of the documented spb 250-275 dip.
+#   2. SERVING: XGBoost enforces monotonicity PER FEATURE, not jointly across the ~26
+#      collinear size transforms, so a small residual dip survives the constraint (a
+#      documented XGBoost limitation; shallower trees don't fix it without wrecking R²).
+#      canonical_predict.predict_one applies a serving-time monotone PROJECTION on the
+#      size axis (running max over smaller sizes) so the single-property estimate is
+#      non-decreasing in size BY CONSTRUCTION. predict()/batch + the golden parity path
+#      are untouched, so JS↔Python parity stays 0/0.
+# This is now a HARD gate (xfail removed).
 
 def _size_sweep(cp, sizes):
     base = dict(bedrooms=3, bathrooms=2, postcode='SW3', postcode_normalized='SW3',
@@ -522,38 +524,6 @@ def _size_sweep(cp, sizes):
     return [_q(cp.predict_one, size_sqft=s, **base) for s in sizes]
 
 
-def test_size_monotonicity_current_behavior_has_known_dip(cp):
-    """DOCUMENTS the known non-monotonic defect as a HARD gate (current reality):
-    on the committed v20 model, a fixed SW3 3-bed predicts a LOWER rent for a
-    larger flat somewhere in the 700-1000 sqft range (the spb 250-275 cliff).
-    If a future retrain FIXES this, this test goes green-but-wrong and the paired
-    xfail below flips to PASS — at which point delete this test and unmark that
-    one. Until then this proves the dip is real (test is non-vacuous)."""
-    sizes = list(range(400, 3001, 100))
-    preds = _size_sweep(cp, sizes)
-    dips = [
-        (s_lo, s_hi, p_lo, p_hi)
-        for (s_lo, p_lo), (s_hi, p_hi) in zip(zip(sizes, preds), zip(sizes[1:], preds[1:]))
-        if p_hi < p_lo
-    ]
-    assert dips, (
-        "expected the known size non-monotonicity dip on v20 but found none — "
-        "the model may have been retrained with monotone_constraints; if so, "
-        "remove this test and unmark test_size_monotonically_non_decreasing"
-    )
-    # The headline cliff is in the 700-1000 sqft window (the documented spb defect).
-    assert any(700 <= s_lo <= 1000 for (s_lo, _s_hi, _plo, _phi) in dips), (
-        f"non-monotonic dip moved out of the documented 700-1000 sqft window: {dips}"
-    )
-
-
-@pytest.mark.xfail(
-    reason="rental v20 is non-monotonic in size (no monotone_constraints; "
-           "documented spb 250-275 cliff, MEMORY v20-size-per-bed-nonmonotonic). "
-           "Tracked: add monotone_constraints on size_sqft/log_sqft on the next "
-           "retrain (mirror for_sale gate G4a). Flips to a hard gate then.",
-    strict=False,
-)
 def test_size_monotonically_non_decreasing(cp):
     """DESIRED behavior (gate once retrained): a larger flat must never predict a
     lower rent than a smaller one, all else equal. XFAIL today — see reason."""
@@ -567,16 +537,14 @@ def test_size_monotonically_non_decreasing(cp):
 
 # ── A3/T7: size=0 / missing-sqft serving ────────────────────────────────────
 #
-# CURRENT STATE (source-verified): DEGENERATE. A normal SW3 2-bed with size_sqft=0
-# (or omitted — predict_one defaults size_sqft=0) prices at ~£2,323 pcm, BELOW the
-# same flat at 500 sqft (~£4,295) — i.e. the model reads a missing sqft as a
-# sub-studio micro-flat, and predict_one returns a BARE float with NO low_confidence
-# /estimated flag. ~28.7% of stock is missing sqft (MEMORY model-eval-strong-weak),
-# so this silently under-prices a quarter of requests. We:
-#   * assert the CURRENT degenerate behavior as a HARD gate (locks it, non-vacuous), and
-#   * xfail(strict=False) the DESIRED behavior (size=0 should price WITHIN the beds/
-#     postcode band OR surface an estimated/low-confidence flag) so it flips to a
-#     hard gate after the fix (size-imputation or a confidence flag on retrain/serving).
+# FIXED (canonical_predict._impute_size_for_serving): a missing/zero sqft is imputed
+# from the beds-anchored prior BEFORE the model sees the row, so a normal SW3 2-bed
+# with size_sqft=0 no longer prices as a sub-studio micro-flat. predict_one stays a
+# bare float (contract preserved); predict_one_default surfaces estimated_size /
+# low_confidence so the UI can suppress an OVERPRICED verdict. ~28.7% of stock is
+# missing sqft (MEMORY model-eval-strong-weak). These are now HARD gates:
+#   * size=0 must price >= the 500-sqft floor (no sub-studio read), and
+#   * predict_one_default must flag a missing sqft as an estimate (and NOT flag a real one).
 
 def _sw3_2bed(cp, size_sqft):
     return _q(
@@ -588,54 +556,35 @@ def _sw3_2bed(cp, size_sqft):
     )
 
 
-def test_size_zero_current_behavior_is_degenerate_below_smallest(cp):
-    """DOCUMENTS the known size=0 degeneracy as a HARD gate (current reality):
-    a SW3 2-bed with size_sqft=0 prices BELOW the same flat at a real 500 sqft —
-    proving the model treats missing sqft as a sub-studio rather than imputing a
-    sane size. size_sqft=0 and size-omitted must agree (predict_one defaults to 0).
-    Flip to the desired test below once size imputation / a confidence flag ships."""
-    p_zero = _sw3_2bed(cp, 0)
-    p_omitted = _q(
-        cp.predict_one, bedrooms=2, bathrooms=1,
-        postcode='SW3', postcode_normalized='SW3', area='Chelsea',
-        property_type='flat', property_type_std='flat',
-        address='Cadogan Square, London, SW3', source='rightmove',
-        agent_brand='unknown',
-    )  # size_sqft omitted -> predict_one default 0
-    p_500 = _sw3_2bed(cp, 500)
-    assert p_zero == pytest.approx(p_omitted, rel=1e-6), (
-        f"size=0 (£{p_zero:.0f}) and size-omitted (£{p_omitted:.0f}) must match "
-        "(predict_one defaults size_sqft=0)"
-    )
-    assert p_zero < p_500, (
-        f"expected the known degenerate size=0 behavior (£{p_zero:.0f} below the "
-        f"500-sqft price £{p_500:.0f}) but size=0 priced at/above 500 sqft — the "
-        "model may have gained size imputation; if so, flip to "
-        "test_size_zero_priced_within_band_or_flagged"
-    )
-    assert p_zero > 0 and math.isfinite(p_zero)
-
-
-@pytest.mark.xfail(
-    reason="rental v20 prices a missing/zero sqft as a sub-studio micro-flat "
-           "(~£2.3k for a SW3 2-bed, below the 500-sqft price) and predict_one "
-           "returns no low_confidence/estimated flag. ~28.7% of stock lacks sqft. "
-           "Tracked: impute a beds-anchored size OR surface an estimated flag on "
-           "retrain/serving (MEMORY sqft-signal-deepdive UX guard). Hard gate then.",
-    strict=False,
-)
 def test_size_zero_priced_within_band_or_flagged(cp):
-    """DESIRED behavior (gate once fixed): a normal SW3 2-bed with NO sqft must NOT
-    price as a sub-studio. It should land within a plausible beds/postcode band
-    (here: at least the real 500-sqft price for the same flat, i.e. no worse than
-    the smallest realistic unit) OR predict_one should expose a confidence flag.
-    XFAIL today — predict_one returns a bare float and prices below 500 sqft."""
+    """HARD gate (fixed): a normal SW3 2-bed with NO sqft must NOT price as a
+    sub-studio. The beds-anchored imputation lands it within a plausible beds/postcode
+    band — at least the real 500-sqft price for the same flat (no worse than the
+    smallest realistic unit)."""
     p_zero = _sw3_2bed(cp, 0)
     p_500 = _sw3_2bed(cp, 500)
     assert p_zero >= p_500, (
         f"missing-sqft SW3 2-bed priced £{p_zero:.0f} — below the 500-sqft floor "
         f"£{p_500:.0f}; missing sqft is being read as a sub-studio"
     )
+
+
+def test_size_zero_surfaces_estimated_flag(cp):
+    """predict_one_default must flag a missing/zero sqft as an estimate so the UI can
+    suppress OVERPRICED; a real sqft must NOT be flagged."""
+    est = cp.predict_one_default(
+        size_sqft=0, bedrooms=2, bathrooms=1, postcode='SW3',
+        postcode_normalized='SW3', area='Chelsea', property_type='flat',
+        property_type_std='flat', address='Cadogan Square, London, SW3',
+        source='rightmove', agent_brand='unknown')
+    assert est['estimated_size'] is True and est['low_confidence'] is True
+    assert est['predicted_price'] > 0 and math.isfinite(est['predicted_price'])
+    real = cp.predict_one_default(
+        size_sqft=900, bedrooms=2, bathrooms=1, postcode='SW3',
+        postcode_normalized='SW3', area='Chelsea', property_type='flat',
+        property_type_std='flat', address='Cadogan Square, London, SW3',
+        source='rightmove', agent_brand='unknown')
+    assert real['estimated_size'] is False
 
 
 # ── M2/T13: location-sensitivity (geography-collapse guard) ─────────────────

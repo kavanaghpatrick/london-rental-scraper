@@ -102,7 +102,7 @@ def cv_metrics(X, y, n_splits=5):
     yl = np.log1p(y)
     preds, actual = [], []
     for tr, va in kf.split(X):
-        m = v20.build_xgboost()
+        m = v20.build_xgboost(list(X.columns))
         m.fit(X.iloc[tr], yl.iloc[tr])
         preds.extend(np.expm1(m.predict(X.iloc[va])))
         actual.extend(y.iloc[va].values)
@@ -147,7 +147,7 @@ def main():
 
     print("[Fitting final model on ALL rows]")
     t0 = time.time()
-    final = v20.build_xgboost()
+    final = v20.build_xgboost(feat_cols)
     final.fit(X, np.log1p(y))
     fit_time = round(time.time() - t0, 1)
     print(f"  fit in {fit_time}s")

@@ -113,6 +113,34 @@ _WALLCLOCK_SQLITE = f"""
 """
 
 
+class MarkInactiveAborted(SystemExit):
+    """Raised by the ported >50% abort. Subclasses SystemExit because the workflow raises
+    SystemExit(1) on the over-flip; tests assert on SystemExit."""
+
+
+def _mark_inactive_with_abort(cur, conn):
+    """Python transliteration of the SHIPPED daily-scrape 'Mark stale listings inactive'
+    step's executable logic: run the cycle-relative UPDATE, then compute the >50% abort
+    against the ACTIVE set BEFORE committing. On trip -> rollback + SystemExit(1); else the
+    flip stands. Mirrors .github/workflows/daily-scrape.yml + cli/main.py mark_inactive
+    765-781. Returns the number of rows marked on success.
+
+    is_active is reversible, so a trip rolls back (never commits a mass flip) — this catches
+    a DIFFERENT class than the cycle-relative cutoff: a mis-dated MAX(last_seen) sweeping the
+    cutoff past most rows. Measured against the ACTIVE set (same dilution lesson as A13)."""
+    cur.execute(_CYCLE_RELATIVE_SQLITE)
+    marked = cur.rowcount
+    active_after = cur.execute(
+        "SELECT COUNT(*) FROM listings WHERE is_active = 1"
+    ).fetchone()[0]
+    active_before = active_after + marked
+    if active_before > 0 and marked > 0.5 * active_before:
+        conn.rollback()
+        raise MarkInactiveAborted(1)
+    conn.commit()
+    return marked
+
+
 @pytest.mark.unit
 def test_frozen_snapshot_marks_zero_rows():
     """All last_seen equal (frozen prod snapshot) -> ZERO rows flipped, however old
@@ -234,6 +262,65 @@ def test_already_inactive_rows_are_left_alone():
 
 
 @pytest.mark.unit
+def test_over_flip_aborts_and_rolls_back_active_set_unchanged():
+    """>50% ABORT (defense-in-depth): when MAX(last_seen) is advanced by a small fresh
+    cohort so the cycle-relative cutoff sweeps past MOST active rows, the ported abort
+    refuses to commit. It rolls back -> the active COUNT is UNCHANGED, and it raises
+    SystemExit. This catches a mis-dated MAX sweeping the cutoff past the bulk of the set.
+
+    Seed: 2 fresh rows at MAX (= today) + 18 rows 30 days old. Cutoff = MAX - 2 days, so the
+    18 old rows (90% of the 20 active) would flip — well over 50% -> MUST abort."""
+    rows = (
+        [(i, "2026-06-20T12:00:00", 1) for i in range(1, 3)]      # 2 fresh -> MAX
+        + [(i, "2026-05-21T12:00:00", 1) for i in range(3, 21)]   # 18 old (30d) -> would flip
+    )
+    conn, cur = _make_db(rows)
+    try:
+        active_before = cur.execute(
+            "SELECT COUNT(*) FROM listings WHERE is_active = 1"
+        ).fetchone()[0]
+        assert active_before == 20
+
+        with pytest.raises(SystemExit):
+            _mark_inactive_with_abort(cur, conn)
+
+        # ROLLED BACK: the active set is UNCHANGED (no mass flip committed).
+        active_after = cur.execute(
+            "SELECT COUNT(*) FROM listings WHERE is_active = 1"
+        ).fetchone()[0]
+        total = cur.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+    finally:
+        conn.close()
+
+    assert active_after == 20, "the >50% over-flip must be ROLLED BACK (active set intact)"
+    assert total == 20, "abort must never delete a row"
+
+
+@pytest.mark.unit
+def test_small_flip_under_threshold_commits_normally():
+    """Non-vacuous control: a LEGITIMATE small flip (<50% of active) is NOT aborted — the
+    cycle-relative mark commits and only the genuinely-stale rows go inactive. Proves the
+    >50% guard doesn't fire spuriously on normal operation."""
+    rows = (
+        [(i, "2026-06-20T12:00:00", 1) for i in range(1, 19)]    # 18 fresh -> MAX, stay active
+        + [(i, "2026-05-21T12:00:00", 1) for i in range(19, 21)]  # 2 old (30d) -> flip (2/20=10%)
+    )
+    conn, cur = _make_db(rows)
+    try:
+        marked = _mark_inactive_with_abort(cur, conn)  # must NOT raise
+        active_after = cur.execute(
+            "SELECT COUNT(*) FROM listings WHERE is_active = 1"
+        ).fetchone()[0]
+        total = cur.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+    finally:
+        conn.close()
+
+    assert marked == 2, "only the 2 genuinely-stale rows flip"
+    assert active_after == 18, "the 18 fresh rows stay active (committed normally)"
+    assert total == 20, "no rows deleted"
+
+
+@pytest.mark.unit
 def test_wallclock_form_WOULD_wipe_frozen_snapshot():
     """DEMONSTRATES THE BUG the fix removes: the OLD wall-clock predicate flips a
     frozen snapshot to 100% inactive. This guards against anyone reverting to NOW().
@@ -309,3 +396,23 @@ def test_workflow_sql_is_cycle_relative_not_wallclock():
             f"mark-inactive step contains a destructive op ({danger!r}); it must ONLY "
             f"flip the reversible is_active boolean, never remove rows."
         )
+
+    # >50% ABORT GUARD (defense-in-depth, ported from cli/main.py mark_inactive 765-781):
+    # the step must compute the marked fraction against the ACTIVE set and REFUSE to commit
+    # a mass flip. Pin the three load-bearing tokens so the guard can't silently regress out:
+    #   * the >50% threshold comparison (`> 0.5 * active...`),
+    #   * a rollback (never commit a mass flip),
+    #   * a non-zero exit (SystemExit(1)) so the step FAILS loudly.
+    assert re.search(r">\s*0\.5\s*\*\s*active", code), (
+        "mark-inactive step is missing the >50% abort threshold — it must refuse to commit "
+        "when `marked > 0.5 * active_before` (a mis-dated MAX sweeping the cutoff past most "
+        "active rows). Mirrors cli/main.py mark_inactive."
+    )
+    assert re.search(r"\brollback\b", code, re.IGNORECASE), (
+        "mark-inactive >50% abort must ROLL BACK the UPDATE (never commit a mass is_active "
+        "flip) before failing."
+    )
+    assert re.search(r"SystemExit\(\s*1\s*\)", code), (
+        "mark-inactive >50% abort must `raise SystemExit(1)` so the step FAILS loudly "
+        "instead of silently proceeding with a mass flip."
+    )

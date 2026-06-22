@@ -142,7 +142,17 @@ function buildSimilarQuery(params) {
         )::float as similarity_score
       FROM listings
       WHERE is_active = 1
-        AND SPLIT_PART(postcode, ' ', 1) = $11
+        AND (
+          last_seen IS NULL
+          OR last_seen::timestamp >= (SELECT MAX(last_seen::timestamp) FROM listings) - INTERVAL '7 days'
+        )
+        AND UPPER(
+          COALESCE(
+            SUBSTRING(REPLACE(postcode, ' ', '') FROM '^([A-Z]{1,2}[0-9][0-9A-Z]?)[0-9][A-Z]{2}$'),
+            SUBSTRING(REPLACE(postcode, ' ', '') FROM '^([A-Z]{1,2}[0-9][0-9A-Z]?)$'),
+            SPLIT_PART(postcode, ' ', 1)
+          )
+        ) = $11
         AND bedrooms BETWEEN $12 AND $13
         AND price_pcm BETWEEN $14 AND $15
         AND price_pcm > 0

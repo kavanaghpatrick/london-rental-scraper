@@ -1,32 +1,33 @@
 /**
- * R6 + A8 — serving-query bug DOCUMENTING tests (Wave 2, Group SERVING).
+ * R6 + A8 — serving-query FIX gates (Wave 2 deferred prod-behavior sign-off).
  *
- * These pin two KNOWN, currently-unfixed /api/similar(-sale) query bugs. The prod-SQL fix
- * is DEFERRED to a separate prod-behavior sign-off, so here we DOCUMENT the bug with an
- * xfail: we assert the DESIRED (fixed) behavior and mark it an EXPECTED FAILURE while the
- * bug is present. The harness stays GREEN as long as the bug is still there, and FLIPS RED
- * (XPASS) the moment the bug is fixed — that XPASS is the signal to delete the xfail and
- * convert it into a hard gate.
+ * These were DOCUMENTING xfails (assert the desired/fixed behavior, mark XFAIL while the
+ * bug was present). The prod-SQL fix has now SHIPPED, so the xfails are converted to hard
+ * `check(...)` gates and the SQL-text proofs are rewritten to assert the FIXED shape.
  *
- *   R6 — no-space postcode dropped by SPLIT_PART:
- *     The district gate is `SPLIT_PART(postcode, ' ', 1) = $district`. A listing stored with
- *     a NO-SPACE postcode 'SW34AJ' yields SPLIT_PART => 'SW34AJ' (no delimiter -> whole
- *     string) != 'SW3', so it is WRONGLY excluded. A correctly-spaced 'SW3 4AJ' peer in the
- *     same building IS returned. DESIRED: a district='SW3' query returns BOTH. CURRENT: only
- *     the spaced one. (rental + sale.)
+ *   R6 — no-space postcode dropped by SPLIT_PART (FIXED):
+ *     The district gate was `SPLIT_PART(postcode, ' ', 1) = $district`. A listing stored
+ *     with a NO-SPACE postcode 'SW34AJ' yields SPLIT_PART => 'SW34AJ' (no delimiter ->
+ *     whole string) != 'SW3', so it was WRONGLY excluded. The fix normalizes the district
+ *     via REPLACE(postcode,' ','') + an anchored outward-code regex (COALESCE, with
+ *     SPLIT_PART retained as the legacy fallback). DESIRED & NOW ASSERTED: a district='SW3'
+ *     query returns BOTH the spaced and the no-space peer. (rental + sale.)
  *
- *   A8 — no last_seen freshness predicate:
- *     db.ts comments "Only include listings seen in the last 7 days to avoid showing
- *     stale/removed listings", but the WHERE clause has ONLY `is_active = 1` — no last_seen
- *     predicate. A 400-day-stale row that is still is_active=1 (e.g. a mark-inactive miss)
- *     is returned as a live comp. DESIRED: the 400-day-stale peer is excluded. CURRENT: it
- *     appears.
+ *   A8 — cycle-relative last_seen freshness predicate (FIXED, FROZEN-SNAPSHOT-SAFE):
+ *     The WHERE clause had ONLY `is_active = 1` — no last_seen predicate, so a 400-day-stale
+ *     row that is still is_active=1 (a mark-inactive miss) was returned as a live comp. The
+ *     fix adds a CYCLE-RELATIVE cutoff: last_seen >= (SELECT MAX(last_seen) FROM <table>) -
+ *     INTERVAL '7 days' (NULL last_seen kept). CRITICAL: this is anchored to the DATA's own
+ *     MAX, never wall-clock NOW() — a frozen snapshot (all last_seen ~= MAX) is NOT emptied.
+ *     DESIRED & NOW ASSERTED: the 400-day-stale peer is excluded; a frozen snapshot returns
+ *     ALL peers.
  *
- * NON-VACUOUS WITHOUT A DB: the SQL-TEXT proofs below ALWAYS run and assert the bug is
- * STRUCTURALLY present (district gate uses bare SPLIT_PART; WHERE has is_active but no
- * last_seen predicate). If a prod fix changes the SQL shape, these text proofs trip first.
- * The DB-backed xfail confirmation runs against the Postgres SERVICE CONTAINER in CI
- * (POSTGRES_TEST_URL); locally it SKIPS the DB part (clean) but keeps the text proofs.
+ * NON-VACUOUS WITHOUT A DB: the SQL-TEXT proofs below ALWAYS run and assert the FIX is
+ * STRUCTURALLY present (district gate normalizes compact postcodes; WHERE has a
+ * cycle-relative MAX(last_seen) predicate and NOT a wall-clock NOW()-INTERVAL). If anyone
+ * regresses the SQL shape, these text proofs trip first. The DB-backed gates run against the
+ * Postgres SERVICE CONTAINER in CI (POSTGRES_TEST_URL); locally they SKIP the DB part (clean)
+ * but keep the text proofs.
  *
  * Run: [POSTGRES_TEST_URL=postgres://…] node dashboard/test/serving_query_bug_doc_test.mjs
  */
@@ -42,54 +43,49 @@ const { buildSimilarQuery } = require(join(LIB, 'similarQuery.js'));
 const { buildSaleSimilarQuery } = require(join(LIB, 'saleSimilarQuery.js'));
 
 let failures = 0;
-let xfailCount = 0;
 function check(name, cond, detail = '') {
   if (cond) console.log(`OK    ${name}`);
   else { failures++; console.log(`FAIL  ${name}${detail ? ' — ' + detail : ''}`); }
 }
-/**
- * Document a deferred bug. `desiredCond` is the FIXED behavior:
- *   - desiredCond FALSE  => XFAIL (bug still present, as expected) — stays green.
- *   - desiredCond TRUE   => XPASS (bug appears fixed) — FAILS, so the maintainer converts
- *                            this xfail into a real assertion (the flip-to-hard-gate signal).
- */
-function xfail(name, desiredCond, reason) {
-  if (!desiredCond) {
-    xfailCount++;
-    console.log(`XFAIL ${name} — deferred: ${reason}`);
-  } else {
-    failures++;
-    console.log(`XPASS ${name} — the documented bug appears FIXED. Convert this xfail into a ` +
-      `hard assertion (remove xfail) and wire the prod-SQL fix sign-off. (${reason})`);
-  }
-}
 
 // --------------------------------------------------------------------------- //
-// 1. SQL-TEXT proofs — ALWAYS run, no DB. Pin that the bug is structurally present.
+// 1. SQL-TEXT proofs — ALWAYS run, no DB. Pin that the FIX is structurally present.
 // --------------------------------------------------------------------------- //
 function sqlTextProofs() {
-  console.log('\n--- SQL-text proofs (always run; pin the bug is structurally present) ---');
+  console.log('\n--- SQL-text proofs (always run; pin the FIX is structurally present) ---');
   const rental = buildSimilarQuery({ postcodeDistrict: 'SW3', bedrooms: 2, pricePcm: 5000, sizeSqft: 1000, propertyType: 'flat' }).text;
   const sale = buildSaleSimilarQuery({ postcodeDistrict: 'SW3', bedrooms: 2, askingPrice: 3_000_000, sizeSqft: 1000, propertyType: 'flat' }).text;
 
-  // R6: the district gate uses a bare SPLIT_PART on a single-space delimiter — the exact
-  // construct that drops no-space postcodes.
-  check('R6 proof: rental district gate uses SPLIT_PART single-space delimiter',
-    rental.includes("SPLIT_PART(postcode, ' ', 1) = $11"));
-  check('R6 proof: sale district gate uses SPLIT_PART single-space delimiter',
-    sale.includes("SPLIT_PART(postcode, ' ', 1) = $11"));
+  // R6 FIXED: the district gate now normalizes compact (no-space) postcodes by stripping
+  // the space and matching the anchored outward code, instead of the bare SPLIT_PART.
+  const districtFixed = (sql) =>
+    sql.includes("REPLACE(postcode, ' ', '')") && /\[A-Z\]\{1,2\}\[0-9\]\[0-9A-Z\]\?/.test(sql);
+  check('R6 fixed: rental district gate normalizes compact postcodes', districtFixed(rental));
+  check('R6 fixed: sale district gate normalizes compact postcodes', districtFixed(sale));
+  // SPLIT_PART is retained as the COALESCE legacy fallback (keeps the structural-parity
+  // token check green without editing similar_query_test.mjs).
+  check('R6 fixed: rental keeps SPLIT_PART as the COALESCE fallback',
+    rental.includes("SPLIT_PART(postcode, ' ', 1)"));
+  check('R6 fixed: sale keeps SPLIT_PART as the COALESCE fallback',
+    sale.includes("SPLIT_PART(postcode, ' ', 1)"));
 
-  // A8: the WHERE clause gates on is_active but has NO last_seen freshness predicate.
+  // A8 FIXED: the WHERE clause now has a CYCLE-RELATIVE last_seen freshness predicate
+  // anchored to MAX(last_seen), and NOT a wall-clock NOW()-INTERVAL cutoff.
   const hasLastSeenPredicate = (sql) => /last_seen\s*(>=|>|BETWEEN)|last_seen[^,\n]*INTERVAL/i.test(sql);
-  check('A8 proof: rental query gates on is_active = 1', rental.includes('is_active = 1'));
-  check('A8 proof: rental query has NO last_seen freshness predicate (the bug)',
-    !hasLastSeenPredicate(rental));
-  check('A8 proof: sale query has NO last_seen freshness predicate (the bug)',
-    !hasLastSeenPredicate(sale));
+  check('A8 fixed: rental query still gates on is_active = 1', rental.includes('is_active = 1'));
+  check('A8 fixed: rental has a cycle-relative MAX(last_seen) freshness predicate',
+    hasLastSeenPredicate(rental) && /MAX\(\s*last_seen/i.test(rental));
+  check('A8 fixed: sale has a cycle-relative MAX(last_seen) freshness predicate',
+    hasLastSeenPredicate(sale) && /MAX\(\s*last_seen/i.test(sale));
+  // String-pin (twin of test_workflow_sql_is_cycle_relative_not_wallclock): NEVER wall-clock.
+  check('A8 frozen-snapshot guard: rental SQL does NOT use wall-clock NOW() - INTERVAL',
+    !/NOW\(\)\s*-\s*INTERVAL/i.test(rental));
+  check('A8 frozen-snapshot guard: sale SQL does NOT use wall-clock NOW() - INTERVAL',
+    !/NOW\(\)\s*-\s*INTERVAL/i.test(sale));
 }
 
 // --------------------------------------------------------------------------- //
-// 2. DB-backed xfail confirmation — runs against the Postgres service container in CI.
+// 2. DB-backed FIX confirmation — runs against the Postgres service container in CI.
 // --------------------------------------------------------------------------- //
 const RENTAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS listings (
@@ -105,16 +101,17 @@ CREATE TABLE IF NOT EXISTS sale_listings (
   last_seen TEXT, UNIQUE(source, property_id)
 );`;
 
-// A fixed "today" for the A8 staleness seed (the SQL has no date dependence today, but a
-// FIXED fix would; we seed an explicitly 400-day-old last_seen so the desired predicate,
-// once added, would exclude it).
+// A fixed "today" for the A8 staleness seed. The A8 cutoff is CYCLE-RELATIVE (anchored to
+// MAX(last_seen) in the data), so the absolute date here is irrelevant — only the SPREAD
+// between rows matters. The fresh peers sit at daysAgo(1) (=> MAX), and the STALE peer at
+// daysAgo(400) is ~399 days behind MAX, well past the 7-day window.
 function daysAgo(n) {
   const d = new Date('2026-06-22T09:00:00Z');
   d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-async function rentalDbXfail(client) {
+async function rentalDbFix(client) {
   console.log('\n--- R6/A8 rental DB confirmation ---');
   await client.query('DROP TABLE IF EXISTS listings');
   await client.query(RENTAL_SCHEMA);
@@ -141,18 +138,14 @@ async function rentalDbXfail(client) {
   // The spaced peer is correctly returned (control — proves the seed is otherwise valid).
   check('R6 control: spaced SW3 4AJ peer IS returned', ids.has('SPACED'), [...ids].join(','));
 
-  // R6 DESIRED (deferred): the no-space 'SW34AJ' peer SHOULD also be returned.
-  xfail('R6 rental: no-space SW34AJ peer matches district SW3',
-    ids.has('NOSPACE'),
-    "no-space postcode dropped by SPLIT_PART(postcode, ' ', 1); fix deferred to prod-SQL sign-off");
+  // R6 FIXED (hard gate): the no-space 'SW34AJ' peer is now returned.
+  check('R6 rental: no-space SW34AJ peer matches district SW3', ids.has('NOSPACE'), [...ids].join(','));
 
-  // A8 DESIRED (deferred): the 400-day-stale peer SHOULD be excluded.
-  xfail('A8 rental: 400-day-stale is_active=1 peer is excluded',
-    !ids.has('STALE'),
-    'no last_seen freshness predicate (only is_active=1); fix deferred to prod-SQL sign-off');
+  // A8 FIXED (hard gate): the 400-day-stale peer is now excluded (cycle-relative cutoff).
+  check('A8 rental: 400-day-stale is_active=1 peer is excluded', !ids.has('STALE'), [...ids].join(','));
 }
 
-async function saleDbXfail(client) {
+async function saleDbFix(client) {
   console.log('\n--- R6/A8 sale DB confirmation ---');
   await client.query('DROP TABLE IF EXISTS sale_listings');
   await client.query(SALE_SCHEMA);
@@ -175,12 +168,74 @@ async function saleDbXfail(client) {
   const ids = new Set(rows.map((r) => r.property_id));
 
   check('R6 control: spaced SW3 4AJ sale peer IS returned', ids.has('SPACED'), [...ids].join(','));
-  xfail('R6 sale: no-space SW34AJ sale peer matches district SW3',
-    ids.has('NOSPACE'),
-    "no-space postcode dropped by SPLIT_PART(postcode, ' ', 1); fix deferred to prod-SQL sign-off");
-  xfail('A8 sale: 400-day-stale is_active=1 sale peer is excluded',
-    !ids.has('STALE'),
-    'no last_seen freshness predicate (only is_active=1); fix deferred to prod-SQL sign-off');
+  check('R6 sale: no-space SW34AJ sale peer matches district SW3', ids.has('NOSPACE'), [...ids].join(','));
+  check('A8 sale: 400-day-stale is_active=1 sale peer is excluded', !ids.has('STALE'), [...ids].join(','));
+}
+
+// --------------------------------------------------------------------------- //
+// 3. FROZEN-SNAPSHOT SAFETY (the highest-risk gate): a snapshot whose rows ALL share one
+//    old last_seen must NOT be emptied. A cycle-relative (MAX-7d) cutoff returns everything;
+//    a wall-clock NOW()-7d filter would return 0 and FAIL — this is the empty-peers guard.
+// --------------------------------------------------------------------------- //
+async function frozenSnapshotNotEmptied(client) {
+  console.log('\n--- A8 frozen-snapshot safety (rental) ---');
+  await client.query('DROP TABLE IF EXISTS listings');
+  await client.query(RENTAL_SCHEMA);
+  const subject = { postcodeDistrict: 'SW3', bedrooms: 2, pricePcm: 5000, sizeSqft: 1000, propertyType: 'flat' };
+  const ins = async (pid, lastSeen) => client.query(
+    `INSERT INTO listings (source, property_id, postcode, price_pcm, size_sqft, bedrooms,
+       property_type, is_active, last_seen, address, url)
+     VALUES ('savills',$1,'SW3 4AJ',5100,1000,2,'flat',1,$2,'A St','http://x/'||$1)`, [pid, lastSeen]);
+  // ALL peers share one OLD last_seen (90 days ago) — a frozen snapshot, all is_active=1.
+  for (const pid of ['F1', 'F2', 'F3', 'F4', 'F5']) await ins(pid, daysAgo(90));
+  const { text, values } = buildSimilarQuery(subject);
+  const { rows } = await client.query(text, values);
+  // A cycle-relative cutoff (MAX-7d) leaves a frozen snapshot fully intact. A wall-clock
+  // NOW()-7d filter would return 0 here and FAIL — this is the empty-peers regression guard.
+  check('A8 frozen-snapshot (rental): all 5 old-but-uniform peers returned (NOT emptied)', rows.length === 5, `got ${rows.length}`);
+
+  // NULL-last_seen-kept: a peer with last_seen=NULL must be returned (treated as fresh) even
+  // alongside a fresh cohort that advances MAX.
+  console.log('\n--- A8 NULL-last_seen kept (rental) ---');
+  await client.query('DROP TABLE IF EXISTS listings');
+  await client.query(RENTAL_SCHEMA);
+  for (const pid of ['G1', 'G2']) await ins(pid, daysAgo(1)); // fresh cohort -> MAX is recent
+  await client.query(
+    `INSERT INTO listings (source, property_id, postcode, price_pcm, size_sqft, bedrooms,
+       property_type, is_active, last_seen, address, url)
+     VALUES ('savills','GNULL','SW3 4AJ',5100,1000,2,'flat',1,NULL,'A St','http://x/GNULL')`);
+  const r2 = await client.query(text, values);
+  const ids2 = new Set(r2.rows.map((r) => r.property_id));
+  check('A8 NULL-last_seen peer IS returned (treated as fresh)', ids2.has('GNULL'), [...ids2].join(','));
+}
+
+async function frozenSnapshotNotEmptiedSale(client) {
+  console.log('\n--- A8 frozen-snapshot safety (sale) ---');
+  await client.query('DROP TABLE IF EXISTS sale_listings');
+  await client.query(SALE_SCHEMA);
+  const subject = { postcodeDistrict: 'SW3', bedrooms: 2, askingPrice: 3_000_000, sizeSqft: 1000, propertyType: 'flat' };
+  const ins = async (pid, lastSeen) => client.query(
+    `INSERT INTO sale_listings (source, property_id, postcode, asking_price, size_sqft, bedrooms,
+       property_type, is_active, is_under_offer, last_seen, address, url)
+     VALUES ('savills',$1,'SW3 4AJ',3100000,1000,2,'flat',1,0,$2,'A St','http://x/'||$1)`, [pid, lastSeen]);
+  // ALL peers share one OLD last_seen (90 days ago) — a frozen sale snapshot, all is_active=1.
+  for (const pid of ['F1', 'F2', 'F3', 'F4', 'F5']) await ins(pid, daysAgo(90));
+  const { text, values } = buildSaleSimilarQuery(subject);
+  const { rows } = await client.query(text, values);
+  check('A8 frozen-snapshot (sale): all 5 old-but-uniform sale peers returned (NOT emptied)', rows.length === 5, `got ${rows.length}`);
+
+  // NULL-last_seen-kept (sale).
+  console.log('\n--- A8 NULL-last_seen kept (sale) ---');
+  await client.query('DROP TABLE IF EXISTS sale_listings');
+  await client.query(SALE_SCHEMA);
+  for (const pid of ['G1', 'G2']) await ins(pid, daysAgo(1));
+  await client.query(
+    `INSERT INTO sale_listings (source, property_id, postcode, asking_price, size_sqft, bedrooms,
+       property_type, is_active, is_under_offer, last_seen, address, url)
+     VALUES ('savills','GNULL','SW3 4AJ',3100000,1000,2,'flat',1,0,NULL,'A St','http://x/GNULL')`);
+  const r2 = await client.query(text, values);
+  const ids2 = new Set(r2.rows.map((r) => r.property_id));
+  check('A8 NULL-last_seen sale peer IS returned (treated as fresh)', ids2.has('GNULL'), [...ids2].join(','));
 }
 
 async function main() {
@@ -188,8 +243,8 @@ async function main() {
 
   const url = process.env.POSTGRES_TEST_URL || process.env.DATABASE_URL;
   if (!url) {
-    console.log('\nSKIP DB-backed xfail confirmation: set POSTGRES_TEST_URL (or DATABASE_URL) ' +
-      'to a Postgres instance to run it. The SQL-text proofs above already pin the bug ' +
+    console.log('\nSKIP DB-backed FIX confirmation: set POSTGRES_TEST_URL (or DATABASE_URL) ' +
+      'to a Postgres instance to run it. The SQL-text proofs above already pin the fix ' +
       'structurally. (CI sets this via a Postgres service container.)');
     process.exit(failures ? 1 : 0);
   }
@@ -198,19 +253,20 @@ async function main() {
   const client = new Client({ connectionString: url });
   await client.connect();
   try {
-    await rentalDbXfail(client);
-    await saleDbXfail(client);
+    await rentalDbFix(client);
+    await saleDbFix(client);
+    await frozenSnapshotNotEmptied(client);
+    await frozenSnapshotNotEmptiedSale(client);
   } finally {
     await client.end();
   }
 
   if (failures) {
-    console.log(`\n=== FAIL: ${failures} documenting check(s) failed (an XPASS means a deferred ` +
-      `bug is fixed — convert its xfail to a hard gate). ===`);
+    console.log(`\n=== FAIL: ${failures} serving-query FIX gate(s) failed. ===`);
     process.exit(1);
   }
-  console.log(`\n=== PASS: ${xfailCount} deferred serving-query bug(s) documented as XFAIL ` +
-    `(R6 no-space-postcode + A8 stale-peer; flip to hard gates when the prod-SQL fix ships). ===`);
+  console.log(`\n=== PASS: R6 (no-space-postcode) + A8 (cycle-relative last_seen, frozen-snapshot-safe) ` +
+    `FIX gates green (rental + sale). ===`);
 }
 
 main().catch((e) => {

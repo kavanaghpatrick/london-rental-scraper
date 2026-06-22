@@ -1,5 +1,5 @@
 {
-  "_note": "REAL-CAPTURED 2026-06-22 via curl from https://search.savills.com/property-detail/gbkgrsknu250108 (a /property-detail/ SALE page). Savills detail pages are a Next.js SSG shell: __NEXT_DATA__.props.pageProps is EMPTY (property data hydrates client-side from api.savills). The ONLY reliable static in-page SALE marker is the <head> og:title / meta description: 'Property for sale | Savills' vs the rental 'Property to rent | Savills'. In the LIVE hydrated DOM the main content also renders 'Guide Price \u00a3X' / 'Offers in Excess of \u00a3X' with NO pcm/pw frequency token (vs '\u00a3X pcm' for rent). detectTenure for Savills should read the og:title (head, available pre-hydration) and/or the hydrated price string's absence of a rental-frequency token.",
+  "_note": "REAL-CAPTURED 2026-06-22 via curl from https://search.savills.com/property-detail/gbkgrsknu250108 (a /property-detail/ SALE page). CORRECTION (deferred Item C): the listing data is NOT empty/client-side-only — it is fully present in __NEXT_DATA__.props.initialReduxState.propertyDetail.property (props.pageProps IS empty, but initialReduxState is NOT). extractPropertyDataSavills now reads beds/baths/sqft/price/address from that blob. Real captured SALE values: Bedrooms=4, Bathrooms=3, Receptions=2, SizeSqFt=2765, Price=800000, InvariantFullPriceText='Guide price £800,000', AddressLine1='Wheelwright Cottage, Woore Road', AddressLine2='Buerton, Cheshire, CW3 0DA' (postcode is the TAIL of AddressLine2 — there is NO Postcode field). detectTenure still reads the <head> og:title ('Property for sale' vs 'Property to rent') as the static, pre-hydration signal. The runnable fixtures are now savills_for_sale_detail.html / savills_to_rent_detail.html (head + the real __NEXT_DATA__ script); this JSON is the human-readable provenance record only.",
   "url": "https://search.savills.com/property-detail/gbkgrsknu250108",
   "section": "property-for-sale",
   "head_meta": {
@@ -7,13 +7,25 @@
     "og:description": "Property details for Wheelwright Cottage, Woore Road. One of many properties for sale in Buerton, Cheshire, CW3 0DA from Savills, world leading estate agents.",
     "description": "Property details for Wheelwright Cottage, Woore Road. One of many properties for sale in Buerton, Cheshire, CW3 0DA from Savills, world leading estate agents."
   },
-  "next_data_query": {
-    "propertyId": "gbkgrsknu250108",
-    "url": "/property-detail/gbkgrsknu250108",
-    "searchParams": {}
+  "next_data_property": {
+    "Bedrooms": 4,
+    "Bathrooms": 3,
+    "Receptions": 2,
+    "SizeSqFt": 2765,
+    "SizeSqMt": 256.88,
+    "Price": 800000,
+    "BuyOrRent": 0,
+    "RentBasis": 0,
+    "AddressLine1": "Wheelwright Cottage, Woore Road",
+    "AddressLine2": "Buerton, Cheshire, CW3 0DA",
+    "Latitude": 52.9854,
+    "Longitude": -2.47758,
+    "InvariantFullPriceText": "Guide price £800,000",
+    "DisplayPriceText": "£800,000",
+    "Postcode": null
   },
-  "next_data_page": "/property",
   "next_data_pageProps_empty": true,
-  "hydrated_dom_price_example_for_sale": "Guide Price \u00a31,750,000",
-  "hydrated_dom_price_example_for_rent": "\u00a33,250 pcm"
+  "next_data_redux_path": "props.initialReduxState.propertyDetail.property",
+  "hydrated_dom_price_example_for_sale": "Guide price £800,000",
+  "hydrated_dom_price_example_for_rent": "Guide price £1,907"
 }

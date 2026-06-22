@@ -83,7 +83,7 @@ def compute_oof(db_path):
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     oof = np.full(len(X), np.nan, dtype=float)
     for tr, va in kf.split(X):
-        m = v20.build_xgboost()
+        m = v20.build_xgboost(feat_cols)
         m.fit(X.iloc[tr], yl.iloc[tr])
         oof[va] = np.expm1(m.predict(X.iloc[va]))
 

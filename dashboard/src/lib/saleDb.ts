@@ -108,6 +108,8 @@ export async function getSimilarSaleListings(
     // Query for similar SALE listings with similarity scoring. The tagged-template SQL is
     // byte-equivalent to buildSaleSimilarQuery's text (single source of truth via the
     // structural-parity test). Drops SSTC / under-offer comps (is_under_offer exclusion).
+    // Freshness gate is within 7 days of the data's own MAX(last_seen) (cycle-relative;
+    // frozen-snapshot-safe, not wall-clock).
     const { rows } = await sql<SaleSimilarListing>`
       WITH scored AS (
         SELECT
@@ -150,7 +152,17 @@ export async function getSimilarSaleListings(
           )::float as similarity_score
         FROM sale_listings
         WHERE is_active = 1
-          AND SPLIT_PART(postcode, ' ', 1) = ${postcodeDistrict}
+          AND (
+            last_seen IS NULL
+            OR last_seen::timestamp >= (SELECT MAX(last_seen::timestamp) FROM sale_listings) - INTERVAL '7 days'
+          )
+          AND UPPER(
+            COALESCE(
+              SUBSTRING(REPLACE(postcode, ' ', '') FROM '^([A-Z]{1,2}[0-9][0-9A-Z]?)[0-9][A-Z]{2}$'),
+              SUBSTRING(REPLACE(postcode, ' ', '') FROM '^([A-Z]{1,2}[0-9][0-9A-Z]?)$'),
+              SPLIT_PART(postcode, ' ', 1)
+            )
+          ) = ${postcodeDistrict}
           AND bedrooms BETWEEN ${minBedrooms} AND ${maxBedrooms}
           AND asking_price BETWEEN ${priceRangeMin} AND ${priceRangeMax}
           AND asking_price > 0

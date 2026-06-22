@@ -29,6 +29,7 @@ dilution. That workflow fix is DEFERRED to a prod-workflow sign-off; here we:
 
 Pure-unit: temp in-memory SQLite, no network, no canonical DB.
 """
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -40,6 +41,11 @@ _SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 from _safe_delete import guarded_delete, SafeDeleteAborted  # noqa: E402
+
+# The shipped workflow whose dedupe step body the YAML string-pin asserts against.
+WORKFLOW = (
+    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "daily-scrape.yml"
+)
 
 
 N_INACTIVE = 800
@@ -110,40 +116,74 @@ def test_guard_aborts_on_active_candidate_denominator(tmp_path):
     conn.close()
 
 
-@pytest.mark.xfail(
-    reason="denominator dilution in daily-scrape.yml inline SQL (total = COUNT(*) whole "
-    "table, but to_delete is drawn from WHERE is_active=1 AND price_pcm>0); fix deferred "
-    "to prod-workflow sign-off. Flips to a hard gate once the workflow passes the active "
-    "candidate-set denominator.",
-    strict=True,
-)
-def test_whole_table_denominator_should_still_abort_but_does_not(tmp_path):
-    """DOCUMENTING xfail pinning the real broken behavior.
-
-    Reproduce the daily-scrape denominator EXACTLY: `total = COUNT(*) FROM listings`
-    (whole table, 1000) while the over-proposal deletes 25% of the ACTIVE set (50 rows).
-    The DESIRED behavior is that the guard STILL aborts (50 active rows is a bug-sized
-    delete). It does NOT today, because 50/1000 = 5% < 10% dilutes the fraction. This
-    assertion (that it raises) therefore FAILS -> xfail. When the workflow is fixed to
-    pass the active candidate-set denominator, the guard WILL abort and this flips green
-    (the strict xfail then reports XPASS and forces removing the marker)."""
+def test_active_candidate_denominator_aborts_on_over_delete(tmp_path):
+    """A13 FIXED: the daily-scrape dedupe step now passes the ACTIVE candidate-set
+    denominator (`COUNT(*) WHERE is_active=1 AND price_pcm>0`), not the whole-table
+    COUNT(*). With that correct denominator, deleting 50 of the 200 active rows is 25% > 10%
+    and the guard ABORTS — regardless of how many inactive rows pad the table. (Was an
+    xfail documenting the dilution; the workflow fix flips it to a hard gate.)"""
     conn, cur = _seed_conn()
-    whole_table_total = cur.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
-    assert whole_table_total == WHOLE_TABLE  # 1000 — the diluted denominator
-    ids = _over_proposal(cur)  # 50 active rows
+    # The fixed denominator the workflow now computes: the active, priced candidate set.
+    candidate_total = cur.execute(
+        "SELECT COUNT(*) FROM listings WHERE is_active = 1 AND price_pcm > 0"
+    ).fetchone()[0]
+    assert candidate_total == N_ACTIVE  # 200 — NOT the diluted 1000 whole-table count
+    ids = _over_proposal(cur)  # 50 active rows -> 50/200 = 25% > 10%
 
-    # DESIRED: deleting 50 of the 200 active rows should abort regardless of how many
-    # inactive rows pad the table. Today it does NOT (dilution) -> this raises-assert fails
-    # -> xfail captures the bug.
+    # With the active-candidate denominator, deleting 50 of 200 active rows MUST abort.
     with pytest.raises(SafeDeleteAborted):
         guarded_delete(
             cur, "listings", ids,
-            total_rows=whole_table_total,         # DILUTED whole-table denominator
+            total_rows=candidate_total,           # FIXED active-candidate denominator
             do_delete=_delete_cb(cur),
             project_root=tmp_path,
-            label="whole-table-denominator (daily-scrape dilution)",
+            label="active-candidate-denominator (daily-scrape A13 fix)",
         )
+    # Nothing deleted — the guard protected the active set.
+    assert cur.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == WHOLE_TABLE
     conn.close()
+
+
+def test_workflow_dedupe_uses_active_candidate_denominator():
+    """YAML string-pin (A13): the daily-scrape 'Clean duplicate listings' step body must
+    compute `total` from the ACTIVE, PRICED candidate set — NOT a bare whole-table
+    COUNT(*). Pins the fix so the dilution can't regress back into the workflow.
+
+    The candidate set the proposal is drawn from is `WHERE is_active = 1 AND price_pcm > 0`;
+    the delta-guard denominator MUST match it."""
+    text = WORKFLOW.read_text()
+
+    # Isolate the dedupe step body so we assert against THAT step, not some other COUNT(*).
+    m = re.search(
+        r"- name: Clean duplicate listings(.*?)(?:\n      - name:|\n      # ===|\Z)",
+        text,
+        re.DOTALL,
+    )
+    assert m, "could not locate the 'Clean duplicate listings' step in the workflow"
+    step = m.group(1)
+
+    # Strip comment lines so an explanatory comment can't satisfy/false-positive the checks.
+    code = "\n".join(ln for ln in step.splitlines() if not ln.lstrip().startswith("#"))
+
+    # The delta-guard denominator MUST be the active, priced candidate set.
+    assert re.search(
+        r"SELECT\s+COUNT\(\*\)\s+FROM\s+listings\s+WHERE\s+is_active\s*=\s*1\s+AND\s+price_pcm\s*>\s*0",
+        code,
+        re.IGNORECASE,
+    ), (
+        "dedupe delta-guard denominator is NOT the active-candidate set — it must be "
+        "`SELECT COUNT(*) FROM listings WHERE is_active = 1 AND price_pcm > 0` to match the "
+        "candidate set `to_delete` is drawn from (denominator dilution, A13)."
+    )
+
+    # And it must NOT compute the delta-guard `total` from a bare whole-table COUNT(*).
+    assert not re.search(
+        r'cur\.execute\(\s*["\']SELECT COUNT\(\*\) FROM listings["\']\s*\)', code
+    ), (
+        "dedupe step still computes the delta-guard `total` from a bare whole-table "
+        "`SELECT COUNT(*) FROM listings` — that dilutes the fraction and the 10% guard "
+        "never trips on an active-set over-delete (A13)."
+    )
 
 
 def test_dilution_is_real_not_a_test_artifact(tmp_path):
