@@ -370,6 +370,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt psycopg2-binary
+          # conftest.py imports pandas/numpy (the ML stack is not in requirements.txt) — the
+          # python-tests job installs these too; without them pytest fails at conftest load.
+          pip install numpy pandas xgboost scikit-learn
           pip install pytest
 
       - name: Test A — REAL-Postgres for-sale sync safety (A1–A9)
