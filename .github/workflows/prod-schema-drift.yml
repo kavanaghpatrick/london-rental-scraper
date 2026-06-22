@@ -1,0 +1,190 @@
+name: Prod Schema Drift (weekly)
+
+# ============================================================================
+# WHY THIS WORKFLOW EXISTS — the blind spot the PR suite STRUCTURALLY cannot see.
+#
+# The dashboard's hot SQL bakes Postgres column-TYPE assumptions into raw text:
+#   * `WHERE is_active = 1`   (similarQuery.js, saleSimilarQuery.js, db.ts) — an
+#     INTEGER assumption. A prod INTEGER->BOOLEAN migration makes `= 1` a runtime
+#     ERROR ("operator does not exist: boolean = integer") and /api/similar 500s.
+#   * `asking_price::int`     (saleSimilarQuery.js, saleDb.ts) — fits-in-int32. If
+#     prod stored asking_price as BIGINT and a value exceeds 2,147,483,647 the
+#     ::int cast OVERFLOWS at runtime.
+#   * `price_pcm::numeric / size_sqft::numeric` ppsf — numeric-castable assumption.
+#   * `is_under_offer = 0`    (saleSimilarQuery.js) — INTEGER assumption.
+#
+# ci.yml CANNOT catch any of this. The PR suite seeds its OWN ephemeral schema
+# from dashboard/src/app/api/init-db/route.ts and the for-sale path's
+# for_sale/sale_data.py CREATE TABLE — where EVERY column is declared INTEGER /
+# REAL by construction. So the PR tests run the SQL against types it itself just
+# created; they ALWAYS agree. NOTHING in the PR path connects to prod. The REAL
+# prod Neon schema was created long ago and is mutated out-of-band (a manual
+# ALTER TABLE, a Neon-console change, a migration tool, a `@vercel/postgres`
+# auto-init that diverged). A prod-ONLY type migration is therefore invisible
+# until a live /api/similar request 500s in production. THIS job is the only
+# thing that reads prod's information_schema and compares it to the shipped casts.
+#
+# Like its sibling extraction-drift-smoke.yml, this is deliberately:
+#   * SCHEDULED + NON-PR-BLOCKING — its own weekly workflow, NOT a required check
+#     on ci.yml. It never gates a merge. (Prod schema isn't a PR concern.)
+#   * READ-ONLY — information_schema catalog reads + one bounded SELECT for the
+#     asking_price overflow probe. NO DDL, NO writes. The connection is opened
+#     read-only (psycopg2 set_session(readonly=True)).
+#   * ISSUE-ON-FAILURE — a real drift signal OPENS (or reuses) a GitHub issue
+#     labelled `schema-drift` so a human investigates. Signal, not a wall.
+#   * FORK-SAFE — if the POSTGRES_URL secret is absent the check SKIPS (exit 0),
+#     so forks and secretless runs never fail or file a spurious issue.
+#
+# Cadence: weekly (a schema migration is rare; weekly catches it within days
+# while keeping prod connections minimal). Offset minute to dodge the cron stampede.
+# ============================================================================
+
+on:
+  schedule:
+    # Weekly, Mondays 05:23 UTC (off :00 and offset from extraction-drift-smoke's
+    # 05:17 so the two scheduled smokes don't contend).
+    - cron: '23 5 * * 1'
+  workflow_dispatch: {}
+
+# Top-level: read-only. The issue-filing job elevates issues:write for itself only.
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-schema-drift
+  cancel-in-progress: false
+
+jobs:
+  # === A. Read prod information_schema; assert column types match the SQL casts ===
+  schema-drift-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Outcome is consumed by notify-drift via `if: failure()`. The script's exit
+    # codes: 0 = OK or SKIPPED(no secret); 1 = DRIFT; 2 = operational (connect/query)
+    # error. We surface ONLY exit 1 as a job failure that files an issue — an exit-2
+    # transient must NOT masquerade as schema drift, so we translate it to a warning
+    # and a green job (a flaky prod connection is not a drift signal).
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install psycopg2
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'psycopg2-binary>=2.9.9'
+
+      - name: Check prod schema drift (READ-ONLY)
+        id: check
+        env:
+          # Same secret the other prod jobs use (neon-backup.yml). Absent on forks
+          # -> the script skips with exit 0 (handled below as a clean skip).
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+        run: |
+          if [ -z "${POSTGRES_URL}" ]; then
+            echo "::warning::POSTGRES_URL secret absent — skipping prod schema-drift check (expected on forks)."
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set +e
+          python3 scripts/check_prod_schema_drift.py | tee /tmp/schema_drift.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=${rc}" >> "$GITHUB_OUTPUT"
+          case "${rc}" in
+            0)
+              echo "result=ok" >> "$GITHUB_OUTPUT"
+              echo "## Prod schema drift: :white_check_mark: OK" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            1)
+              echo "result=drift" >> "$GITHUB_OUTPUT"
+              echo "## Prod schema drift: :rotating_light: DRIFT DETECTED" >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              grep 'DRIFT' /tmp/schema_drift.log >> "$GITHUB_STEP_SUMMARY" || true
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              exit 1   # FAIL -> notify-drift files/updates the schema-drift issue.
+              ;;
+            *)
+              # Exit 2 (or anything else) = operational error (could not connect /
+              # query). NOT drift. Warn, keep the job GREEN, file no issue.
+              echo "result=error" >> "$GITHUB_OUTPUT"
+              echo "::warning::prod schema-drift check could not complete (exit ${rc}) — operational, not drift. No issue filed."
+              echo "## Prod schema drift: :warning: could not complete (exit ${rc}) — not treated as drift" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+          esac
+
+  # === B. Open / reuse a `schema-drift` GitHub issue when real drift is detected ===
+  #
+  # Non-blocking by construction: this is the ONLY consumer of the check result.
+  # `needs: schema-drift-check` + `if: failure()` means a DRIFT signal (the check
+  # job's `exit 1`) files an issue instead of red-gating anything. A skip (no secret)
+  # or an operational exit-2 keeps the check job GREEN, so this job never runs for
+  # those — exactly the fork-safe / no-false-alarm behaviour we want.
+  notify-drift:
+    needs: schema-drift-check
+    runs-on: ubuntu-latest
+    if: failure()
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open / update schema-drift issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = 'Prod schema drift detected (weekly check)';
+            const body = [
+              'The weekly **prod-schema-drift** check failed: one or more PROD Postgres',
+              'column TYPES (or columns/tables) no longer match what the shipped SQL casts',
+              'assume. This is a class of bug the frozen-schema PR CI cannot see — ci.yml',
+              'seeds its OWN INTEGER/REAL schema from `init-db` + `for_sale/sale_data.py`',
+              'and tests the SQL against types it just created, so the PR suite stays GREEN',
+              'even after a prod-only `ALTER TABLE` migrates `is_active` to BOOLEAN, widens',
+              '`asking_price` to BIGINT past int32, retypes `price_pcm`, or drops a column',
+              '`/api/similar` / `/api/similar-sale` read.',
+              '',
+              `**Failed run:** [${context.runId}](${runUrl}) — open the \`schema-drift-check\``,
+              'job log / step-summary and read the `DRIFT [...]` lines for the exact',
+              'table.column + the SQL assumption it violates.',
+              '',
+              '**Likely impact:** a live `/api/similar` (rental) or `/api/similar-sale`',
+              'request 500s in production, or the comp math is silently wrong (int32',
+              'overflow on `asking_price::int`).',
+              '',
+              '**Likely actions:** reconcile the prod column type back to the canonical',
+              'INTEGER/REAL schema (or update the shipped SQL casts to the new prod type',
+              'and re-deploy), then re-run this workflow (`workflow_dispatch`) to confirm',
+              'green. Source of truth for the assertions: `scripts/check_prod_schema_drift.py`.',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'schema-drift',
+            });
+
+            if (existing.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['schema-drift', 'automated'],
+              });
+            } else {
+              // Reuse the open issue; comment pointing at the new failing run.
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `Schema-drift check failed again: [run ${context.runId}](${runUrl}).`,
+              });
+            }

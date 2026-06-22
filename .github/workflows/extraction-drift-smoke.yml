@@ -184,95 +184,179 @@ jobs:
           print("  All spiders extracted live cards at sane magnitudes. No drift.")
           PY
 
-  # === B. Extension headless live check — SCAFFOLD (continue-on-error TODO) ===
+  # === B. Extension headless live check — the IN-BROWSER content.js arm ===
   #
-  # The spider smoke above does NOT cover the Chrome extension's IN-BROWSER
-  # extraction (content.js running against the live page DOM via window.__PAGE_MODEL
-  # / __NEXT_DATA__ + the popup render). That path is what the Rightmove __PAGE_MODEL
-  # migration broke (memory: "RIGHTMOVE LIKELY BROKEN"), and NO automated check
-  # currently fetches a live detail page, runs content.js in a real browser, and
-  # asserts a non-null extraction + a rendered popup.
+  # The spider smoke (A) covers the SPIDER extraction path. It does NOT cover the
+  # Chrome extension's IN-BROWSER extraction — content.js running against the live
+  # page DOM (window.__PAGE_MODEL / __NEXT_DATA__ / self.__next_f / JSON-LD) and the
+  # Fair-Value popup render. That is the EXACT path the Rightmove __PAGE_MODEL
+  # migration broke (memory: "RIGHTMOVE LIKELY BROKEN") with ZERO PR-CI failure,
+  # because ci.yml's extension harnesses only ever run content.js against FROZEN
+  # committed fixtures (tests/fixtures/**) — never a live page.
   #
-  # Wiring a full headless run (Playwright loading the unpacked extension, or jsdom +
-  # a live-fetched DOM, plus the model-input + popup assertions) is heavier than this
-  # pass — it needs a stable known-live detail URL per site (which itself drifts) and
-  # an extension-load harness. So this job is intentionally a SCAFFOLD: it is marked
-  # continue-on-error so it can never fail the workflow while it is a stub, and it
-  # documents EXACTLY what remains to be built. Promote it to a hard smoke (drop
-  # continue-on-error, add it to the issue-on-failure `needs`) once the harness lands.
+  # This job runs chrome-extension/headless_extraction_smoke.mjs, which:
+  #   * loads ONE known-live detail URL per site x {rent,sale} in headless Chromium
+  #     (Python Playwright — already installed below for the SPA spiders) and lets it
+  #     HYDRATE so the runtime data globals are populated as a real browser sees them;
+  #   * injects the REAL, UNMODIFIED content.js extractors into that live DOM via the
+  #     repo's existing zero-dependency export-trampoline (extract_test_shim.mjs ::
+  #     loadExtractors) — the same injector every committed extractor test uses — and
+  #     also reproduces the captured runtime window.__PAGE_MODEL so Rightmove's
+  #     runtime-global path is exercised too;
+  #   * asserts a NON-NULL + PLAUSIBLE price / beds / sqft / postcode and that the
+  #     popup WOULD render (the price+beds model inputs both resolve, the sale/rent
+  #     fork is correct), per site, without one site's failure aborting the others.
+  #
+  # WHY NOT load the full unpacked MV3 extension in headless Chrome: the MV3 service-
+  # worker lifecycle is flaky headless, and the popup fetches our live Vercel
+  # /api/predict + GitHub-raw model JSON (more live deps to flake) and renders into a
+  # shadow DOM that is fragile to assert on. The trampoline-against-live-DOM approach
+  # is the sanctioned tractable alternative: Playwright supplies the live hydrated DOM,
+  # the trampoline supplies the real in-page extractor code. See the harness header for
+  # the full rationale.
+  #
+  # It is a HARD smoke (no continue-on-error): a failure here is consumed by the
+  # issue-on-failure job (C) exactly like the spider arm. It is still NON-PR-BLOCKING
+  # because this whole workflow only runs on a schedule / manual dispatch.
   extension-headless-smoke:
     runs-on: ubuntu-latest
-    continue-on-error: true   # SCAFFOLD: never blocks while this is a stub.
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Set up Python (Playwright driver for the live fetch)
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright + Chromium
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
 
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
 
-      - name: TODO — headless extension live extraction + popup smoke (NOT YET WIRED)
+      - name: Headless live in-browser extraction + popup smoke (per site x rent/sale)
+        id: headless
+        env:
+          SMOKE_SITES: ${{ github.event.inputs.sources || 'all' }}
+          SMOKE_RETRIES: '3'
+          SMOKE_NAV_TIMEOUT_MS: '45000'
+          SMOKE_JSON: '1'      # emit the <<<SMOKE_JSON>>> block the issue body captures
         run: |
-          echo "::warning::extension-headless-smoke is a SCAFFOLD — the live in-browser"
-          echo "::warning::content.js extraction + popup-render check is not yet wired."
-          echo ""
-          echo "WHY THIS MATTERS (and why ci.yml can't catch it):"
-          echo "  ci.yml's extension harnesses run content.js against FROZEN committed"
-          echo "  HTML fixtures (tests/fixtures/extension/*.html). They pass green even"
-          echo "  after a live site moves its data out of the shape content.js parses —"
-          echo "  e.g. Rightmove migrating <script __NEXT_DATA__> -> window.__PAGE_MODEL"
-          echo "  (devalue-encoded), which the content.js regex misses -> no popup, with"
-          echo "  ZERO test failure. Only a LIVE in-browser run notices."
-          echo ""
-          echo "TO IMPLEMENT (promote this job to a hard smoke afterwards):"
-          echo "  1. Maintain a small map of known-live detail URLs per site (rightmove,"
-          echo "     knightfrank, chestertons, savills, foxtons). These drift -> keep them"
-          echo "     in one reviewable file."
-          echo "  2. Launch headless Chromium with the unpacked extension loaded"
-          echo "     (Playwright persistent context + --load-extension), navigate to each"
-          echo "     URL, wait for content.js to run."
-          echo "  3. Assert: (a) the extension extracted a NON-NULL price + beds + the"
-          echo "     model-input fields, and (b) the Fair-Value popup actually rendered"
-          echo "     (a known popup DOM node is present)."
-          echo "  4. On any null extraction / missing popup -> exit 1 so the issue-on-"
-          echo "     failure job below files an extraction-drift issue."
-          echo ""
-          echo "Scaffold step succeeded (no assertions yet)."
+          # Tee so we can both stream the log AND capture the machine-readable JSON
+          # block + a human matrix for the drift issue. The harness exits 1 on any
+          # hard live-extraction FAIL (null / implausible extraction, popup wouldn't
+          # render, sale/rent fork wrong) and 0 when every seeded cell is plausible.
+          set -o pipefail
+          node chrome-extension/headless_extraction_smoke.mjs 2>&1 | tee /tmp/headless_smoke.log
 
-  # === C. Open / reuse a GitHub issue when the live smoke detects drift ===
+      - name: Capture results for the drift issue (always)
+        if: always()
+        run: |
+          # Extract the machine-readable JSON envelope + the summary matrix so job C
+          # can drop the per-site results + captured DOM diff into the issue body.
+          awk '/<<<SMOKE_JSON>>>/{f=1;next} /<<<END_SMOKE_JSON>>>/{f=0} f' \
+            /tmp/headless_smoke.log > /tmp/headless_smoke.json || true
+          awk '/HEADLESS SMOKE SUMMARY/{f=1} f' /tmp/headless_smoke.log > /tmp/headless_smoke_summary.txt || true
+          echo "----- captured summary -----"; cat /tmp/headless_smoke_summary.txt || true
+
+      - name: Upload headless smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-extraction-smoke
+          path: |
+            /tmp/headless_smoke.log
+            /tmp/headless_smoke.json
+            /tmp/headless_smoke_summary.txt
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # === C. Open / reuse a GitHub issue when EITHER live arm detects drift ===
   #
-  # Non-blocking by construction: this is the ONLY consumer of the smoke result.
-  # `needs: spider-live-smoke` + `if: failure()` means a drift signal files an issue
-  # instead of red-gating anything. (extension-headless-smoke is continue-on-error and
-  # intentionally NOT in `needs` yet — it can't trigger an issue while it's a stub.)
+  # Non-blocking by construction: this is the ONLY consumer of the smoke results.
+  # It `needs` BOTH live arms and runs `if: failure()`, so a drift signal from the
+  # spider arm OR the headless extension arm files (or comments on) ONE shared
+  # `extraction-drift` issue instead of red-gating anything. The headless artifacts
+  # (per-site PASS/FAIL matrix + captured DOM markers) are downloaded so the issue
+  # body shows WHAT the live page now looks like vs the committed fixture.
   notify-drift:
-    needs: spider-live-smoke
+    needs: [spider-live-smoke, extension-headless-smoke]
     runs-on: ubuntu-latest
     if: failure()
     permissions:
       issues: write
     steps:
+      - name: Download headless smoke artifacts (if the extension arm ran)
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: headless-extraction-smoke
+          path: /tmp/headless
+        continue-on-error: true   # spider-arm-only failures won't have produced these
+
       - name: Open / update extraction-drift issue
         uses: actions/github-script@v8
         with:
           script: |
+            const fs = require('fs');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            // Which arm(s) failed?
+            const spiderFailed = ${{ needs.spider-live-smoke.result == 'failure' }};
+            const headlessFailed = ${{ needs.extension-headless-smoke.result == 'failure' }};
+
+            // Pull the headless per-site matrix + captured DOM markers, if present.
+            let headlessBlock = '';
+            try {
+              const summary = fs.readFileSync('/tmp/headless/headless_smoke_summary.txt', 'utf8').trim();
+              if (summary) headlessBlock += '\n```\n' + summary.slice(0, 4000) + '\n```\n';
+            } catch (e) {}
+            try {
+              const raw = fs.readFileSync('/tmp/headless/headless_smoke.json', 'utf8').trim();
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                const bad = (parsed.results || []).filter(r => r.status === 'FAIL');
+                if (bad.length) {
+                  headlessBlock += '\n**Live extension FAIL cells (with captured DOM markers):**\n';
+                  for (const r of bad.slice(0, 12)) {
+                    const ex = (r.fields && r.fields.domExcerpt) ? ` \n    live DOM: ${String(r.fields.domExcerpt).split('\\n')[0]}` : '';
+                    headlessBlock += `- \`${r.site}/${r.mode}\`: ${r.reasons[0] || ''}${ex}\n`;
+                  }
+                }
+              }
+            } catch (e) {}
+
             const title = 'Extraction drift detected (weekly live smoke)';
             const body = [
-              'The weekly **extraction-drift live smoke** failed: one or more spiders no',
-              'longer extract real cards / correct-magnitude prices / expected sqft from a',
-              'LIVE search page. This usually means a site migrated its live DOM or JSON',
-              'shape out from under our selectors — which the frozen-fixture PR CI cannot',
-              'see (it keeps passing green against the committed fixtures).',
+              'The weekly **extraction-drift live smoke** failed. This catches what the',
+              'frozen-fixture PR CI structurally cannot: a site migrating its LIVE DOM /',
+              'JSON shape out from under our selectors (the committed fixtures keep passing',
+              'green against the OLD shape).',
               '',
-              `**Failed run:** [${context.runId}](${runUrl}) — open the \`spider-live-smoke\``,
-              'job log and read the `DRIFT:` lines for the exact spider + mode + signal.',
+              `**Failed arms:** ${[spiderFailed && 'spider-live-smoke', headlessFailed && 'extension-headless-smoke'].filter(Boolean).join(', ') || '(see run)'}`,
+              `**Failed run:** [${context.runId}](${runUrl})`,
               '',
-              'Likely actions: update the affected spider\'s selectors / section URL / JSON',
-              'path, refresh the committed fixture to the new live shape, and (if the',
-              'extension is affected) re-check content.js against the new page structure.',
-            ].join('\n');
+              spiderFailed
+                ? '• `spider-live-smoke`: open its job log and read the `DRIFT:` lines for the exact spider + mode + signal (0 cards / wrong-magnitude price / sqft collapse).'
+                : '',
+              headlessFailed
+                ? '• `extension-headless-smoke`: the in-browser content.js extraction mis-extracted or would not render on a live detail page. Per-site matrix + captured DOM markers below; full log in the run artifacts (`headless-extraction-smoke`).'
+                : '',
+              headlessBlock,
+              '',
+              'Likely actions: update the affected spider selectors / section URL / JSON path,',
+              'refresh the committed fixture to the new live shape, and (extension) re-check',
+              'content.js against the new page structure (e.g. the __PAGE_MODEL / __next_f /',
+              'innerText path the extractor reads). If a headless cell shows a 404/SKIP, the',
+              'seeded URL in `headless_extraction_smoke.mjs :: LIVE_URLS` just needs refreshing.',
+            ].filter(l => l !== '').join('\n');
 
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -290,11 +374,11 @@ jobs:
                 labels: ['extraction-drift', 'automated'],
               });
             } else {
-              // Reuse the open issue; add a comment pointing at the new failing run.
+              // Reuse the open issue; add a comment with this run's arm(s) + matrix.
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: existing.data[0].number,
-                body: `Drift smoke failed again: [run ${context.runId}](${runUrl}).`,
+                body: `Drift smoke failed again: [run ${context.runId}](${runUrl}).\n${body}`,
               });
             }

@@ -109,6 +109,12 @@ CRITICAL_TESTS = [
     #     daily-scrape.yml SQL to MAX(last_seen), not wall-clock NOW(); must never
     #     silently stop running, or the wall-clock-wipe footgun could return unguarded.
     "tests/test_mark_inactive_cycle_relative.py",
+    # --- Wave 3: the LIVE-SMOKE layer (scheduled extraction-drift + prod-schema-drift).
+    #     Pins that both non-PR-blocking smoke workflows stay scheduled + issue-on-failure
+    #     and the schema probe stays read-only. Pure text-parse (no DB/PG/node), so it
+    #     always runs; if it went dark, the only net that catches live-site DOM migration
+    #     or prod schema drift could be deleted silently.
+    "tests/test_live_smoke_workflows.py",
     # --- Cross-source dedupe identity core (pure, no DB)
     "tests/test_dedupe_postgres.py::test_distinct_streets_not_merged",
     "tests/test_dedupe_postgres.py::test_true_cross_source_dupe_still_caught",
