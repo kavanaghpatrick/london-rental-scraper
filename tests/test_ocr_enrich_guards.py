@@ -90,6 +90,17 @@ class TestSqftSanityGate:
         assert ocr.sqft_passes_sanity_gate(500, 0, 3000) == 500
         assert ocr.sqft_passes_sanity_gate(500, None, 3000) == 500
 
+    def test_observed_rightmove_garbage_rejected(self):
+        # T1 — the REAL bad values found in output/rentals.db (202 rightmove rows).
+        # 84/120/149 are square-METRES captured by the sqft regex (sub-150 floor leak);
+        # 12415/10737 are max()-of-garbage on multi-page floorplans (>10000 ceiling).
+        # Each MUST be nulled-not-written.
+        assert ocr.sqft_passes_sanity_gate(84, 1, 950) is None          # sqm-as-sqft
+        assert ocr.sqft_passes_sanity_gate(120, 3, 8000) is None        # sqm-as-sqft
+        assert ocr.sqft_passes_sanity_gate(149, None, None) is None     # just below floor
+        assert ocr.sqft_passes_sanity_gate(12415, 8, 150000) is None    # >10000 garbage
+        assert ocr.sqft_passes_sanity_gate(10737, 7, 28000) is None     # >10000 garbage
+
 
 # ---------------------------------------------------------------------------------
 # no-overwrite field selection
@@ -141,3 +152,72 @@ def test_module_imports_without_ocr_deps():
     """
     assert hasattr(ocr, "sqft_passes_sanity_gate")
     assert hasattr(ocr, "select_field_updates")
+
+
+# ---------------------------------------------------------------------------------
+# T2 — write-path: an out-of-range OCR value must NOT reach a DB writer.
+#
+# The live writers (floorplan_enricher.parse_detail, batch_floorplan_ocr.update_database)
+# now route every OCR sqft through sqft_passes_sanity_gate BEFORE writing. We model the
+# exact branch decision purely (the gate call), with NO DB/network, and assert that a
+# bad value (120 = sqm-as-sqft) produces no write while a good value (900) does.
+# ---------------------------------------------------------------------------------
+class TestWritePathGated:
+    def test_floorplan_enricher_branch_drops_bad_ocr(self):
+        # floorplan_enricher.parse_detail call-site logic:
+        #   gated = sqft_passes_sanity_gate(ocr_sqft, beds, price); if gated: write(gated)
+        beds, price = 3, 8000  # values present in response.meta on the live spider
+        gated = ocr.sqft_passes_sanity_gate(120, beds, price)
+        assert gated is None  # -> update_database_sqft is NOT called
+
+    def test_floorplan_enricher_branch_keeps_good_ocr(self):
+        beds, price = 2, 2700
+        gated = ocr.sqft_passes_sanity_gate(900, beds, price)
+        assert gated == 900  # -> update_database_sqft(prop_id, 900) IS called
+
+    def test_batch_ocr_branch_queues_no_update_for_bad_sqft(self):
+        # batch_floorplan_ocr.update_database appends 'size_sqft = ?' only when
+        #   gated = sqft_passes_sanity_gate(total_sqft, beds, price); gated and not existing
+        existing_sqft = None
+        gated = ocr.sqft_passes_sanity_gate(120, 3, 8000)
+        should_write = bool(gated and not existing_sqft)
+        assert should_write is False  # no 'size_sqft = ?' queued
+
+    def test_batch_ocr_branch_queues_update_for_good_sqft(self):
+        existing_sqft = None
+        gated = ocr.sqft_passes_sanity_gate(900, 2, 2700)
+        should_write = bool(gated and not existing_sqft)
+        assert should_write is True
+        assert gated == 900
+
+
+# ---------------------------------------------------------------------------------
+# T3 — extractor robustness: a captured square-METRES magnitude (101-149) must be
+# rejected at source. The Tier-1/1b numeric floor rises from `100 <` to `150 <=`.
+# We hit the real text-parse seam _extract_total_area(img, pre_extracted_text=...)
+# with a 1x1 blank image (the Step-1/1b path returns before any region OCR).
+# ---------------------------------------------------------------------------------
+class TestExtractorFloor:
+    def _extractor_and_blank(self):
+        # Import as a package module so dataclass annotation resolution works
+        # (by-path importlib loading breaks @dataclass __module__ lookup).
+        pytest.importorskip("PIL")
+        pytest.importorskip("property_scraper.utils.floorplan_extractor")
+        from PIL import Image
+        from property_scraper.utils.floorplan_extractor import FloorplanExtractor
+        return FloorplanExtractor(), Image.new("RGB", (4, 4), "white")
+
+    def test_dual_unit_sub150_sqft_rejected(self):
+        # "11 sq m / 118 sq ft" — OCR mangled so the imperial 1109 dropped to 118.
+        # 118 < 150 -> must NOT be returned (was accepted under the old `100 <` floor).
+        ext, img = self._extractor_and_blank()
+        text = "Total = 11 sq m / 118 sq ft"
+        sqft, _sqm = ext._extract_total_area(img, pre_extracted_text=text)
+        assert sqft is None or sqft >= 150
+
+    def test_real_total_above_floor_accepted(self):
+        # The legitimate total must still be extracted.
+        ext, img = self._extractor_and_blank()
+        text = "Approximate Gross Internal Area = 1109 sq ft"
+        sqft, _sqm = ext._extract_total_area(img, pre_extracted_text=text)
+        assert sqft == 1109

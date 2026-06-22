@@ -32,6 +32,25 @@ except ImportError:
     OCR_AVAILABLE = False
 
 
+def _load_sqft_sanity_gate():
+    """Import sqft_passes_sanity_gate from scripts/ocr_enrich.py (single source of
+    truth for the [150,10000]+ppsf/spb window). scripts/ is not a package, so load it
+    by path — same pattern as tests/test_ocr_enrich_guards.py. Importing it (not
+    redefining the constants) keeps every writer on ONE gate."""
+    import importlib.util
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "ocr_enrich_gate", str(root / "scripts" / "ocr_enrich.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.sqft_passes_sanity_gate
+
+
+sqft_passes_sanity_gate = _load_sqft_sanity_gate()
+
+
 class FloorplanEnricherSpider(scrapy.Spider):
     """Spider to add floorplan URLs to existing listings."""
 
@@ -316,10 +335,23 @@ class FloorplanEnricherSpider(scrapy.Spider):
                     self._extract_sqft_via_ocr,
                     floorplan_url
                 )
-                if ocr_sqft:
+                # Gate the OCR value through the single sanity gate BEFORE writing:
+                # an out-of-[150,10000] (or economically impossible) reading is a
+                # sqm-as-sqft / scan artifact and must be NULLED-not-written. beds +
+                # price are already in meta; pass None where absent (gate skips that check).
+                gated = sqft_passes_sanity_gate(
+                    ocr_sqft,
+                    response.meta.get('bedrooms'),
+                    response.meta.get('price_pcm'),
+                )
+                if gated is not None:
                     self.stats['sqft_from_ocr'] += 1
-                    self.update_database_sqft(prop_id, ocr_sqft)
-                    self.logger.debug(f"[OCR] {prop_id}: extracted {ocr_sqft} sqft")
+                    self.update_database_sqft(prop_id, gated)
+                    self.logger.debug(f"[OCR] {prop_id}: extracted {gated} sqft")
+                elif ocr_sqft:
+                    self.logger.debug(
+                        f"[OCR-REJECT] {prop_id}: {ocr_sqft} sqft failed sanity gate"
+                    )
         else:
             self.logger.debug(f"[MISS] {prop_id}: no floorplan or description found")
 

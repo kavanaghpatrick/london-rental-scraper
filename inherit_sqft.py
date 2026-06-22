@@ -17,6 +17,23 @@ import argparse
 import logging
 from collections import defaultdict
 
+
+def _load_sqft_sanity_gate():
+    """Import sqft_passes_sanity_gate from scripts/ocr_enrich.py (single source of
+    truth). scripts/ is not a package — load by path."""
+    import importlib.util
+    from pathlib import Path
+    root = Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location(
+        "ocr_enrich_gate", str(root / "scripts" / "ocr_enrich.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.sqft_passes_sanity_gate
+
+
+sqft_passes_sanity_gate = _load_sqft_sanity_gate()
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)-7s | %(message)s',
@@ -108,6 +125,12 @@ def inherit_sqft(db_path: str, dry_run: bool = False):
             if not best_sqft:
                 best_sqft = with_sqft[0]['sqft']
                 best_source = with_sqft[0]['source']
+
+            # Gate the inherited value (absolute range only — beds/price not loaded
+            # here) so a twin's out-of-[150,10000] bad sqft never propagates.
+            best_sqft = sqft_passes_sanity_gate(best_sqft, None, None)
+            if not best_sqft:
+                continue
 
             # Update listings missing sqft
             for m in without_sqft:

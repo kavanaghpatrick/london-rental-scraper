@@ -419,7 +419,11 @@ class FloorplanExtractor:
         if total_match:
             try:
                 sqft = int(float(total_match.group(1).replace(',', '')))
-                if 100 < sqft < 100000:
+                # Floor 150 (not 100): a sub-150 number here is almost always a
+                # square-METRES magnitude captured when OCR drops the imperial token
+                # ("103 sq m / 1109 sq ft" -> "118"), or a page marker / room dim.
+                # Matches the downstream sanity-gate window [150, 10000].
+                if 150 <= sqft < 100000:
                     sqm = self._extract_sqm(full_text)
                     return sqft, sqm
             except (ValueError, IndexError):
@@ -442,7 +446,9 @@ class FloorplanExtractor:
                     try:
                         val_str = m.group(1).replace(',', '')
                         val = float(val_str)
-                        if 100 < val < 100000:
+                        # Floor 150 (not 100) — reject sqm magnitudes / page markers
+                        # captured by the imperial regex (see Step-1 note).
+                        if 150 <= val < 100000:
                             values.append(int(val))
                     except (ValueError, IndexError):
                         continue
@@ -470,7 +476,8 @@ class FloorplanExtractor:
                 if total_match:
                     sqft_str = total_match.group(1).replace(',', '')
                     sqft = int(float(sqft_str))
-                    if 100 <= sqft <= 100000:
+                    # Floor 150 (not 100) — region-crop totals get the same window.
+                    if 150 <= sqft <= 100000:
                         sqm = self._extract_sqm(text)
                         return sqft, sqm
             except Exception:

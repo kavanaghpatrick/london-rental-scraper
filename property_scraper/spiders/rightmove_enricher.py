@@ -27,6 +27,23 @@ except ImportError:
     OCR_AVAILABLE = False
 
 
+def _load_sqft_sanity_gate():
+    """Import sqft_passes_sanity_gate from scripts/ocr_enrich.py (single source of
+    truth). scripts/ is not a package — load by path."""
+    import importlib.util
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "ocr_enrich_gate", str(root / "scripts" / "ocr_enrich.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.sqft_passes_sanity_gate
+
+
+sqft_passes_sanity_gate = _load_sqft_sanity_gate()
+
+
 class RightmoveEnricherSpider(scrapy.Spider):
     """Spider to enrich Rightmove listings with square footage data."""
 
@@ -199,11 +216,18 @@ class RightmoveEnricherSpider(scrapy.Spider):
 
         self.stats['enriched'] += 1
 
+        # Gate the sqft through the single sanity gate — an out-of-[150,10000] (or
+        # economically impossible) value is a sqm-as-sqft/scan artifact: NULL it, never
+        # write it. beds + price come from meta; gate skips a check when its input is None.
+        gated_sqft = sqft_passes_sanity_gate(
+            sqft, response.meta.get('bedrooms'), response.meta.get('price_pcm')
+        )
+
         # Update database if we found anything
-        if (sqft and 100 < sqft < 50000) or floorplan_url:
-            if sqft and 100 < sqft < 50000:
+        if gated_sqft or floorplan_url:
+            if gated_sqft:
                 self.stats['sqft_found'] += 1
-            self.update_database(prop_id, sqft if (sqft and 100 < sqft < 50000) else None, floorplan_url)
+            self.update_database(prop_id, gated_sqft, floorplan_url)
             self.logger.debug(
                 f"[FOUND] {prop_id}: sqft={sqft}, floorplan={bool(floorplan_url)} | "
                 f"{response.meta['bedrooms']}bed @ £{response.meta['price_pcm']:,}"

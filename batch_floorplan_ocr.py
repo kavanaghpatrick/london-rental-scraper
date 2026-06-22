@@ -27,6 +27,22 @@ sys.path.insert(0, str(Path(__file__).parent / 'property_scraper' / 'utils'))
 from floorplan_extractor import FloorplanExtractor, FloorplanData
 
 
+def _load_sqft_sanity_gate():
+    """Import sqft_passes_sanity_gate from scripts/ocr_enrich.py (single source of
+    truth for the sqft sanity window). scripts/ is not a package — load by path."""
+    import importlib.util
+    root = Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location(
+        "ocr_enrich_gate", str(root / "scripts" / "ocr_enrich.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.sqft_passes_sanity_gate
+
+
+sqft_passes_sanity_gate = _load_sqft_sanity_gate()
+
+
 class BatchFloorplanOCR:
     """Batch process floorplan images through OCR extraction."""
 
@@ -56,7 +72,8 @@ class BatchFloorplanOCR:
 
         # Get properties with floorplan_url but missing floor data
         query = '''
-            SELECT id, source, property_id, address, floorplan_url, size_sqft
+            SELECT id, source, property_id, address, floorplan_url, size_sqft,
+                   bedrooms, price_pcm
             FROM listings
             WHERE floorplan_url IS NOT NULL
             AND floorplan_url != ''
@@ -117,7 +134,8 @@ class BatchFloorplanOCR:
 
         return result
 
-    def update_database(self, prop_id: int, data: FloorplanData, existing_sqft: Optional[int]):
+    def update_database(self, prop_id: int, data: FloorplanData, existing_sqft: Optional[int],
+                        beds: Optional[int] = None, price_pcm: Optional[int] = None):
         """Update database with extracted data."""
         if self.dry_run:
             return
@@ -170,10 +188,12 @@ class BatchFloorplanOCR:
             updates.append('room_details = ?')
             params.append(room_details)
 
-        # Sqft (only update if currently missing)
-        if data.total_sqft and not existing_sqft:
+        # Sqft (only update if currently missing) — gate it first so an out-of-range
+        # OCR reading (sqm-as-sqft, max()-of-garbage) is NULLED-not-written.
+        gated = sqft_passes_sanity_gate(data.total_sqft, beds, price_pcm)
+        if gated and not existing_sqft:
             updates.append('size_sqft = ?')
-            params.append(data.total_sqft)
+            params.append(gated)
 
         if updates:
             params.append(prop_id)
@@ -231,7 +251,10 @@ class BatchFloorplanOCR:
                             self.stats['sqft_extracted'] += 1
 
                         # Update database
-                        self.update_database(prop['id'], data, prop.get('size_sqft'))
+                        self.update_database(
+                            prop['id'], data, prop.get('size_sqft'),
+                            beds=prop.get('bedrooms'), price_pcm=prop.get('price_pcm'),
+                        )
 
                     else:
                         if result['error'] == 'download_failed':
