@@ -121,6 +121,130 @@ class TestRightmoveParsing:
 
 
 # ---------------------------------------------------------------------------
+# R3 — sqft regex must tolerate the REAL Rightmove search format "675 sq. ft."
+#       (periods + spaces). The old regex ([\d,]+)\s*sq\s*ft cannot match a
+#       period after "sq" or before "ft", so size_sqft silently drops to None.
+#       T2: iterate the REAL committed fixture and assert every displaySize that
+#       names a sqft figure yields a positive int. RED before the fix.
+# ---------------------------------------------------------------------------
+import re as _re
+
+
+class TestRightmoveSqftRegexRealFormat:
+    @pytest.fixture(scope="class")
+    def spider(self):
+        return RightmoveSpider(areas="Chelsea", max_pages="1", fetch_details="false")
+
+    @pytest.fixture(scope="class")
+    def props(self):
+        return load_fixture("rightmove_search_properties.json")
+
+    def test_fixture_has_period_format_sqft(self, props):
+        """Guard the test itself: the real fixture DOES contain at least one
+        'NNN sq. ft.' (period) displaySize — otherwise this regression test is
+        vacuous. (Today: '675 sq. ft.', '274 sq. ft.')"""
+        sq = _re.compile(r"\d+\s*sq", _re.I)
+        named = [p.get("displaySize", "") for p in props
+                 if p.get("displaySize") and sq.search(p["displaySize"])]
+        assert named, "fixture carries no '<n> sq...' displaySize — cannot test R3"
+        assert any("sq." in ds or "sq ." in ds for ds in named), (
+            "fixture has no period-bearing 'sq. ft.' displaySize — R3 would be vacuous"
+        )
+
+    def test_every_sqft_displaysize_parses_to_positive_int(self, spider, props):
+        """Every prop whose displaySize names a sqft figure (/\\d+\\s*sq/i) must
+        parse to a positive int size_sqft. FAILS today: '675 sq. ft.' and
+        '274 sq. ft.' yield None under the period-blind regex."""
+        sq = _re.compile(r"\d+\s*sq", _re.I)
+        checked = 0
+        for prop in props:
+            ds = prop.get("displaySize") or ""
+            if not sq.search(ds):
+                continue
+            checked += 1
+            item = spider.parse_property(prop, "Chelsea")
+            val = item.get("size_sqft")
+            assert isinstance(val, int) and val > 0, (
+                f"displaySize {ds!r} (id={prop.get('id')}) parsed to {val!r}; "
+                f"the sqft regex must tolerate periods/spaces (R3)."
+            )
+        assert checked >= 1
+
+
+# ---------------------------------------------------------------------------
+# R3 (chestertons) — the card sqft regex (\d{3,5})\s*ft drops comma-thousands
+#       and period formats. The fix must KEEP matching the bare-"ft" card format
+#       Chestertons currently emits (zero rental regression) while ALSO matching
+#       "1,234 sq ft" / "675 sq. ft.". RED today on the comma-thousands case.
+# ---------------------------------------------------------------------------
+class TestChestertonsSqftRegex:
+    @pytest.fixture(scope="class")
+    def spider(self):
+        from property_scraper.spiders.chestertons_spider import ChestertonsSpider
+        return ChestertonsSpider()
+
+    def _card(self, body):
+        # Minimal chestertons card dict (the shape _extract_and_yield_cards emits).
+        return {
+            "href": "/properties/12345/lettings/ABC1",
+            "address": "Oakfield Street, Chelsea, SW10",
+            "letType": "Long Let",
+            "textContent": f"Long Let\nOakfield Street, Chelsea, SW10\n2\n2\n{body}\n£3,500\n(pcm)",
+        }
+
+    def test_bare_ft_still_parses_zero_regression(self, spider):
+        """The format Chestertons cards emit today ('2540 ft') MUST keep parsing —
+        this guards against a regression when the regex is broadened for R3."""
+        item = spider.parse_card_data(self._card("2540 ft"))
+        assert item["size_sqft"] == 2540
+
+    def test_comma_thousands_sqft_parses(self, spider):
+        """'1,234 sq ft' must parse to 1234. FAILS today: (\\d{3,5})\\s*ft cannot
+        cross the comma/space/'sq' and yields None."""
+        item = spider.parse_card_data(self._card("1,234 sq ft"))
+        assert item["size_sqft"] == 1234
+
+    def test_period_sqft_parses(self, spider):
+        """'675 sq. ft.' must parse to 675 (period-tolerant, R3)."""
+        item = spider.parse_card_data(self._card("675 sq. ft."))
+        assert item["size_sqft"] == 675
+
+
+# ---------------------------------------------------------------------------
+# R3 (rightmove_enricher) — the detail-text sqft fallback regex must tolerate
+#       periods. The enricher's parse_detail text-fallback list at lines 178-181
+#       drives DB back-fill; "675 sq. ft." in page text must extract 675.
+# ---------------------------------------------------------------------------
+class TestRightmoveEnricherSqftRegex:
+    def _enricher_source(self):
+        """Read the enricher module SOURCE so the test pins the ACTUAL production
+        regex text, not a copy that could drift."""
+        from property_scraper.spiders import rightmove_enricher
+        return Path(rightmove_enricher.__file__).read_text()
+
+    def test_enricher_sqft_regex_tolerates_periods(self):
+        """The enricher's page-text sqft fallback must tolerate the real
+        '675 sq. ft.' search format (periods between 'sq' and 'ft'). The old
+        r'(\\d{3,5})\\s*sq\\.?\\s*ft' patterns are period-blind there. RED today:
+        the enricher source carries none of the period-tolerant sq[\\s.]*ft form."""
+        import re as _r
+        # Anchor on REAL fixture data so this tracks real-site format, not a sample.
+        props = load_fixture("rightmove_search_properties.json")
+        period_samples = [p["displaySize"] for p in props
+                          if p.get("displaySize") and "sq." in p["displaySize"]]
+        assert period_samples, "fixture lost its 'sq. ft.' samples — cannot test enricher R3"
+        fixed = _r.compile(r"([\d,]+)\s*sq[\s.]*ft", _r.I)
+        for s in period_samples:
+            assert fixed.search(s), f"period format {s!r} unmatched by spec regex"
+        # The enricher SOURCE must carry the period-tolerant token (R3 fix).
+        src = self._enricher_source()
+        assert r"sq[\s.]*ft" in src, (
+            "rightmove_enricher still lacks a period-tolerant sq[\\s.]*ft sqft "
+            "pattern in its source (R3)."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Savills — parse_card_data(card) from Playwright-extracted card dict
 # ---------------------------------------------------------------------------
 class TestSavillsParsing:

@@ -151,6 +151,15 @@ jobs:
           node chrome-extension/foxtons_extract_test.mjs
           node chrome-extension/floorplan_discovery_test.mjs
           node chrome-extension/foxtons_ocr_skip_test.mjs
+          # R5/A11 — the EXTRACTION->FEATURES BRIDGE test (the test CLASS that was entirely
+          # absent). Runs the REAL content.js extract on a captured Rightmove fixture and
+          # asserts rawFields.summary is populated (the model's text_blob = summary + ' ' +
+          # description; summary was never set, so all 10 text-amenity features computed off
+          # an empty field) AND that buildFeatures fires the amenity feature(s) the prose
+          # implies with no load-bearing feature collapsing to a default (postcode!=SW3,
+          # size!=estimated). The rental fixture_diff parity gate runs buildFeatures on
+          # SYNTHETIC samples (not via content.js), so this does NOT affect the 0/0 gate.
+          node chrome-extension/extract_to_features_bridge_test.mjs
           # Behavioural guards for recent extension work that were passing green but
           # wired into NO workflow (zero PR-CI protection until now):
           #   similar_properties_test — the comps location HARD-gate in

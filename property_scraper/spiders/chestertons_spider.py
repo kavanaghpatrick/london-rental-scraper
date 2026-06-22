@@ -366,7 +366,12 @@ class ChestertonsSpider(scrapy.Spider):
 
         # Parse and yield new cards
         for card_data in cards_data:
-            item = self.parse_card_data(card_data)
+            # FOR-SALE vertical: route to the sale seam (asking_price, never
+            # price_pcm). Rent mode (default) is byte-unchanged.
+            if self.listing_type == 'sale':
+                item = self.parse_card_data_for_sale(card_data, '')
+            else:
+                item = self.parse_card_data(card_data)
             if not item:
                 continue
 
@@ -495,9 +500,12 @@ class ChestertonsSpider(scrapy.Spider):
             item['price_pw'] = 0
             item['price_period'] = 'pcm'
 
-        # Square footage - look for "XXX ft" pattern
-        sqft_match = re.search(r'(\d{3,5})\s*ft', text)
-        item['size_sqft'] = int(sqft_match.group(1)) if sqft_match else None
+        # Square footage. R3: tolerate comma-thousands ("1,234 sq ft") and the
+        # period format ("675 sq. ft.") while STILL matching the bare-"ft" form the
+        # card emits today ("2540 ft") — the "sq" segment is optional so rent-mode
+        # behaviour is unchanged (zero regression).
+        sqft_match = re.search(r'([\d,]+)\s*(?:sq[\s.]*)?ft', text, re.I)
+        item['size_sqft'] = int(sqft_match.group(1).replace(',', '')) if sqft_match else None
 
         # Bedrooms, bathrooms, receptions - they appear as single digits AFTER the address line
         # The text format is: "Long Let\nAddress\nbeds\nbaths\nreceptions\nsqft\n..."

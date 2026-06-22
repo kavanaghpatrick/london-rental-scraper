@@ -61,8 +61,17 @@ class FoxtonsSpider(scrapy.Spider):
         'Marylebone': 'marylebone',
     }
 
-    def __init__(self, areas=None, max_pages=None, fetch_floorplans=False, *args, **kwargs):
+    def __init__(self, areas=None, max_pages=None, fetch_floorplans=False,
+                 listing_type='rent', *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Listing vertical: 'rent' (default — UNCHANGED rental behaviour, points at the
+        # site's /properties-to-rent/ section) or 'sale' (the separate FOR-SALE vertical,
+        # pointed at /properties-for-sale/). Any value other than the explicit 'sale'
+        # falls back to 'rent' so a typo can never silently switch the rental scrape to
+        # sale. See start_url_for / parse_property_for_sale below. Mirrors the rightmove
+        # spider's sale-mode pattern.
+        self.listing_type = 'sale' if str(listing_type).lower() == 'sale' else 'rent'
 
         if areas:
             self.areas = [a.strip().lower() for a in areas.split(',')]
@@ -107,6 +116,43 @@ class FoxtonsSpider(scrapy.Spider):
         if self.fetch_floorplans and not OCR_AVAILABLE:
             self.logger.warning("[CONFIG] OCR requested but pytesseract not available!")
         self.logger.info("=" * 70)
+
+    # ------------------------------------------------------------------ #
+    # FOR-SALE vertical (additive — default rental path is untouched)    #
+    # ------------------------------------------------------------------ #
+    def _section(self) -> str:
+        """The Foxtons URL path token for the configured vertical."""
+        return 'properties-for-sale' if self.listing_type == 'sale' else 'properties-to-rent'
+
+    def start_url_for(self, area: str) -> str:
+        """Build the Foxtons search URL for `area` in the configured vertical.
+
+        Rental (default): the SAME /properties-to-rent/{slug}/ URL the spider has
+        always used. Sale: the /properties-for-sale/{slug}/ section — the only change
+        is which part of Foxtons the (otherwise identical) spider points at.
+        Pure/standalone so the sale-mode tests can assert the URL without a crawl.
+        """
+        slug = self.AREA_SLUGS.get(area, str(area).lower())
+        return f'https://www.foxtons.co.uk/{self._section()}/{slug}/'
+
+    def parse_property_for_sale(self, prop: dict, area: str):
+        """Parse a single FOR-SALE property from the __NEXT_DATA__ search results.
+
+        DELEGATES to for_sale.listing_parse.parse_foxtons_for_sale — the pure,
+        independently-tested seam (asking price from priceFrom, never pricePcm).
+        Returns a plain dict for the sale data-layer path; a POA/amount-0 row yields
+        asking_price None. None if the property has no id. Imported lazily so a pure
+        rental crawl never imports the for-sale package.
+        """
+        from for_sale.listing_parse import parse_foxtons_for_sale
+
+        sale_item = parse_foxtons_for_sale(prop, area)
+        if sale_item is None:
+            return None
+        item = dict(sale_item)
+        if not item.get('asking_price'):
+            item['asking_price'] = None
+        return item
 
     def _extract_floorplan_ocr(self, floorplan_url, response):
         """Download floorplan and run OCR to extract floor data.
@@ -175,15 +221,18 @@ class FoxtonsSpider(scrapy.Spider):
 
     def start_requests(self):
         """Generate initial requests for all target areas."""
-        self.logger.info(f"[START] Launching {len(self.areas)} area scrapers...")
+        self.logger.info(
+            f"[START] Launching {len(self.areas)} area scrapers "
+            f"(listing_type={self.listing_type})..."
+        )
 
         for i, area in enumerate(self.areas):
             self.stats['by_area'][area] = {'count': 0, 'pages': 0}
-            # Use slug for URL, keep display name for data
-            slug = self.AREA_SLUGS.get(area, area.lower())
-            url = f'https://www.foxtons.co.uk/properties-to-rent/{slug}/'
+            # Vertical-aware start URL (rent: /properties-to-rent/, sale:
+            # /properties-for-sale/). Keep display name for data.
+            url = self.start_url_for(area)
 
-            self.logger.info(f"[REQUEST] [{i+1}/{len(self.areas)}] Starting: {area}")
+            self.logger.info(f"[REQUEST] [{i+1}/{len(self.areas)}] Starting: {area} -> {url}")
 
             yield scrapy.Request(
                 url,
@@ -250,6 +299,20 @@ class FoxtonsSpider(scrapy.Spider):
         # Parse each property
         parsed_count = 0
         for prop in properties:
+            if self.listing_type == 'sale':
+                # FOR-SALE vertical: route to the pure sale seam (asking_price from
+                # priceFrom, never pricePcm) so a sale price never touches the rental
+                # PropertyItem/pipeline. The sale data layer owns persistence.
+                item = self.parse_property_for_sale(prop, area)
+                if item:
+                    parsed_count += 1
+                    self.stats['total'] += 1
+                    self.stats['by_area'][area]['count'] += 1
+                    if item.get('asking_price'):
+                        self.stats['prices'].append(item['asking_price'])
+                    yield item
+                continue
+
             item = self.parse_property(prop, area, response)
             if item:
                 parsed_count += 1
@@ -306,9 +369,8 @@ class FoxtonsSpider(scrapy.Spider):
 
         if should_continue:
             next_page = page + 1
-            # Use the same URL slug as the initial request for consistency
-            slug = self.AREA_SLUGS.get(area, area.lower())
-            next_url = f'https://www.foxtons.co.uk/properties-to-rent/{slug}/?page={next_page}'
+            # Vertical-aware pagination URL (same section as the initial request).
+            next_url = f'{self.start_url_for(area)}?page={next_page}'
 
             self.logger.debug(f"[PAGINATION] {area}: Following to page {next_page}")
 

@@ -466,7 +466,9 @@ class RightmoveSpider(scrapy.Spider):
         # Size
         size = prop.get('displaySize', '')
         if size:
-            sqft_match = re.search(r'([\d,]+)\s*sq\s*ft', size, re.I)
+            # R3: tolerate periods/spaces in the real search format "675 sq. ft."
+            # (the old ([\d,]+)\s*sq\s*ft was period-blind and silently dropped sqft).
+            sqft_match = re.search(r'([\d,]+)\s*sq[\s.]*ft', size, re.I)
             item['size_sqft'] = int(sqft_match.group(1).replace(',', '')) if sqft_match else None
         else:
             item['size_sqft'] = None

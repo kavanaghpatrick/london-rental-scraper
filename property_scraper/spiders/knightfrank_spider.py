@@ -398,7 +398,12 @@ class KnightFrankSpider(scrapy.Spider):
         parsed_count = 0
         target_count = 0
         for card_data in cards_data:
-            item = self.parse_card_data(card_data)
+            # FOR-SALE vertical: route to the sale seam (asking_price, never
+            # price_pcm). Rent mode (default) is byte-unchanged.
+            if self.listing_type == 'sale':
+                item = self.parse_card_data_for_sale(card_data, '')
+            else:
+                item = self.parse_card_data(card_data)
             if item:
                 if self.is_target_area(item):
                     target_count += 1

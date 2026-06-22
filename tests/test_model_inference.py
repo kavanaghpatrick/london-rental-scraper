@@ -445,3 +445,245 @@ def test_sanity_properties_present_and_priced(cp, fixture):
         assert lbl in labels, f"sanity sample {lbl} missing from fixture"
         p = labels[lbl]['prediction_pcm']
         assert 500 < p < 100000, f"{lbl} implausible £{p}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CI HARDENING WAVE 1 — Group MODEL (writer 3)
+#
+# Model-QUALITY regression tests the JS↔Python parity gate structurally CANNOT
+# provide. The parity gate only proves the JS and Python predictors AGREE; it
+# says nothing about whether the SHARED model behaves sanely (it could agree on
+# a wrong answer). These add:
+#   A2/T6  monotonicity in size_sqft
+#   A3/T7  size=0 / missing-sqft serving sanity
+#   M2/T13 location-sensitivity (geography-collapse guard)
+#
+# All load the COMMITTED canonical model via canonical_predict.predict_one —
+# network-free, deterministic, no `data`/`live`/`parity` marker, so they run
+# under the default PR CI (`pytest -m "not live and not parity"`).
+#
+# v20 feature-engineering prints a verbose block to stdout per build; _q()
+# swallows it so the suite output stays readable.
+# ════════════════════════════════════════════════════════════════════════════
+import contextlib
+import io
+
+ANCHORS_PATH = ROOT / 'tests' / 'fixtures' / 'model_anchors.json'
+
+
+def _q(fn, *args, **kwargs):
+    """Call fn with v20's noisy feature-engineering stdout suppressed."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        return fn(*args, **kwargs)
+
+
+@pytest.fixture(scope='module')
+def anchors():
+    """Independent absolute-£ oracle (hand-validated London market bands, NOT
+    regenerated from the model). See tests/fixtures/model_anchors.json."""
+    assert ANCHORS_PATH.exists(), "model_anchors.json missing (Group MODEL oracle)"
+    return json.loads(ANCHORS_PATH.read_text())
+
+
+# ── ORACLE: anchors land inside hand-validated market bands ─────────────────
+
+def test_anchors_within_hand_validated_bands(cp, anchors):
+    """Each mainstream 1-2 bed flat (real sqft) must price INSIDE its independent
+    hand-validated £-pcm band. The bands come from a committed oracle file, NOT
+    from the model — so this catches a model that drifts out of a sane absolute
+    range (e.g. a bad retrain), which the JS↔Python parity gate cannot see (it
+    only proves the two predictors agree, not that the number is right)."""
+    for a in anchors['anchors']:
+        pred = _q(cp.predict_one, **a['inputs'])
+        assert a['pcm_low'] <= pred <= a['pcm_high'], (
+            f"anchor {a['label']}: £{pred:.0f} pcm outside hand-validated band "
+            f"[£{a['pcm_low']}, £{a['pcm_high']}] — {a['note']}"
+        )
+
+
+# ── A2/T6: monotonicity in size_sqft ────────────────────────────────────────
+#
+# CURRENT STATE (source-verified on the committed v20 model): NON-MONOTONIC.
+# Sweeping a fixed SW3 3-bed over 400..3000 sqft, predictions DIP at 700->800,
+# 800->900, 900->1000 (the documented size_per_bed spb 250-275 cliff — MEMORY
+# v20-size-per-bed-nonmonotonic). The for-sale model has monotone_constraints on
+# size; the rental model does NOT. We therefore:
+#   * assert the CURRENT (broken) behavior as a HARD gate (locks the known defect
+#     so it can't get *worse* silently and documents exactly where it dips), and
+#   * xfail(strict=False) the DESIRED full-monotonicity assertion so it flips to a
+#     hard gate automatically once a future retrain adds monotone_constraints.
+# We do NOT retrain the production model in this pass.
+
+def _size_sweep(cp, sizes):
+    base = dict(bedrooms=3, bathrooms=2, postcode='SW3', postcode_normalized='SW3',
+                area='Chelsea', property_type='flat', property_type_std='flat',
+                address='Onslow Square, London, SW3', source='rightmove',
+                agent_brand='unknown')
+    return [_q(cp.predict_one, size_sqft=s, **base) for s in sizes]
+
+
+def test_size_monotonicity_current_behavior_has_known_dip(cp):
+    """DOCUMENTS the known non-monotonic defect as a HARD gate (current reality):
+    on the committed v20 model, a fixed SW3 3-bed predicts a LOWER rent for a
+    larger flat somewhere in the 700-1000 sqft range (the spb 250-275 cliff).
+    If a future retrain FIXES this, this test goes green-but-wrong and the paired
+    xfail below flips to PASS — at which point delete this test and unmark that
+    one. Until then this proves the dip is real (test is non-vacuous)."""
+    sizes = list(range(400, 3001, 100))
+    preds = _size_sweep(cp, sizes)
+    dips = [
+        (s_lo, s_hi, p_lo, p_hi)
+        for (s_lo, p_lo), (s_hi, p_hi) in zip(zip(sizes, preds), zip(sizes[1:], preds[1:]))
+        if p_hi < p_lo
+    ]
+    assert dips, (
+        "expected the known size non-monotonicity dip on v20 but found none — "
+        "the model may have been retrained with monotone_constraints; if so, "
+        "remove this test and unmark test_size_monotonically_non_decreasing"
+    )
+    # The headline cliff is in the 700-1000 sqft window (the documented spb defect).
+    assert any(700 <= s_lo <= 1000 for (s_lo, _s_hi, _plo, _phi) in dips), (
+        f"non-monotonic dip moved out of the documented 700-1000 sqft window: {dips}"
+    )
+
+
+@pytest.mark.xfail(
+    reason="rental v20 is non-monotonic in size (no monotone_constraints; "
+           "documented spb 250-275 cliff, MEMORY v20-size-per-bed-nonmonotonic). "
+           "Tracked: add monotone_constraints on size_sqft/log_sqft on the next "
+           "retrain (mirror for_sale gate G4a). Flips to a hard gate then.",
+    strict=False,
+)
+def test_size_monotonically_non_decreasing(cp):
+    """DESIRED behavior (gate once retrained): a larger flat must never predict a
+    lower rent than a smaller one, all else equal. XFAIL today — see reason."""
+    sizes = list(range(400, 3001, 100))
+    preds = _size_sweep(cp, sizes)
+    for (s_lo, p_lo), (s_hi, p_hi) in zip(zip(sizes, preds), zip(sizes[1:], preds[1:])):
+        assert p_hi >= p_lo, (
+            f"size monotonicity violated at {s_lo}->{s_hi} sqft: £{p_hi:.0f} < £{p_lo:.0f}"
+        )
+
+
+# ── A3/T7: size=0 / missing-sqft serving ────────────────────────────────────
+#
+# CURRENT STATE (source-verified): DEGENERATE. A normal SW3 2-bed with size_sqft=0
+# (or omitted — predict_one defaults size_sqft=0) prices at ~£2,323 pcm, BELOW the
+# same flat at 500 sqft (~£4,295) — i.e. the model reads a missing sqft as a
+# sub-studio micro-flat, and predict_one returns a BARE float with NO low_confidence
+# /estimated flag. ~28.7% of stock is missing sqft (MEMORY model-eval-strong-weak),
+# so this silently under-prices a quarter of requests. We:
+#   * assert the CURRENT degenerate behavior as a HARD gate (locks it, non-vacuous), and
+#   * xfail(strict=False) the DESIRED behavior (size=0 should price WITHIN the beds/
+#     postcode band OR surface an estimated/low-confidence flag) so it flips to a
+#     hard gate after the fix (size-imputation or a confidence flag on retrain/serving).
+
+def _sw3_2bed(cp, size_sqft):
+    return _q(
+        cp.predict_one, size_sqft=size_sqft, bedrooms=2, bathrooms=1,
+        postcode='SW3', postcode_normalized='SW3', area='Chelsea',
+        property_type='flat', property_type_std='flat',
+        address='Cadogan Square, London, SW3', source='rightmove',
+        agent_brand='unknown',
+    )
+
+
+def test_size_zero_current_behavior_is_degenerate_below_smallest(cp):
+    """DOCUMENTS the known size=0 degeneracy as a HARD gate (current reality):
+    a SW3 2-bed with size_sqft=0 prices BELOW the same flat at a real 500 sqft —
+    proving the model treats missing sqft as a sub-studio rather than imputing a
+    sane size. size_sqft=0 and size-omitted must agree (predict_one defaults to 0).
+    Flip to the desired test below once size imputation / a confidence flag ships."""
+    p_zero = _sw3_2bed(cp, 0)
+    p_omitted = _q(
+        cp.predict_one, bedrooms=2, bathrooms=1,
+        postcode='SW3', postcode_normalized='SW3', area='Chelsea',
+        property_type='flat', property_type_std='flat',
+        address='Cadogan Square, London, SW3', source='rightmove',
+        agent_brand='unknown',
+    )  # size_sqft omitted -> predict_one default 0
+    p_500 = _sw3_2bed(cp, 500)
+    assert p_zero == pytest.approx(p_omitted, rel=1e-6), (
+        f"size=0 (£{p_zero:.0f}) and size-omitted (£{p_omitted:.0f}) must match "
+        "(predict_one defaults size_sqft=0)"
+    )
+    assert p_zero < p_500, (
+        f"expected the known degenerate size=0 behavior (£{p_zero:.0f} below the "
+        f"500-sqft price £{p_500:.0f}) but size=0 priced at/above 500 sqft — the "
+        "model may have gained size imputation; if so, flip to "
+        "test_size_zero_priced_within_band_or_flagged"
+    )
+    assert p_zero > 0 and math.isfinite(p_zero)
+
+
+@pytest.mark.xfail(
+    reason="rental v20 prices a missing/zero sqft as a sub-studio micro-flat "
+           "(~£2.3k for a SW3 2-bed, below the 500-sqft price) and predict_one "
+           "returns no low_confidence/estimated flag. ~28.7% of stock lacks sqft. "
+           "Tracked: impute a beds-anchored size OR surface an estimated flag on "
+           "retrain/serving (MEMORY sqft-signal-deepdive UX guard). Hard gate then.",
+    strict=False,
+)
+def test_size_zero_priced_within_band_or_flagged(cp):
+    """DESIRED behavior (gate once fixed): a normal SW3 2-bed with NO sqft must NOT
+    price as a sub-studio. It should land within a plausible beds/postcode band
+    (here: at least the real 500-sqft price for the same flat, i.e. no worse than
+    the smallest realistic unit) OR predict_one should expose a confidence flag.
+    XFAIL today — predict_one returns a bare float and prices below 500 sqft."""
+    p_zero = _sw3_2bed(cp, 0)
+    p_500 = _sw3_2bed(cp, 500)
+    assert p_zero >= p_500, (
+        f"missing-sqft SW3 2-bed priced £{p_zero:.0f} — below the 500-sqft floor "
+        f"£{p_500:.0f}; missing sqft is being read as a sub-studio"
+    )
+
+
+# ── M2/T13: location-sensitivity (geography-collapse guard) ─────────────────
+#
+# These SHOULD PASS on the current (geography-fixed) model — the shipped SW3-fillna
+# fix (MEMORY tail-signal-audit / geography-collapse) restored real district signal.
+# If either FAILS that is a REAL regression finding, not an expected xfail.
+
+def test_location_sensitivity_prime_vs_docklands(cp, anchors):
+    """An IDENTICAL 2-bed 900-sqft flat in SW3 (prime) vs E14 (Docklands) must
+    predict a MEANINGFULLY different £ — prime strictly higher, by at least
+    min_gap_pcm. Guards the geography-collapse fix: on the pre-fix model
+    (~91.5% mass in SW3) every district predicted ~the SW3 value and this gap
+    vanished. Inputs + threshold come from the committed oracle."""
+    ls = anchors['location_sensitivity']
+    prime = _q(cp.predict_one, **ls['prime']['inputs'])
+    dock = _q(cp.predict_one, **ls['docklands']['inputs'])
+    gap = prime - dock
+    assert gap >= ls['min_gap_pcm'], (
+        f"location collapse: SW3 £{prime:.0f} vs E14 £{dock:.0f} differ by only "
+        f"£{gap:.0f} (< £{ls['min_gap_pcm']} required) — the SW3-fillna geography "
+        "collapse may have regressed"
+    )
+    assert prime > dock, f"prime SW3 (£{prime:.0f}) must exceed Docklands E14 (£{dock:.0f})"
+
+
+def test_postcode_freq_map_not_degenerate(cp, anchors):
+    """The baked postcode-frequency map must not be geography-collapsed: it must
+    cover >= min_districts and NO single REAL district may hold >
+    max_single_real_district_share of the mass. The pre-fix degenerate state had
+    ~91.5% of mass in SW3 (MEMORY tail-signal-audit). UNKNOWN (a non-district
+    aggregation bucket) is excluded from the dominance check."""
+    cfg = anchors['freq_map_health']
+    stats = cp.load_inference_stats()
+    assert stats, "inference.json missing — retrain must emit it"
+    pf = stats['postcode_freq']
+    assert len(pf) >= cfg['min_districts'], (
+        f"postcode_freq covers only {len(pf)} districts (< {cfg['min_districts']}) "
+        "— frequency map looks collapsed"
+    )
+    non_district = set(cfg['non_district_buckets'])
+    total = sum(pf.values())
+    assert total > 0
+    real = {k: v for k, v in pf.items() if k not in non_district}
+    assert real, "no real districts in postcode_freq after excluding non-district buckets"
+    top_district, top_freq = max(real.items(), key=lambda kv: kv[1])
+    top_share = top_freq / total
+    assert top_share <= cfg['max_single_real_district_share'], (
+        f"single district {top_district} holds {top_share:.1%} of postcode_freq mass "
+        f"(> {cfg['max_single_real_district_share']:.0%}) — geography collapse regressed"
+    )

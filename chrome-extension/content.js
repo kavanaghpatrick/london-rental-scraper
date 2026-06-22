@@ -493,6 +493,86 @@
     return { sizeSqft, sizeSource, ocrText };
   }
 
+  // Compose the listing free-text prose the model trains on. In the training DB the
+  // real prose lives in the `summary` column (rightmove + savills 100%, knightfrank
+  // partial); the `description` column is ~100% EMPTY. The page exposes the same prose
+  // via pd.text.description (+ propertyPhrase + keyFeatures). This is the single source
+  // both `summary` and the legacy `description` raw field are built from, so the JS
+  // text_blob (summary + ' ' + description) matches the field the model trained on.
+  function extractListingProse(propertyData) {
+    const pd = propertyData || {};
+    return ((pd.text?.description || '') + ' ' +
+            (pd.text?.propertyPhrase || '') +
+            ' ' + (pd.keyFeatures || []).join(' ')).trim();
+  }
+
+  // PURE seam (no DOM / network / OCR): assemble the rawFields object — the
+  // /api/predict request contract that is also fed verbatim to
+  // window.XGBFeatures.buildFeatures. Extracted from analyzeProperty so the
+  // extraction -> features bridge is testable in Node (extract_to_features_bridge_test.mjs)
+  // without driving the async size-recovery / server-fetch path. The size-recovery /
+  // OCR / pageUrl values are passed in via `opts` (already computed by the caller); this
+  // function only reads pure helpers off `propertyData`.
+  //
+  // FIX (R5): populate `summary` from the page prose (the column the model actually
+  // trains on). Previously only `description` was set and `summary` was never populated,
+  // so the JS text_blob = (summary='' + ' ' + description) was built off a field the
+  // model didn't train on — the JS amenity/furnished/refurb feature distribution
+  // diverged from training. We now set summary to the listing prose. `description`
+  // defaults to the SAME prose for back-compat; the caller (analyzeProperty) passes the
+  // exact legacy `description`/`ocrText`/`pageUrl` it always used, so the rent-path
+  // rawFields is byte-identical EXCEPT for the newly-added `summary` key. parseAmenities
+  // is keyword-boolean, so adding the trained field name changes no feature value.
+  function buildRawFields(propertyData, opts = {}) {
+    const pd = propertyData || {};
+    const beds = pd.bedrooms || 1;
+    const baths = pd.bathrooms || 1;
+    const postcode = extractPostcode(pd);
+    const propertyType = extractPropertyType(pd);
+    const agentName = extractAgentName(pd);
+    const lat = pd.location?.latitude;
+    const lon = pd.location?.longitude;
+    const address = pd.address?.displayAddress || '';
+    const prose = extractListingProse(pd);
+    const fl = opts.floors || {};
+    const description = (opts.description != null) ? opts.description : prose;
+    const ocrText = (opts.ocrText != null) ? opts.ocrText : '';
+    const pageUrl = (opts.pageUrl != null) ? opts.pageUrl
+      : ((typeof window !== 'undefined' && window.location) ? window.location.href : '');
+    return {
+      bedrooms: beds,
+      bathrooms: baths,
+      size_sqft: opts.sizeSqft,
+      postcode: postcode,
+      postcode_normalized: postcode,
+      area: '',
+      property_type: propertyType,          // raw type (Python field name)
+      property_type_std: propertyType,      // canonical type signal (drives FE)
+      address: address,
+      latitude: lat,
+      longitude: lon,
+      source: currentSite || '',            // rightmove|knightfrank|chestertons|savills -> source_quality
+      agent_brand: agentName,               // premium-agent detection (Python field name)
+      let_type: 'long',  // short lets are intercepted in init() before this runs
+      features: '',
+      // text_blob source: `summary` is the primary trained text field; `description`
+      // carries the same prose for back-compat (text_blob = summary + ' ' + description).
+      summary: prose,
+      description: description,
+      ocrText: ocrText,
+      pageUrl: pageUrl,
+      // explicit floor flags (model consumes these directly)
+      floor_count: fl.floor_count,
+      has_basement: fl.has_basement,
+      has_ground: fl.has_ground,
+      has_first_floor: fl.has_first_floor,
+      has_second_floor: fl.has_second_floor,
+      has_third_floor: fl.has_third_floor,
+      has_fourth_plus: fl.has_fourth_plus,
+      has_roof_terrace: fl.has_roof_terrace,
+    };
+  }
+
   async function analyzeProperty(propertyData, askingPrice) {
     // FIX C: the shared feature builder (xgboost.js -> window.XGBFeatures) is required
     // by BOTH the server-request path (extractFloors/parseAmenities) and the in-browser
@@ -534,35 +614,13 @@
     // (see PREDICT_API_CONTRACT.md). These are the fields canonical v20 FE reads;
     // property_type_std + source + the floor flags are load-bearing for parity, so
     // send them explicitly. The server passes this straight to buildFeatures().
-    const rawFields = {
-      bedrooms: beds,
-      bathrooms: baths,
-      size_sqft: sizeSqft,
-      postcode: postcode,
-      postcode_normalized: postcode,
-      area: '',
-      property_type: propertyType,          // raw type (Python field name)
-      property_type_std: propertyType,      // canonical type signal (drives FE)
-      address: address,
-      latitude: lat,
-      longitude: lon,
-      source: currentSite || '',            // rightmove|knightfrank|chestertons|savills -> source_quality
-      agent_brand: agentName,               // premium-agent detection (Python field name)
-      let_type: 'long',  // short lets are intercepted in init() before this runs
-      features: '',
-      description: description,
-      ocrText: ocrText,
-      pageUrl: window.location.href,
-      // explicit floor flags (model consumes these directly)
-      floor_count: floors.floor_count,
-      has_basement: floors.has_basement,
-      has_ground: floors.has_ground,
-      has_first_floor: floors.has_first_floor,
-      has_second_floor: floors.has_second_floor,
-      has_third_floor: floors.has_third_floor,
-      has_fourth_plus: floors.has_fourth_plus,
-      has_roof_terrace: floors.has_roof_terrace,
-    };
+    // Assembled via the pure buildRawFields() seam — we pass the exact legacy
+    // description/ocrText/pageUrl/floors so the rent path is byte-identical except for
+    // the newly-added `summary` (R5 fix: the field the model actually trains on).
+    const rawFields = buildRawFields(propertyData, {
+      sizeSqft, floors, ocrText,
+      description, pageUrl: window.location.href,
+    });
 
     // PRIMARY: ask our backend (canonical v20). On error/timeout, fall back to the
     // in-browser model (labeled approximate).

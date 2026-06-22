@@ -1,0 +1,100 @@
+{
+  "_README": "INDEPENDENT ORACLE for canonical rental model band assertions (Group MODEL, CI Wave 1). These £-pcm bands are HAND-VALIDATED from real London lettings-market knowledge (Q2 2026) for mainstream 1-2 bed flats with real sqft — the segment the model is documented to predict well (see MEMORY model-eval-strong-weak). They are NOT regenerated from the model: they are deliberately WIDE, generous market ranges so they form a genuine external sanity oracle (a healthy model lands comfortably inside; a geography-collapsed or size-degenerate model falls outside). Do NOT auto-update these from predict_one output — that would defeat the oracle. Each anchor's `inputs` feed canonical_predict.predict_one verbatim. `pcm_low`/`pcm_high` bound a plausible monthly rent; `note` records the rationale.",
+  "anchors": [
+    {
+      "label": "SW3_2bed_900_chelsea",
+      "inputs": {
+        "bedrooms": 2, "bathrooms": 1, "size_sqft": 900,
+        "postcode": "SW3", "postcode_normalized": "SW3", "area": "Chelsea",
+        "property_type": "flat", "property_type_std": "flat",
+        "address": "Cadogan Square, London, SW3", "source": "rightmove",
+        "agent_brand": "unknown"
+      },
+      "pcm_low": 3500,
+      "pcm_high": 9500,
+      "note": "Prime Chelsea 2-bed flat, ~900 sqft. Real market mid is ~£5-6k pcm; band is intentionally wide on both sides for an external oracle."
+    },
+    {
+      "label": "SW7_1bed_550_southken",
+      "inputs": {
+        "bedrooms": 1, "bathrooms": 1, "size_sqft": 550,
+        "postcode": "SW7", "postcode_normalized": "SW7", "area": "South Kensington",
+        "property_type": "flat", "property_type_std": "flat",
+        "address": "Queens Gate, London, SW7", "source": "rightmove",
+        "agent_brand": "unknown"
+      },
+      "pcm_low": 1900,
+      "pcm_high": 5500,
+      "note": "Prime South Kensington 1-bed, ~550 sqft. Mid ~£2.8-3.5k pcm."
+    },
+    {
+      "label": "E14_2bed_900_canarywharf",
+      "inputs": {
+        "bedrooms": 2, "bathrooms": 1, "size_sqft": 900,
+        "postcode": "E14", "postcode_normalized": "E14", "area": "Canary Wharf",
+        "property_type": "flat", "property_type_std": "flat",
+        "address": "Marsh Wall, London, E14", "source": "rightmove",
+        "agent_brand": "unknown"
+      },
+      "pcm_low": 2000,
+      "pcm_high": 5500,
+      "note": "Canary Wharf 2-bed, ~900 sqft. Materially cheaper than prime SW3; mid ~£3-3.8k pcm. The SW3-vs-E14 gap is the geography-collapse guard."
+    },
+    {
+      "label": "NW8_2bed_1000_stjohnswood",
+      "inputs": {
+        "bedrooms": 2, "bathrooms": 2, "size_sqft": 1000,
+        "postcode": "NW8", "postcode_normalized": "NW8", "area": "St Johns Wood",
+        "property_type": "flat", "property_type_std": "flat",
+        "address": "Abbey Road, London, NW8", "source": "rightmove",
+        "agent_brand": "unknown"
+      },
+      "pcm_low": 2400,
+      "pcm_high": 7000,
+      "note": "St John's Wood 2-bed/2-bath, ~1000 sqft. Mid ~£4-4.5k pcm."
+    },
+    {
+      "label": "W2_1bed_500_bayswater",
+      "inputs": {
+        "bedrooms": 1, "bathrooms": 1, "size_sqft": 500,
+        "postcode": "W2", "postcode_normalized": "W2", "area": "Bayswater",
+        "property_type": "flat", "property_type_std": "flat",
+        "address": "Sussex Gardens, London, W2", "source": "rightmove",
+        "agent_brand": "unknown"
+      },
+      "pcm_low": 1700,
+      "pcm_high": 4500,
+      "note": "Bayswater 1-bed, ~500 sqft. Mid ~£2.5-3k pcm."
+    }
+  ],
+  "location_sensitivity": {
+    "_note": "SW3 (prime) vs E14 (Docklands) for an IDENTICAL 2-bed 900-sqft flat must differ MEANINGFULLY in £, both ways: prime > docklands, and by at least min_gap_pcm. Guards the shipped SW3-fillna geography-collapse fix (MEMORY tail-signal-audit / geography-collapse). On a collapsed model both would predict ~the SW3 value and the gap would vanish.",
+    "prime": {
+      "label": "SW3_2bed_900_loc", "postcode": "SW3", "area": "Chelsea",
+      "inputs": {
+        "bedrooms": 2, "bathrooms": 1, "size_sqft": 900,
+        "postcode": "SW3", "postcode_normalized": "SW3", "area": "Chelsea",
+        "property_type": "flat", "property_type_std": "flat",
+        "address": "1 Test Street, London, SW3", "source": "rightmove",
+        "agent_brand": "unknown"
+      }
+    },
+    "docklands": {
+      "label": "E14_2bed_900_loc", "postcode": "E14", "area": "Canary Wharf",
+      "inputs": {
+        "bedrooms": 2, "bathrooms": 1, "size_sqft": 900,
+        "postcode": "E14", "postcode_normalized": "E14", "area": "Canary Wharf",
+        "property_type": "flat", "property_type_std": "flat",
+        "address": "1 Test Street, London, E14", "source": "rightmove",
+        "agent_brand": "unknown"
+      }
+    },
+    "min_gap_pcm": 400
+  },
+  "freq_map_health": {
+    "_note": "Geography-collapse guard on the frequency map itself (independent of any single prediction). The shipped fix restored 67 districts with no single REAL district dominating; the degenerate pre-fix state had ~91.5% mass in SW3 (MEMORY tail-signal-audit). UNKNOWN is a non-district aggregation bucket and is excluded from the single-district dominance check.",
+    "min_districts": 30,
+    "max_single_real_district_share": 0.50,
+    "non_district_buckets": ["UNKNOWN", ""]
+  }
+}

@@ -165,7 +165,8 @@ class RightmoveEnricherSpider(scrapy.Spider):
                 if not sqft:
                     text_data = property_data.get('text', {})
                     description = text_data.get('description', '') + ' ' + text_data.get('propertyPhrase', '')
-                    sqft_match = re.search(r'(\d{3,5})\s*(?:sq\.?\s*ft|square\s*feet)', description, re.I)
+                    # R3: tolerate periods/spaces in "675 sq. ft." (sq[\s.]*ft).
+                    sqft_match = re.search(r'(\d{3,5})\s*(?:sq[\s.]*ft|square\s*feet)', description, re.I)
                     if sqft_match:
                         sqft = int(sqft_match.group(1))
 
@@ -175,10 +176,12 @@ class RightmoveEnricherSpider(scrapy.Spider):
         # Try fallback: search in page text
         if not sqft:
             page_text = response.text
+            # R3: the first pattern tolerates periods/spaces in the real search
+            # format "675 sq. ft." (the old (\d{3,5})\s*sq\.?\s*ft missed the period
+            # before "ft"); sq[\s.]*ft already subsumes the bare "sqft" form.
             sqft_patterns = [
-                r'(\d{3,5})\s*sq\.?\s*ft',
+                r'(\d{3,5})\s*sq[\s.]*ft',
                 r'(\d{3,5})\s*square\s*feet',
-                r'(\d{3,5})\s*sqft',
             ]
             for pattern in sqft_patterns:
                 match = re.search(pattern, page_text, re.I)

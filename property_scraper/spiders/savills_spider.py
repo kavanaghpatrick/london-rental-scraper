@@ -188,6 +188,30 @@ class SavillsSpider(scrapy.Spider):
             item['asking_price'] = None
         return item
 
+    def harvest_card_passes_gate(self, inner_text: str) -> bool:
+        """R2: the harvest accept/reject gate, lifted out of the in-browser JS so it
+        is unit-testable and the rent/sale branch is single-sourced.
+
+        A card must carry sqft (model requirement) AND a price token:
+          * rent mode  → a rental frequency token (£… Monthly / £… Weekly), unchanged;
+          * sale  mode → ANY headline lump-sum £ (Guide Price / Offers / bare £…),
+            because a "Guide Price £875,000" sale card has no Monthly/Weekly token and
+            was being dropped (0 sale cards harvested).
+
+        Mirrors the JS in parse_all_pages; keep the two in sync.
+        """
+        text = inner_text or ''
+        if not re.search(r'(\d+(?:,\d+)?)\s*sq\s*ft', text, re.I):
+            return False
+        has_monthly = re.search(r'£([\d,]+)\s*Monthly', text)
+        has_weekly = re.search(r'£([\d,]+)\s*Weekly', text)
+        if self.listing_type == 'sale':
+            # Accept a sale lump-sum £ (covers Guide Price / Offers / bare amount);
+            # a rental Monthly/Weekly card still has a £ so it also passes.
+            return bool(re.search(r'£\s*([\d,]+)', text))
+        # Rent mode UNCHANGED: require an explicit rental frequency token.
+        return bool(has_monthly or has_weekly)
+
     def start_requests(self):
         """Generate initial request for page 1."""
         url = self.start_url_for('uk')
@@ -245,8 +269,12 @@ class SavillsSpider(scrapy.Spider):
         # Continue while within limits (None = unlimited)
         while (self.max_pages is None or current_page <= self.max_pages) and \
               (self.max_properties is None or self.stats['total'] < self.max_properties):
-            # Extract property data from current page
-            cards_data = await playwright_page.evaluate('''() => {
+            # Extract property data from current page.
+            # R2: pass the vertical flag (isSale) into the harvest so a sale card
+            # ("Guide Price £875,000", NO Monthly/Weekly token) survives the gate;
+            # rent mode keeps the unchanged rental-frequency gate. Keep this in sync
+            # with harvest_card_passes_gate().
+            cards_data = await playwright_page.evaluate('''(isSale) => {
                 const results = [];
 
                 // Find all listing items
@@ -259,20 +287,26 @@ class SavillsSpider(scrapy.Spider):
                     const sqftMatch = text.match(/(\\d+(?:,\\d+)?)\\s*sq\\s*ft/i);
                     if (!sqftMatch) continue;
 
-                    // MUST have price (Monthly or Weekly)
+                    // Price gate: rentals carry a Monthly/Weekly token; SALE cards
+                    // carry a bare/Guide/Offers lump-sum £ instead.
                     const monthlyMatch = text.match(/£([\\d,]+)\\s*Monthly/);
                     const weeklyMatch = text.match(/£([\\d,]+)\\s*Weekly/);
-                    if (!monthlyMatch && !weeklyMatch) continue;
+                    const saleMatch = isSale ? text.match(/£\\s*([\\d,]+)/) : null;
+                    if (!monthlyMatch && !weeklyMatch && !saleMatch) continue;
 
-                    // Convert to monthly
+                    // Convert to monthly (rent) or take the lump sum (sale).
                     let priceValue;
                     let priceType;
                     if (monthlyMatch) {
                         priceValue = parseInt(monthlyMatch[1].replace(/,/g, ''));
                         priceType = 'monthly';
-                    } else {
+                    } else if (weeklyMatch) {
                         priceValue = parseInt(weeklyMatch[1].replace(/,/g, '')) * 52 / 12;
                         priceType = 'weekly';
+                    } else {
+                        // SALE: the headline asking price is a raw lump sum (NOT ×52/12).
+                        priceValue = parseInt(saleMatch[1].replace(/,/g, ''));
+                        priceType = 'sale';
                     }
 
                     // Extract other fields
@@ -325,7 +359,7 @@ class SavillsSpider(scrapy.Spider):
                 }
 
                 return results;
-            }''')
+            }''', self.listing_type == 'sale')
 
             # Get pagination info
             pagination_info = await playwright_page.evaluate('''() => {
@@ -358,7 +392,13 @@ class SavillsSpider(scrapy.Spider):
 
             new_items = 0
             for card_data in cards_data:
-                item = self.parse_card_data(card_data)
+                # FOR-SALE vertical: route the card through the sale seam so a sale
+                # asking price never lands in the rental price_pcm column. Rent mode
+                # (default) is byte-unchanged.
+                if self.listing_type == 'sale':
+                    item = self.parse_card_data_for_sale(card_data, '')
+                else:
+                    item = self.parse_card_data(card_data)
                 if item:
                     prop_id = item.get('property_id', '')
                     if prop_id in seen_ids:

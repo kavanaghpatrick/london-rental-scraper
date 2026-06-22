@@ -1,0 +1,300 @@
+name: Extraction Drift Smoke (weekly, live)
+
+# ============================================================================
+# WHY THIS WORKFLOW EXISTS — the blind spot ci.yml STRUCTURALLY cannot cover.
+#
+# ci.yml's extraction + parity harnesses run against FROZEN, COMMITTED fixtures
+# (tests/fixtures/**, chrome-extension/*_extract_test.mjs). That is exactly what
+# makes them deterministic, network-free, and safe to gate a PR on — but it also
+# means they keep passing GREEN forever even after a site silently migrates its
+# live DOM / JSON shape out from under our selectors. The whole platform's
+# "CI false-green" failure mode is this: the fixture says 2019's Rightmove, the
+# live site moved to window.__PAGE_MODEL, and no PR test ever fetches the live
+# page to notice. (Real example in the floorplan-OCR + Rightmove __PAGE_MODEL
+# postmortems: extraction quietly went to zero while CI stayed green.)
+#
+# This workflow is the OPPOSITE trade-off on purpose: it hits ONE real live
+# search page per spider on a SCHEDULE and asserts the extraction still produces
+# real cards with sane magnitudes. It is deliberately:
+#   * NON-PR-BLOCKING — it is its own scheduled workflow, NOT a required check on
+#     ci.yml. Live sites flake / rate-limit / A-B test; a transient live failure
+#     must never block an unrelated PR merge.
+#   * ISSUE-ON-FAILURE — instead of red-gating, a failure opens (or reuses) a
+#     GitHub issue labelled `extraction-drift` so a human investigates a probable
+#     real DOM migration. Signal, not a wall.
+#
+# Cadence: weekly (sites don't migrate hourly; weekly catches drift within days
+# while keeping live traffic + flake noise low).
+# ============================================================================
+
+on:
+  schedule:
+    # Weekly, Mondays 05:17 UTC (off the :00 mark to avoid the cron stampede).
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: 'Spiders to smoke (comma-separated or "all")'
+        required: false
+        default: 'all'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  # === A. Spider-side live smoke — one real search page per spider, both modes ===
+  spider-live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers (savills/knightfrank/chestertons are SPA spiders)
+        run: |
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Live smoke — each spider, ONE search page, rent + sale
+        env:
+          SOURCES: ${{ github.event.inputs.sources || 'all' }}
+        run: |
+          # Drive the REAL CLI scrape against a throwaway OUTPUT_DIR (never touches the
+          # canonical output/rentals.db — see the "Scrape validation via OUTPUT_DIR
+          # override" pattern). ONE page per (spider, mode). Then assert against the
+          # scratch DB that extraction produced real cards at the right magnitude with
+          # per-source sqft coverage above a conservative floor.
+          #
+          # PER-SOURCE SQFT FLOORS are set WELL BELOW the documented healthy coverage
+          # (savills ~99%, knightfrank ~93%, foxtons ~98%, chestertons ~71%, rightmove
+          # ~28% pre-enrichment) so a normal week passes but a COLLAPSE-to-zero (the
+          # drift signature) fails. Rightmove search rarely carries sqft, so its floor
+          # is 0 (price + card-count are its live signal; sqft is enrichment's job).
+          #
+          # MAGNITUDE bands catch a rent value parsed as a sale price (or vice-versa) —
+          # the exact class of bug R1/R2 fixed in the sale path.
+          mkdir -p /tmp/smoke
+          python3 - <<'PY'
+          import os, subprocess, sqlite3, sys, tempfile, shutil
+
+          # (spider, scratch-DB filename, table, price-col, sqft-floor-fraction)
+          RENT = {
+              "db": "rentals.db", "table": "listings", "price_col": "price_pcm",
+              # plausible London pcm band
+              "price_lo": 500, "price_hi": 60000,
+          }
+          SALE = {
+              "db": "sales.db", "table": "sale_listings", "price_col": "asking_price",
+              # plausible London asking-price band (£100k .. £60M)
+              "price_lo": 100_000, "price_hi": 60_000_000,
+          }
+          # Conservative sqft-coverage floors (fraction of cards WITH a positive sqft).
+          SQFT_FLOOR = {
+              "savills": 0.50, "knightfrank": 0.40, "foxtons": 0.40,
+              "chestertons": 0.20, "rightmove": 0.0,
+          }
+          ALL = ["savills", "knightfrank", "chestertons", "foxtons", "rightmove"]
+
+          want = os.environ.get("SOURCES", "all").strip()
+          sources = ALL if want in ("", "all") else [s.strip() for s in want.split(",")]
+
+          failures = []
+
+          def run_mode(spider, mode, spec):
+              outdir = tempfile.mkdtemp(prefix=f"smoke_{spider}_{mode}_", dir="/tmp/smoke")
+              env = dict(os.environ, OUTPUT_DIR=outdir)
+              cmd = [
+                  sys.executable, "-m", "cli.main", "scrape",
+                  "--source", spider, "--max-pages", "1", "--listing-type", mode,
+              ]
+              print(f"\n=== {spider} [{mode}] -> {outdir} ===")
+              try:
+                  subprocess.run(cmd, env=env, timeout=600, check=False)
+              except subprocess.TimeoutExpired:
+                  failures.append(f"{spider}[{mode}]: scrape TIMED OUT (live page hung)")
+                  return
+              dbp = os.path.join(outdir, spec["db"])
+              if not os.path.exists(dbp):
+                  failures.append(f"{spider}[{mode}]: no scratch DB written ({spec['db']}) "
+                                  f"— spider yielded 0 items (selector/section drift?)")
+                  return
+              conn = sqlite3.connect(dbp)
+              try:
+                  cur = conn.cursor()
+                  # table may not exist if 0 items in this mode
+                  cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                              (spec["table"],))
+                  if not cur.fetchone():
+                      failures.append(f"{spider}[{mode}]: {spec['table']} table absent — 0 cards extracted")
+                      return
+                  n = cur.execute(f"SELECT COUNT(*) FROM {spec['table']}").fetchone()[0]
+                  if n < 1:
+                      failures.append(f"{spider}[{mode}]: 0 cards on the live search page "
+                                      f"(>=1 expected) — probable live-DOM drift")
+                      return
+                  pc = spec["price_col"]
+                  in_band = cur.execute(
+                      f"SELECT COUNT(*) FROM {spec['table']} "
+                      f"WHERE {pc} >= ? AND {pc} <= ?",
+                      (spec["price_lo"], spec["price_hi"]),
+                  ).fetchone()[0]
+                  if in_band < 1:
+                      sample = cur.execute(f"SELECT {pc} FROM {spec['table']} LIMIT 5").fetchall()
+                      failures.append(f"{spider}[{mode}]: no card with a correct-magnitude "
+                                      f"{pc} in [{spec['price_lo']},{spec['price_hi']}] "
+                                      f"(got {sample}) — wrong-vertical price?")
+                      return
+                  floor = SQFT_FLOOR.get(spider, 0.0)
+                  with_sqft = cur.execute(
+                      f"SELECT COUNT(*) FROM {spec['table']} WHERE size_sqft > 0"
+                  ).fetchone()[0]
+                  frac = with_sqft / n if n else 0.0
+                  print(f"    {spider}[{mode}]: {n} cards, {in_band} in-band {pc}, "
+                        f"sqft {with_sqft}/{n}={frac:.0%} (floor {floor:.0%})")
+                  if frac < floor:
+                      failures.append(f"{spider}[{mode}]: sqft coverage {frac:.0%} "
+                                      f"below floor {floor:.0%} ({with_sqft}/{n}) "
+                                      f"— sqft extraction may have drifted")
+              finally:
+                  conn.close()
+
+          for spider in sources:
+              run_mode(spider, "rent", RENT)
+              run_mode(spider, "sale", SALE)
+
+          print("\n================ SMOKE SUMMARY ================")
+          if failures:
+              for f in failures:
+                  print(f"  DRIFT: {f}")
+              print(f"\n{len(failures)} drift signal(s) — see issue.")
+              sys.exit(1)
+          print("  All spiders extracted live cards at sane magnitudes. No drift.")
+          PY
+
+  # === B. Extension headless live check — SCAFFOLD (continue-on-error TODO) ===
+  #
+  # The spider smoke above does NOT cover the Chrome extension's IN-BROWSER
+  # extraction (content.js running against the live page DOM via window.__PAGE_MODEL
+  # / __NEXT_DATA__ + the popup render). That path is what the Rightmove __PAGE_MODEL
+  # migration broke (memory: "RIGHTMOVE LIKELY BROKEN"), and NO automated check
+  # currently fetches a live detail page, runs content.js in a real browser, and
+  # asserts a non-null extraction + a rendered popup.
+  #
+  # Wiring a full headless run (Playwright loading the unpacked extension, or jsdom +
+  # a live-fetched DOM, plus the model-input + popup assertions) is heavier than this
+  # pass — it needs a stable known-live detail URL per site (which itself drifts) and
+  # an extension-load harness. So this job is intentionally a SCAFFOLD: it is marked
+  # continue-on-error so it can never fail the workflow while it is a stub, and it
+  # documents EXACTLY what remains to be built. Promote it to a hard smoke (drop
+  # continue-on-error, add it to the issue-on-failure `needs`) once the harness lands.
+  extension-headless-smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # SCAFFOLD: never blocks while this is a stub.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: TODO — headless extension live extraction + popup smoke (NOT YET WIRED)
+        run: |
+          echo "::warning::extension-headless-smoke is a SCAFFOLD — the live in-browser"
+          echo "::warning::content.js extraction + popup-render check is not yet wired."
+          echo ""
+          echo "WHY THIS MATTERS (and why ci.yml can't catch it):"
+          echo "  ci.yml's extension harnesses run content.js against FROZEN committed"
+          echo "  HTML fixtures (tests/fixtures/extension/*.html). They pass green even"
+          echo "  after a live site moves its data out of the shape content.js parses —"
+          echo "  e.g. Rightmove migrating <script __NEXT_DATA__> -> window.__PAGE_MODEL"
+          echo "  (devalue-encoded), which the content.js regex misses -> no popup, with"
+          echo "  ZERO test failure. Only a LIVE in-browser run notices."
+          echo ""
+          echo "TO IMPLEMENT (promote this job to a hard smoke afterwards):"
+          echo "  1. Maintain a small map of known-live detail URLs per site (rightmove,"
+          echo "     knightfrank, chestertons, savills, foxtons). These drift -> keep them"
+          echo "     in one reviewable file."
+          echo "  2. Launch headless Chromium with the unpacked extension loaded"
+          echo "     (Playwright persistent context + --load-extension), navigate to each"
+          echo "     URL, wait for content.js to run."
+          echo "  3. Assert: (a) the extension extracted a NON-NULL price + beds + the"
+          echo "     model-input fields, and (b) the Fair-Value popup actually rendered"
+          echo "     (a known popup DOM node is present)."
+          echo "  4. On any null extraction / missing popup -> exit 1 so the issue-on-"
+          echo "     failure job below files an extraction-drift issue."
+          echo ""
+          echo "Scaffold step succeeded (no assertions yet)."
+
+  # === C. Open / reuse a GitHub issue when the live smoke detects drift ===
+  #
+  # Non-blocking by construction: this is the ONLY consumer of the smoke result.
+  # `needs: spider-live-smoke` + `if: failure()` means a drift signal files an issue
+  # instead of red-gating anything. (extension-headless-smoke is continue-on-error and
+  # intentionally NOT in `needs` yet — it can't trigger an issue while it's a stub.)
+  notify-drift:
+    needs: spider-live-smoke
+    runs-on: ubuntu-latest
+    if: failure()
+    permissions:
+      issues: write
+    steps:
+      - name: Open / update extraction-drift issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = 'Extraction drift detected (weekly live smoke)';
+            const body = [
+              'The weekly **extraction-drift live smoke** failed: one or more spiders no',
+              'longer extract real cards / correct-magnitude prices / expected sqft from a',
+              'LIVE search page. This usually means a site migrated its live DOM or JSON',
+              'shape out from under our selectors — which the frozen-fixture PR CI cannot',
+              'see (it keeps passing green against the committed fixtures).',
+              '',
+              `**Failed run:** [${context.runId}](${runUrl}) — open the \`spider-live-smoke\``,
+              'job log and read the `DRIFT:` lines for the exact spider + mode + signal.',
+              '',
+              'Likely actions: update the affected spider\'s selectors / section URL / JSON',
+              'path, refresh the committed fixture to the new live shape, and (if the',
+              'extension is affected) re-check content.js against the new page structure.',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'extraction-drift',
+            });
+
+            if (existing.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['extraction-drift', 'automated'],
+              });
+            } else {
+              // Reuse the open issue; add a comment pointing at the new failing run.
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `Drift smoke failed again: [run ${context.runId}](${runUrl}).`,
+              });
+            }

@@ -39,6 +39,11 @@ const REQUIRED_HARNESSES = [
   'foxtons_extract_test.mjs',
   'floorplan_discovery_test.mjs',
   'foxtons_ocr_skip_test.mjs',
+  // R5/A11 — the extraction->features BRIDGE harness (the previously-absent test class):
+  // content.js extract -> rawFields.summary populated -> buildFeatures fires the implied
+  // amenity feature(s) with no load-bearing default collapse. Pinned here so it can't be
+  // dropped from ci.yml's node-parity job and silently stop protecting the summary fix.
+  'extract_to_features_bridge_test.mjs',
   'similar_properties_test.mjs', // comps location HARD-gate (findSimilarProperties)
   'content_load_test.mjs',       // content.js load + log-recursion + SPA-retry guards
   // Inc4 — For Sale Fair Value mode on real "to buy" detail pages (per-site detection +

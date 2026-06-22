@@ -28,6 +28,7 @@ zero PR protection). Add new always-run guards here as they land.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,23 @@ CRITICAL_TESTS = [
     # --- Cross-source dedupe identity core (pure, no DB)
     "tests/test_dedupe_postgres.py::test_distinct_streets_not_merged",
     "tests/test_dedupe_postgres.py::test_true_cross_source_dupe_still_caught",
+    # --- M18: the dedupe identity PRIMITIVE itself (address fingerprinting). The whole
+    #     cross-source identity rests on these — a regression in normalization/collision
+    #     handling silently re-introduces the over-/under-merge bug. Pure-unit (no
+    #     DB/network/node), so it ALWAYS runs and must never go dark behind MIN_EXECUTED.
+    "tests/test_fingerprint.py",
+    # --- M18: the SQLite smart-UPSERT contract (first_seen-once / last_seen-updated /
+    #     price-change -> price_history). The relist + history-tracking core; pure-unit
+    #     (in-memory sqlite via tmp_path, no live DB/network/node). If this stopped
+    #     running, a broken upsert (dropped history, clobbered first_seen) would be
+    #     invisible in PR CI.
+    "tests/test_pipeline.py::TestSQLitePipelineSmartUpsert",
+    # --- M18: the floorplan->OCR WIRING guard (daily-scrape.yml step ordering parsed as
+    #     text — enrich-floorplans runs AFTER scrape + BEFORE ocr_enrich, into the DB OCR
+    #     reads). Pins the fix for the OCR-starvation cliff. Pure file-parse (no DB/OCR/
+    #     network/node — only TestWorkflowWiring, NOT the tesseract-gated OCR classes), so
+    #     it always runs; if it went dark the enricher could be un-wired again unnoticed.
+    "tests/test_floorplan_pipeline.py::TestWorkflowWiring",
     # --- OCR enrichment guards (pure decision logic — no-overwrite + sanity gate)
     "tests/test_ocr_enrich_guards.py",
     # --- Bad-extraction detector (pure regex/range logic)
@@ -240,3 +258,83 @@ def test_allowlist_is_nonempty_and_well_formed():
     for entry in CRITICAL_TESTS:
         assert entry.startswith("tests/"), f"malformed critical nodeid: {entry!r}"
         assert "::" in entry or entry.endswith(".py"), f"malformed critical nodeid: {entry!r}"
+
+
+# ---------------------------------------------------------------------------------
+# A1 META-TEST — the daily-scrape DATA GATE must stay wired (CI-NOW).
+#
+# The single highest-leverage fix in Wave 1: daily-scrape.yml ran NO pytest at all, so
+# a bad scrape / regressed model was committed + retrained with zero data-validation.
+# A1 adds a `pytest -m data ...` step AFTER scrape/dedupe/OCR and BEFORE the commit/
+# retrain step, gating the commit on it. This meta-test pins that activation so it
+# cannot silently regress (the same failure class the whole module guards against, but
+# for a WORKFLOW step rather than a collected test): if someone deletes the data-gate
+# step or drops the `-m data` selector, THIS fails loudly in PR CI.
+#
+# It parses the YAML as TEXT (no PyYAML dep — same discipline as test_floorplan_pipeline
+# TestWorkflowWiring) so it always runs in CI without an extra binary dependency.
+# ---------------------------------------------------------------------------------
+_DAILY_SCRAPE_YML = ROOT / ".github" / "workflows" / "daily-scrape.yml"
+
+
+def test_daily_scrape_runs_pytest_data_gate():
+    """daily-scrape.yml must invoke `pytest -m data` post-scrape (the activated A1 gate).
+
+    Pins the single highest-leverage activation: the scheduled run validates the
+    materialized DB with the `data`-marked suites before committing/retraining a model.
+    Parses the workflow as text so it runs in PR CI with no PyYAML dependency.
+    """
+    assert _DAILY_SCRAPE_YML.exists(), (
+        f"daily-scrape.yml missing at {_DAILY_SCRAPE_YML} — cannot verify the data gate."
+    )
+    text = _DAILY_SCRAPE_YML.read_text(encoding="utf-8")
+
+    # Tolerant of quoting/spacing variants: `pytest -m data`, `pytest -m "data"`,
+    # `python3 -m pytest -m data`, `pytest  -m   data`. The load-bearing assertion is
+    # that a `-m`-selected pytest run keyed on the `data` marker exists in the workflow.
+    # Require the actual INVOCATION form `python[3] -m pytest -m data`, NOT a bare
+    # `pytest -m data` that also appears in the human-readable step `- name:` line —
+    # otherwise removing the real command while keeping the step name would pass vacuously.
+    pat = re.compile(r"python3?\s+-m\s+pytest\s+-m\s+[\"']?data[\"']?", re.IGNORECASE)
+    assert pat.search(text), (
+        "daily-scrape.yml does NOT invoke `pytest -m data` — the post-scrape DATA GATE "
+        "(A1) is not wired. The scheduled run would commit/retrain a model with ZERO "
+        "data validation. Add a `python3 -m pytest -m data ...` step AFTER scrape/dedupe/"
+        "OCR and BEFORE the commit/retrain step, and gate the commit on it."
+    )
+
+
+def test_daily_scrape_data_gate_runs_before_commit_and_retrain():
+    """The data gate must run BEFORE the model is committed AND before it is retrained.
+
+    A gate that runs AFTER the commit/retrain protects nothing — the bad artifact is
+    already on main. Step order == byte position in the (sequential) workflow file, so
+    the `pytest -m data` invocation must precede both the `git commit ... model` step and
+    the `retrain_canonical.py` invocation.
+    """
+    text = _DAILY_SCRAPE_YML.read_text(encoding="utf-8")
+
+    # Require the actual INVOCATION form `python[3] -m pytest -m data`, NOT a bare
+    # `pytest -m data` that also appears in the human-readable step `- name:` line —
+    # otherwise removing the real command while keeping the step name would pass vacuously.
+    pat = re.compile(r"python3?\s+-m\s+pytest\s+-m\s+[\"']?data[\"']?", re.IGNORECASE)
+    m = pat.search(text)
+    assert m, "no `pytest -m data` step found (see test_daily_scrape_runs_pytest_data_gate)"
+    gate_pos = m.start()
+
+    # Match the actual INVOCATION (`python3 retrain_canonical.py …`), not a passing
+    # mention in a comment — the step ordering is what matters.
+    retrain_m = re.search(r"python3?\s+retrain_canonical\.py", text)
+    assert retrain_m, "expected the existing `python3 retrain_canonical.py` step in daily-scrape.yml"
+    retrain_pos = retrain_m.start()
+    assert gate_pos < retrain_pos, (
+        "the `pytest -m data` gate must run BEFORE retrain_canonical.py so a bad scrape "
+        f"is caught before the model is retrained on it (gate@{gate_pos} retrain@{retrain_pos})."
+    )
+
+    commit_pos = text.find("git commit")
+    assert commit_pos >= 0, "expected the existing model-commit step in daily-scrape.yml"
+    assert gate_pos < commit_pos, (
+        "the `pytest -m data` gate must run BEFORE the model is committed/pushed "
+        f"(gate@{gate_pos} commit@{commit_pos})."
+    )

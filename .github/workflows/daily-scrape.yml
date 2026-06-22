@@ -118,6 +118,32 @@ jobs:
           ITEMS=$(grep -oP 'Total: \K[\d,]+' scrape_output.txt | tail -1 || echo "0")
           echo "items_scraped=$ITEMS" >> $GITHUB_OUTPUT
 
+      - name: Capture pre-OCR sqft baseline (for the OCR-starvation gate)
+        id: ocr_baseline
+        run: |
+          # WS3 OCR-STARVATION GATE (pre-leg): snapshot how many rows already have a
+          # usable size_sqft BEFORE the floorplan-enrich + OCR legs run. The post-OCR
+          # gate (below, before retrain/commit) compares against this to compute how
+          # many sqft were RECOVERED this run, and FAILS if zero were recovered while a
+          # meaningful backlog of floorplan'd-but-no-sqft rows still exists (the silent
+          # "OCR write path is dead" failure the floorplan-OCR postmortem documented).
+          python3 << 'EOF'
+          import os, psycopg2
+          url = os.environ.get('POSTGRES_URL')
+          before = -1
+          if url:
+              try:
+                  conn = psycopg2.connect(url); cur = conn.cursor()
+                  cur.execute("SELECT COUNT(*) FROM listings WHERE size_sqft > 0")
+                  before = cur.fetchone()[0]
+                  conn.close()
+              except Exception as e:
+                  print(f"baseline query failed (non-fatal, gate will note it): {e}")
+          print(f"with_sqft_before={before}")
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+              fh.write(f"with_sqft_before={before}\n")
+          EOF
+
       - name: Capture floorplan URLs (enrich-floorplans, Postgres)
         continue-on-error: true
         env:
@@ -349,14 +375,127 @@ jobs:
           # Make scripts/ and the repo root importable for the heredoc above.
           PYTHONPATH: ${{ github.workspace }}/scripts:${{ github.workspace }}
 
+      # =====================================================================
+      # A1 — THE DATA GATE (highest-leverage Wave-1 fix).
+      #
+      # daily-scrape used to run NO pytest at all: a bad scrape or a regressed
+      # OCR/dedupe leg would be COMMITTED and RETRAINED with zero validation.
+      # These two steps run AFTER scrape/enrich/OCR/mark-inactive/dedupe and
+      # BEFORE the retrain + commit. Because GitHub steps are sequential and a
+      # failing step fails the job, ANY failure here SKIPS the retrain/commit/
+      # push steps below — so a bad scrape/model never reaches main.
+      #
+      # WHY CI (ci.yml) CAN'T CATCH THIS: PR CI has no populated rentals.db
+      # (it's gitignored), so the `data`-marked suites auto-skip there. They
+      # only have real data to validate HERE, post-scrape, against the freshly
+      # materialized DB. The meta-test tests/test_ci_critical_tests_run.py
+      # ::test_daily_scrape_runs_pytest_data_gate pins this step's existence so
+      # it can't silently regress back to "no pytest".
+      # =====================================================================
+      - name: OCR-starvation gate (pre-retrain) — fail if the OCR write path went dark
+        env:
+          # floorplan_url backlog this size with ZERO recovery == the dead-write-path
+          # signature from the floorplan-OCR postmortem (coverage cliff to 0). Below this
+          # backlog a zero-recovery run is plausibly just "nothing left to recover".
+          OCR_STARVATION_BACKLOG_THRESHOLD: "200"
+          WITH_SQFT_BEFORE: ${{ steps.ocr_baseline.outputs.with_sqft_before }}
+        run: |
+          python3 << 'EOF'
+          import os, sys, psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              print("POSTGRES_URL not set — skipping OCR-starvation gate (no DB to check).")
+              sys.exit(0)
+
+          threshold = int(os.environ.get('OCR_STARVATION_BACKLOG_THRESHOLD', '200'))
+          before = int(os.environ.get('WITH_SQFT_BEFORE', '-1') or '-1')
+
+          conn = psycopg2.connect(url); cur = conn.cursor()
+
+          # floorplan_url may not exist on every deployment of the schema — degrade
+          # gracefully (the gate only bites where the column + a real backlog exist).
+          cur.execute(
+              "SELECT COUNT(*) FROM information_schema.columns "
+              "WHERE table_name='listings' AND column_name='floorplan_url'"
+          )
+          have_floorplan_col = cur.fetchone()[0] > 0
+
+          cur.execute("SELECT COUNT(*) FROM listings WHERE size_sqft > 0")
+          after = cur.fetchone()[0]
+          recovered = (after - before) if before >= 0 else None
+
+          backlog = None
+          if have_floorplan_col:
+              cur.execute(
+                  "SELECT COUNT(*) FROM listings "
+                  "WHERE floorplan_url IS NOT NULL AND floorplan_url != '' "
+                  "AND (size_sqft IS NULL OR size_sqft = 0)"
+              )
+              backlog = cur.fetchone()[0]
+          conn.close()
+
+          print(f"with_sqft before={before} after={after} recovered={recovered}")
+          print(f"floorplan_url-but-no-sqft backlog={backlog} "
+                f"(threshold={threshold}, floorplan_col={have_floorplan_col})")
+
+          if not have_floorplan_col:
+              print("listings.floorplan_url absent — OCR-starvation gate not applicable; passing.")
+              sys.exit(0)
+          if before < 0:
+              print("::warning::pre-OCR baseline unavailable — cannot compute recovery delta; "
+                    "OCR-starvation gate is advisory this run.")
+              sys.exit(0)
+
+          # The bite: a real backlog of floorplan'd-but-no-sqft rows exists, yet this run
+          # recovered ZERO sqft -> the floorplan->OCR->sqft WRITE PATH is dead (orphaned
+          # enricher / wrong DB / Postgres-SQLite split). Retraining now bakes in the hole.
+          if recovered == 0 and backlog > threshold:
+              print(f"::error::OCR STARVATION: recovered 0 sqft this run while {backlog} "
+                    f"floorplan'd rows still have no sqft (> {threshold}). The OCR write "
+                    f"path is dead — refusing to retrain/commit on a starved DB. See the "
+                    f"floorplan-OCR postmortem (enrich-floorplans -> ocr_enrich wiring).")
+              sys.exit(1)
+
+          print("OCR-starvation gate OK (recovery > 0, or backlog below threshold).")
+          EOF
+
+      - name: Materialize Postgres -> SQLite (for the data gate + the trainer)
+        run: |
+          pip install psycopg2-binary
+          # ONE materialization shared by the data gate (below) and the retrain step,
+          # so the gate validates EXACTLY the DB the model trains on. The scrape wrote
+          # Postgres; retrain_canonical.py + the data-validation suites read SQLite.
+          echo "Materializing Postgres -> SQLite (output/rentals.db)..."
+          python3 scripts/pg_to_sqlite.py --out output/rentals.db 2>&1 | tee model_output.txt
+
+      - name: Data-validation gate (pytest -m data) — blocks retrain/commit on a bad scrape
+        run: |
+          pip install pytest
+          # Run the DATA-marked validation suites against the freshly materialized
+          # output/rentals.db (conftest sees a populated live DB -> runs them for real
+          # instead of auto-skipping as it does in PR CI). A failure here fails the job,
+          # so the retrain + commit + push steps BELOW are skipped: a bad scrape/dedupe/
+          # OCR result is never trained on or pushed to main.
+          #
+          # `not live`: the `data`-marked OCR-accuracy tests are ALSO `live` (they hit
+          # floorplan CDNs); exclude the network leg so the gate stays deterministic +
+          # CDN-outage-proof. The structural dedupe/backfill `data` invariants still run.
+          echo "Running post-scrape data-validation gate..."
+          python3 -m pytest -m "data and not live" \
+            tests/test_scrape_validation.py \
+            tests/test_dedupe_postgres.py \
+            tests/test_backfill_acceptance.py \
+            tests/test_ocr_accuracy.py \
+            -q 2>&1 | tee -a model_output.txt
+
       - name: Retrain CANONICAL model (v20) after scrape
         run: |
           pip install xgboost scikit-learn optuna pandas numpy psycopg2-binary
           # FIX (#9): retrain ONE canonical version (rental_model_canonical.pkl), not
-          # an ad-hoc v20 file. The scrape wrote to Postgres, but retrain_canonical.py
-          # reads SQLite — so first materialize Postgres -> a local SQLite, then retrain.
-          echo "Materializing Postgres -> SQLite for the trainer..."
-          python3 scripts/pg_to_sqlite.py --out output/rentals.db 2>&1 | tee model_output.txt
+          # an ad-hoc v20 file. The DB was already materialized Postgres -> SQLite by the
+          # "Materialize Postgres -> SQLite" step above (so the data gate validated the
+          # EXACT DB we train on); reuse output/rentals.db here rather than re-pulling.
 
           echo "Retraining canonical model..."
           # retrain_canonical.py also emits output/rental_model_canonical_inference.json in
