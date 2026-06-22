@@ -1,0 +1,47 @@
+{
+  "_fixture_origin": "REAL captured live https://www.rightmove.co.uk/properties/88970700 (2026-06-22, HTTP 200). NOT derived. Body stripped; window.__PAGE_MODEL devalue blob preserved verbatim.",
+  "_sale_marker": "propertyData.transactionType === 'BUY' (channel === 'RES_BUY'); prices.primaryPrice is a bare lump sum with NO pcm/pw token; propertyData.lettings absent.",
+  "property_id": "88970700",
+  "transactionType": "BUY",
+  "channel": "RES_BUY",
+  "beds": 5,
+  "baths": 2,
+  "price_primary": "£1,595,000",
+  "price_secondary": null,
+  "displayPriceQualifier": "",
+  "pricePerSqFt": "£871.11 per sq ft",
+  "outcode": "W4",
+  "incode": "5JS",
+  "displayAddress": "St. Albans Avenue, London, W4",
+  "propertySubType": "Terraced",
+  "tenureType": "FREEHOLD",
+  "lat": 51.499073,
+  "lon": -0.262257,
+  "sizings": [
+    {
+      "unit": "sqft",
+      "displayUnit": "sq. ft.",
+      "minimumSize": 1831,
+      "maximumSize": 1831
+    },
+    {
+      "unit": "ha",
+      "displayUnit": "ha.",
+      "minimumSize": 0.02,
+      "maximumSize": 0.02
+    },
+    {
+      "unit": "sqm",
+      "displayUnit": "sq. m.",
+      "minimumSize": 170,
+      "maximumSize": 170
+    },
+    {
+      "unit": "ac",
+      "displayUnit": "ac.",
+      "minimumSize": 0.04,
+      "maximumSize": 0.04
+    }
+  ],
+  "lettings_present": false
+}

@@ -1,0 +1,103 @@
+<!--
+  DERIVED (NOT captured) Knight Frank FOR-SALE PDP rendered-DOM fixture.
+
+  PROVENANCE
+  ----------
+  CAPTURE FAILED on 2026-06-22: KF detail + search routes are a 100% client-rendered
+  ANGULAR SPA. A realistic-UA `curl -sL` of
+    https://www.knightfrank.co.uk/properties/residential/for-sale/london/chelsea
+  returned HTTP 404 with a ~51KB nav-only shell: `<title>Knight Frank</title>`,
+  references to `app-*.bundle.js`, and NO __NEXT_DATA__, NO __next_f, NO
+  window.__PAGE_MODEL (the only window.__ token is the analytics proxy
+  `__TC_EVENT_TAPPER_PROXY_HC__`), NO <app-root> content, NO transactionType /
+  Guide Price / POA / price markers. Every internal-API guess returned the same
+  Angular error shell. So the real for-sale price/tenure data exists ONLY in the
+  live DOM after the bundle renders — uncapturable via curl, exactly as the rental
+  extractor test (knightfrank_extract_test.mjs) documents.
+
+  This fixture is therefore DERIVED from the REAL rental rendered-DOM fixture
+  tests/knightfrank_pdp_fixture.html by flipping ONLY the tenure/price markers
+  (the same building/address/beds/baths/sqft are kept so a side-by-side rent-vs-sale
+  detection test is apples-to-apples). NEEDS REAL-PAGE CONFIRMATION in-browser.
+
+  Element tags / class names below are the REAL Angular ones (<property-title>,
+  <property-price-title>, property-secondary-price-title, <property-icons>,
+  property-label, key-features) — same as the rental fixture; the extension's KF
+  extractor (extractPropertyDataKnightFrank) reads them via innerText-regex + generic
+  [class*="price"]/h1 fallbacks.
+
+  FLIPS applied vs the rental fixture (THIS is what detectTenure must key on):
+    * <title>: "to-let"/"for rent" wording -> "for sale".
+    * URL family: .../residential/to-let/...  ->  .../residential/for-sale/...
+    * price block: "£692 per week" + "(£2,998 pcm)"  ->  "Guide Price £1,950,000"
+      (a bare lump sum with NO per-week / per-month / pcm / pw / Weekly / Monthly
+      frequency token). THE SALE MARKER = absence of any rental-frequency token in
+      the visible price string (optionally prefixed by a Guide Price / Offers /
+      POA qualifier). A KF rental PDP ALWAYS carries pw/pcm/Weekly/Monthly; a KF
+      sale PDP NEVER does.
+    * lettings-only "2 bedroom flat for rent" / tenant-deposit/AST disclaimer
+      wording removed (sale pages have no tenant-fee disclaimer).
+
+  GROUND TRUTH (derived; matches the rental fixture's structure):
+      asking_price  = 1950000   ("Guide Price £1,950,000", LUMP SUM — never ×52/12)
+      price_qualifier = "Guide Price"
+      bedrooms      = 2
+      bathrooms     = 1
+      receptions    = 1
+      size_sqft     = 625
+      postcode      = SW3   (OUTCODE ONLY — KF addresses carry no incode)
+      property_type = flat
+      tenure        = sale  (detectTenure must return 'sale')
+      floorplan     = content.knightfrank.com  (same CDN as rental)
+-->
+<!DOCTYPE html>
+<html lang="en-GB">
+<head><title>Alexandra Mansions, 333 Kings Road, Chelsea, London, SW3 - For Sale | Knight Frank</title></head>
+<body>
+  <header><nav>Knight Frank navigation (ignored)</nav></header>
+  <main role="main">
+    <div class="container-fluid interactive-container property-details-container">
+      <property-title>
+        <div class="property-title-container">
+          <h1 class="property-title">Alexandra Mansions, 333 Kings Road, Chelsea, London, SW3</h1>
+        </div>
+      </property-title>
+
+      <property-price-title>
+        <div class="property-price-title">Guide Price £1,950,000</div>
+        <div class="property-secondary-price-title">2 bedroom flat for sale</div>
+      </property-price-title>
+
+      <property-icons>
+        <ul class="property-icons">
+          <li class="property-label">2 bedrooms</li>
+          <li class="property-label">1 bathroom</li>
+          <li class="property-label">1 reception</li>
+          <li class="property-label">625 sq ft</li>
+        </ul>
+      </property-icons>
+
+      <property-details>
+        <div class="property-details">
+          <p>A beautifully presented two bedroom apartment / flat on the Kings Road, for sale in Chelsea SW3.</p>
+          <ul class="key-features">
+            <li>Two bedrooms</li>
+            <li>Porter</li>
+            <li>Lift</li>
+          </ul>
+        </div>
+      </property-details>
+
+      <a href="https://content.knightfrank.com/property/chq012691683/floorplans/en/chq012691683-en-floorplan-abc123.jpg">View Floorplan</a>
+    </div>
+
+    <!-- Similar-properties carousel: contains OTHER sale prices/beds the first-match
+         regex must not latch onto incorrectly. Kept after the subject block so the
+         subject's £ / beds appear first in innerText document order. -->
+    <section class="similar-properties">
+      <div class="property-label">£4,500,000</div>
+      <div class="property-label">4 bedrooms</div>
+    </section>
+  </main>
+</body>
+</html>

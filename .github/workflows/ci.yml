@@ -162,6 +162,21 @@ jobs:
           node chrome-extension/similar_properties_test.mjs
           node chrome-extension/content_load_test.mjs
 
+      - name: For-sale (Inc4) per-site detection + extraction tests (vs real/derived fixtures)
+        run: |
+          # Inc4 — the Chrome extension For Sale Fair Value mode on real "to buy" detail pages.
+          # Per site: detectTenure → 'sale' + analyzeSale's model-input fields resolve from a
+          # REAL captured for-sale detail fixture (KnightFrank derived; flagged). Plus the
+          # Chestertons /sales/ regex unblock, the structural POA fork, and the shared sale OCR.
+          # RENTAL REGRESSION is guarded by rental_regression_guard_test (detection still 'rent').
+          node chrome-extension/rightmove_sale_extract_test.mjs
+          node chrome-extension/foxtons_sale_extract_test.mjs
+          node chrome-extension/chestertons_sale_extract_test.mjs
+          node chrome-extension/savills_sale_extract_test.mjs
+          node chrome-extension/knightfrank_sale_extract_test.mjs
+          node chrome-extension/structural_sale_poa_test.mjs
+          node chrome-extension/rental_regression_guard_test.mjs
+
       - name: Anti-silent-skip guard (a critical extension harness silently stopped running)
         run: |
           # SYSTEMIC FIX: assert that EVERY extension harness ci.yml is supposed to run

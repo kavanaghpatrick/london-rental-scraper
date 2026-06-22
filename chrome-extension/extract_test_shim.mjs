@@ -122,7 +122,12 @@ function parseHTML(html) {
 
 function decodeEntities(s) {
   return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    // Currency/price entities a real browser resolves before innerText sees them.
+    // The Chestertons/Savills price extractors regex on '£' in pageText, so a fixture
+    // that writes the price as &pound;/&#163; must decode here or the price reads as
+    // "not rendered yet" and the extractor returns null (a shim artefact, not a bug).
+    .replace(/&pound;/g, '£').replace(/&#163;/g, '£').replace(/&#xA3;/gi, '£');
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +192,11 @@ function makeElement(node) {
     get href() { return attrs.href || ''; },
     get src() { return attrs.src || ''; },
     get id() { return attrs.id || ''; },
+    // <meta>.content — the DOM IDL reflection of the content attribute. A fixed Savills
+    // detectTenure reads og:title via document.querySelector('meta[property="og:title"]')
+    // .content; expose it (in addition to getAttribute('content')) so the test works
+    // whichever accessor the content.js writer chooses.
+    get content() { return attrs.content || ''; },
     dataset: Object.fromEntries(
       Object.entries(attrs).filter(([k]) => k.startsWith('data-'))
         .map(([k, v]) => [k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v])
@@ -345,19 +355,24 @@ export function loadExtractors(html, { hostname, pathname = '/properties/1', hre
     __export: exported,
   };
 
-  const EXPORT_SHIM = '\n;try{' +
-    '__export.extractPropertyDataRightmove=extractPropertyDataRightmove;' +
-    '__export.extractPropertyDataKnightFrank=extractPropertyDataKnightFrank;' +
-    '__export.extractPropertyDataFoxtons=extractPropertyDataFoxtons;' +
-    '__export.extractPropertyDataChestertons=extractPropertyDataChestertons;' +
-    '__export.extractSqftFromPage=extractSqftFromPage;' +
-    '__export.extractPostcode=extractPostcode;' +
-    '__export.parsePrice=parsePrice;' +
-    '__export.getFloorplanUrl=getFloorplanUrl;' +
-    '__export.extractPropertyType=extractPropertyType;' +
-    '__export.extractLetType=extractLetType;' +
-    '__export.currentSite=currentSite;' +
-    '}catch(e){__export.err=e;}\n';
+  // NOTE: each export is wrapped in its OWN try so that a name that does not yet
+  // exist in content.js (e.g. recoverSizeSqft, the not-yet-added shared sale-OCR
+  // helper) leaves __export.<name> === undefined instead of aborting the whole
+  // export block with a ReferenceError. This is exactly what lets the for-sale
+  // RED tests assert "recoverSizeSqft is wired" and fail cleanly (undefined) until
+  // the content.js writer adds it, rather than crashing every extractor test.
+  const optExports = [
+    'extractPropertyDataRightmove', 'extractPropertyDataKnightFrank',
+    'extractPropertyDataFoxtons', 'extractPropertyDataChestertons',
+    'extractPropertyDataSavills',
+    'extractSqftFromPage', 'extractPostcode', 'parsePrice', 'getFloorplanUrl',
+    'extractPropertyType', 'extractLetType', 'currentSite',
+    // For-sale (Inc4) additions:
+    'detectTenure', 'extractPriceQualifier', 'recoverSizeSqft', 'extractPropertyId',
+  ];
+  const EXPORT_SHIM = '\n;' +
+    optExports.map((n) => `try{__export.${n}=${n};}catch(e){__export.${n}=undefined;}`).join('') +
+    '\n';
   const closeIdx = SRC.lastIndexOf('})();');
   if (closeIdx === -1) throw new Error('could not find IIFE close `})();` in content.js');
   const instrumented = SRC.slice(0, closeIdx) + EXPORT_SHIM + SRC.slice(closeIdx);

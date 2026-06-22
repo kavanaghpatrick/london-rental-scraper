@@ -1,0 +1,79 @@
+<!--
+  DERIVED (NOT captured) Knight Frank FOR-SALE *POA* PDP rendered-DOM fixture.
+
+  PROVENANCE
+  ----------
+  Derived from the sibling derived fixture knightfrank_for_sale_detail.html by flipping
+  ONLY the visible price block from a concrete Guide-Price lump sum to a POA
+  ("Price on application") listing. KF for-sale is a client-rendered Angular SPA that
+  curl cannot capture (see knightfrank_for_sale_detail.html's header + the rental
+  knightfrank_extract_test.mjs), so this is DERIVED and NEEDS REAL-PAGE CONFIRMATION.
+
+  WHY THIS FIXTURE EXISTS
+  -----------------------
+  It exercises the STRUCTURAL FIX (spec /tmp/inc4_extension_fix.md §"STRUCTURAL FIX"):
+  on a POA sale page the rental price parse yields NO number, so the CURRENT init()
+  injects "Could not parse price" and returns BEFORE the sale fork — a POA sale must
+  instead reach analyzeSale and render LOW CONFIDENCE (asking price null, price_qualifier
+  POA), not error. parsePrice('Price on application') === null, which is exactly the
+  premature-bail trigger.
+
+  FLIPS vs knightfrank_for_sale_detail.html:
+    * price block "Guide Price £1,950,000"  ->  "Price on application"  (NO digits, NO £)
+      => parsePrice() returns null  => current init() bails with "Could not parse price".
+    * "2 bedroom flat for sale" subtitle kept (beds/baths/sqft still resolve).
+
+  GROUND TRUTH (derived):
+      asking_price  = null        ("Price on application" — parsePrice -> null)
+      price_qualifier = "POA"
+      bedrooms      = 2
+      bathrooms     = 1
+      receptions    = 1
+      size_sqft     = 625
+      postcode      = SW3   (OUTCODE ONLY)
+      property_type = flat
+      tenure        = sale  (detectTenure must return 'sale' via the /for-sale/ URL)
+-->
+<!DOCTYPE html>
+<html lang="en-GB">
+<head><title>Alexandra Mansions, 333 Kings Road, Chelsea, London, SW3 - For Sale | Knight Frank</title></head>
+<body>
+  <header><nav>Knight Frank navigation (ignored)</nav></header>
+  <main role="main">
+    <div class="container-fluid interactive-container property-details-container">
+      <property-title>
+        <div class="property-title-container">
+          <h1 class="property-title">Alexandra Mansions, 333 Kings Road, Chelsea, London, SW3</h1>
+        </div>
+      </property-title>
+
+      <property-price-title>
+        <div class="property-price-title">Price on application</div>
+        <div class="property-secondary-price-title">2 bedroom flat for sale</div>
+      </property-price-title>
+
+      <property-icons>
+        <ul class="property-icons">
+          <li class="property-label">2 bedrooms</li>
+          <li class="property-label">1 bathroom</li>
+          <li class="property-label">1 reception</li>
+          <li class="property-label">625 sq ft</li>
+        </ul>
+      </property-icons>
+
+      <property-details>
+        <div class="property-details">
+          <p>A beautifully presented two bedroom apartment / flat on the Kings Road, for sale in Chelsea SW3.</p>
+          <ul class="key-features">
+            <li>Two bedrooms</li>
+            <li>Porter</li>
+            <li>Lift</li>
+          </ul>
+        </div>
+      </property-details>
+
+      <a href="https://content.knightfrank.com/property/chq012691683/floorplans/en/chq012691683-en-floorplan-abc123.jpg">View Floorplan</a>
+    </div>
+  </main>
+</body>
+</html>

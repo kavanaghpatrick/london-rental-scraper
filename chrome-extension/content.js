@@ -170,7 +170,10 @@
       case SITES.KNIGHTFRANK:
         return /\/properties\//.test(url) && !/\/search/.test(url);
       case SITES.CHESTERTONS:
-        return /\/properties\/\d+\/lettings\//.test(url);
+        // Accept BOTH the lettings (rental) and sales (for-sale) detail families — mirrors
+        // the spider seam for_sale/listing_parse.py:341 (?:sales|lettings). Without /sales/
+        // here, scheduleSpaRetry never arms on a for-sale PDP and the popup never renders.
+        return /\/properties\/\d+\/(?:sales|lettings)\//.test(url);
       case SITES.SAVILLS:
         return /\/property-detail\//.test(url);
       case SITES.FOXTONS:
@@ -182,7 +185,11 @@
         // sites (a search page's __NEXT_DATA__ has no propertyDetail key, so the
         // extractor also returns null there — but gating the SPA re-run/retry on the
         // URL keeps us from arming retries on listing-grid pages).
-        return /\/properties-to-rent\/[^/]+\/[a-z]*\d[a-z\d]*\/?(?:[?#].*)?$/i.test(url);
+        // Detail URLs are /properties-to-rent/ (rental) OR /properties-for-sale/ (for-sale),
+        // both ending in a digit-bearing ref segment (e.g. chpk2514513). The shared
+        // (?:to-rent|for-sale) clause keeps the same single-segment search-page exclusion
+        // (a digit in the final segment) so for-sale SPA nav re-fires the same way rental does.
+        return /\/properties-(?:to-rent|for-sale)\/[^/]+\/[a-z]*\d[a-z\d]*\/?(?:[?#].*)?$/i.test(url);
       default:
         return false;
     }
@@ -307,30 +314,38 @@
       // 3. Show loading
       injectLoadingState('Loading estimate...');
 
-      // 4. Parse asking price
+      // === FOR-SALE FORK (Inc4 — STRUCTURAL FIX) =====================================
+      // The sale fork now runs BEFORE the rental "Could not parse price" bail below.
+      // WHY: on a FOR-SALE page the price can be POA ("Price on application") or a bare
+      // Guide-Price lump sum. parsePrice() returns null for POA, so the rental bail used
+      // to fire FIRST and inject "Could not parse price" — the sale path never ran and a
+      // POA sale ERRORED instead of rendering low-confidence. Detecting tenure here and
+      // routing sale → analyzeSale BEFORE the bail fixes that.
+      //
+      // Sale-aware price parse: a bare lump sum parses normally (parsePrice does NOT
+      // ×52/12 a sale price); POA → null askingPrice, which analyzeSale tolerates (it
+      // carries the POA qualifier via extractPriceQualifier and renders low-confidence).
+      // The sale path uses ONLY the sale-namespaced predictor/cache/artifacts and never
+      // touches window.XGBFeatures/XGBoostPredictor.
+      if (detectTenure(window.location.href, propertyData) === 'sale') {
+        // Bare lump sum -> number; POA / unparseable -> null (a valid low-confidence sale,
+        // NOT an error). No rental bail here; analyzeSale handles a null asking price.
+        const saleAskingPrice = parsePrice(propertyData.prices?.primaryPrice);
+        const saleResult = await analyzeSale(propertyData, saleAskingPrice);
+        if (saleResult) displaySaleResult(saleResult);
+        isRunning = false;
+        return;
+      }
+      // === END FOR-SALE FORK =========================================================
+
+      // 4. Parse asking price (RENTAL path — byte-unchanged). Only reached when tenure is
+      // 'rent'; a rental with no parseable price is a genuine error.
       const askingPrice = parsePrice(propertyData.prices?.primaryPrice);
       if (!askingPrice) {
         injectError('Could not parse price');
         isRunning = false;
         return;
       }
-
-      // === FOR-SALE FORK (Inc4a, additive) ===========================================
-      // Exactly ONE guarded fork into the sale path. Placed AFTER the price parse above
-      // (AMENDMENT FIX 5): the spec's original ~line-263 insertion point referenced
-      // askingPrice before it was parsed. Here askingPrice is defined, and analyzeSale
-      // takes the same (propertyData, askingPrice) signature as analyzeProperty.
-      //
-      // When tenure === 'rent' (the default) this branch is NOT taken and the rental
-      // path below runs BYTE-UNCHANGED. The sale path uses ONLY the sale-namespaced
-      // predictor/cache/artifacts and never touches window.XGBFeatures/XGBoostPredictor.
-      if (detectTenure(window.location.href, propertyData) === 'sale') {
-        const saleResult = await analyzeSale(propertyData, askingPrice);
-        if (saleResult) displaySaleResult(saleResult);
-        isRunning = false;
-        return;
-      }
-      // === END FOR-SALE FORK =========================================================
 
       // 4. Try cache first (instant) - DISABLED FOR TESTING v0.6.0 fixes
       // const cached = await getCachedPrediction(propertyId);
@@ -369,36 +384,23 @@
     }
   }
 
-  async function analyzeProperty(propertyData, askingPrice) {
-    // FIX C: the shared feature builder (xgboost.js -> window.XGBFeatures) is required
-    // by BOTH the server-request path (extractFloors/parseAmenities) and the in-browser
-    // fallback (buildFeatures + XGBoostPredictor). If xgboost.js failed to load/parse,
-    // these globals are undefined and the first deref below would throw a bare
-    // TypeError. Fail fast with a clear message and return null (caller stops cleanly).
-    if (!window.XGBFeatures || !window.XGBoostPredictor) {
-      logError(' XGBFeatures/XGBoostPredictor not available — xgboost.js failed to load');
-      injectError('Model failed to load');
-      return null;
-    }
-
-    // Extract all available data
-    const beds = propertyData.bedrooms || 1;
-    const baths = propertyData.bathrooms || 1;
-    const postcode = extractPostcode(propertyData);
-    const propertyType = extractPropertyType(propertyData);
-    const agentName = extractAgentName(propertyData);
-    const lat = propertyData.location?.latitude;
-    const lon = propertyData.location?.longitude;
-    const address = propertyData.address?.displayAddress || '';  // V16: for garden square/prime street detection
-    const description = (propertyData.text?.description || '') + ' ' +
-                       (propertyData.text?.propertyPhrase || '') +
-                       ' ' + (propertyData.keyFeatures || []).join(' ');
-    console.log(`[RFV] Extracted: type=${propertyType}, agent=${agentName}, address=${address}`);
-
-    // Get sqft - from page JSON or OCR
+  // ============================================================================
+  // recoverSizeSqft(propertyData) -> { sizeSqft, sizeSource, ocrText }
+  // ============================================================================
+  // TENURE-AGNOSTIC size recovery, extracted verbatim from analyzeProperty (Inc4) so the
+  // SALE path (analyzeSale) recovers sqft the SAME way the rental path does — page JSON,
+  // then floorplan-tab-click + OCR (Chestertons/Savills), then a beds-based estimate.
+  //
+  // Behaviour is BYTE-EQUIVALENT to the old in-line analyzeProperty block: identical
+  // page→OCR→estimate ordering, identical Foxtons-CDN-403 skip (skip OCR on Foxtons only
+  // when sqft is already known from the page), identical injectLoadingState calls and
+  // logs, and ocrText is RETURNED so analyzeProperty can still feed it to extractFloors().
+  // analyzeSale ignores ocrText (the sale model has no floor features). All OCR failures
+  // are best-effort (caught) so this NEVER aborts the caller's render.
+  async function recoverSizeSqft(propertyData) {
     let sizeSqft = extractSqftFromPage(propertyData);
     let sizeSource = sizeSqft ? 'page' : null;
-    let ocrText = ''; // Store raw OCR text for floor extraction
+    let ocrText = ''; // raw OCR text for floor extraction (rental path only)
 
     // Run OCR on the floorplan to extract floor flags (and sqft when the page
     // doesn't expose it). For SPA sites (Chestertons, Savills) the floorplan lives
@@ -482,10 +484,47 @@
     }
 
     if (!sizeSqft) {
-      // Estimate from beds
+      // Estimate from beds (same default the analyze paths use: bedrooms || 1).
+      const beds = propertyData.bedrooms || 1;
       sizeSqft = estimateSqft(beds);
       sizeSource = 'estimated';
     }
+
+    return { sizeSqft, sizeSource, ocrText };
+  }
+
+  async function analyzeProperty(propertyData, askingPrice) {
+    // FIX C: the shared feature builder (xgboost.js -> window.XGBFeatures) is required
+    // by BOTH the server-request path (extractFloors/parseAmenities) and the in-browser
+    // fallback (buildFeatures + XGBoostPredictor). If xgboost.js failed to load/parse,
+    // these globals are undefined and the first deref below would throw a bare
+    // TypeError. Fail fast with a clear message and return null (caller stops cleanly).
+    if (!window.XGBFeatures || !window.XGBoostPredictor) {
+      logError(' XGBFeatures/XGBoostPredictor not available — xgboost.js failed to load');
+      injectError('Model failed to load');
+      return null;
+    }
+
+    // Extract all available data
+    const beds = propertyData.bedrooms || 1;
+    const baths = propertyData.bathrooms || 1;
+    const postcode = extractPostcode(propertyData);
+    const propertyType = extractPropertyType(propertyData);
+    const agentName = extractAgentName(propertyData);
+    const lat = propertyData.location?.latitude;
+    const lon = propertyData.location?.longitude;
+    const address = propertyData.address?.displayAddress || '';  // V16: for garden square/prime street detection
+    const description = (propertyData.text?.description || '') + ' ' +
+                       (propertyData.text?.propertyPhrase || '') +
+                       ' ' + (propertyData.keyFeatures || []).join(' ');
+    console.log(`[RFV] Extracted: type=${propertyType}, agent=${agentName}, address=${address}`);
+
+    // Get sqft — page JSON, then floorplan-tab-click + OCR, then beds estimate. This is
+    // the tenure-agnostic size-recovery pipeline, now extracted into the shared
+    // recoverSizeSqft() helper (Inc4) so analyzeSale wires the SAME recovery. The rental
+    // path is byte-equivalent: same page→OCR→estimate order, same Foxtons-CDN-403 skip,
+    // and ocrText is still consumed below by extractFloors() exactly as before.
+    const { sizeSqft, sizeSource, ocrText } = await recoverSizeSqft(propertyData);
 
     // Derive floor flags from OCR floorplan text (same extractor the model uses)
     // so the server gets explicit floors instead of having to re-OCR.
@@ -626,11 +665,40 @@
       if (currentSite === SITES.CHESTERTONS && /\/properties\/\d+\/sales\//.test(u)) {
         return 'sale';
       }
-      // Rightmove / Savills / Knight Frank: sale detail paths are SHARED with rental,
+      // Savills: the /property-detail/ URL is IDENTICAL for rent and sale, and the
+      // page is a Next.js SSG shell whose pageProps hydrate client-side — so the listing
+      // blob carries no transactionType/tenure the extractor can read. The ONLY reliable
+      // STATIC sale marker the capture phase (2026-06-22) found is the <head> og:title /
+      // meta description: "... | Property for sale | Savills" (rental: "... | Property to
+      // rent | Savills"). Read it first; this is the confirmed real-page signal.
+      if (currentSite === SITES.SAVILLS) {
+        try {
+          const og = document.querySelector('meta[property="og:title"]');
+          const ogTitle = (og && (og.content || og.getAttribute('content'))) || '';
+          const metaDesc = document.querySelector('meta[name="description"]');
+          const desc = (metaDesc && (metaDesc.content || metaDesc.getAttribute('content'))) || '';
+          const pageTitle = (typeof document.title === 'string') ? document.title : '';
+          const hay = `${ogTitle} ${desc} ${pageTitle}`;
+          if (/property\s+for\s+sale|for\s+sale\b|\bfor-sale\b/i.test(hay)) return 'sale';
+          if (/property\s+to\s+rent|to\s+let\b|\bto-rent\b/i.test(hay)) return 'rent';
+        } catch (e) {
+          logError(' detectTenure Savills og:title read failed:', e);
+        }
+        // FALLBACK HEURISTIC (needs real-page confirmation): if no og:title marker is
+        // present, a Savills /property-detail/ price that renders as a LUMP SUM with NO
+        // rental-frequency token ("pcm"/"pw"/"per week"/"per month") on a detail page is
+        // taken as a sale. Documented as best-effort because Savills price hydration is
+        // client-side; the og:title path above is the primary, confirmed signal.
+        const pd0 = propertyData || {};
+        const priceStr0 = String(pd0.prices?.primaryPrice || '');
+        const hasFreq0 = /pcm|pw|per\s*(?:calendar\s*)?(?:week|month)|weekly|monthly/i.test(priceStr0);
+        if (priceStr0 && /£|\bguide\b|\boffers\b/i.test(priceStr0) && !hasFreq0) return 'sale';
+        return 'rent';
+      }
+      // Rightmove / Knight Frank: sale detail paths are SHARED with rental,
       // so the URL alone can't decide — read a page-data sale marker. A rental listing
       // carries a per-week/per-month price frequency (lettings); a SALE listing does not.
       if (currentSite === SITES.RIGHTMOVE ||
-          currentSite === SITES.SAVILLS ||
           currentSite === SITES.KNIGHTFRANK) {
         const pd = propertyData || {};
         // Rightmove transactionType / channel: RES_BUY (or BUY) => sale.
@@ -710,9 +778,17 @@
     const isNewBuild = extractIsNewBuild(propertyData);
     const priceQualifier = extractPriceQualifier(propertyData);
 
-    // Size: read from the page only (sale OCR not wired in 4a). The predictor applies
-    // the 700-sqft single-row fallback when size is absent (estimated_size = true).
-    const sizeSqft = extractSqftFromPage(propertyData);      // null when not on page
+    // Size: page JSON → floorplan-tab-click + OCR (Chestertons/Savills) → beds estimate,
+    // via the SHARED recoverSizeSqft() helper (Inc4 — sale OCR is now wired the same way
+    // analyzeProperty recovers it; the Foxtons-CDN-403 skip is preserved). The sale model
+    // has no floor features, so ocrText is ignored here. A REAL size is only one sourced
+    // from the page or OCR; sizeSource==='estimated' means no real size was found, so we
+    // leave size_sqft undefined and let the route/predictor surface estimated_size +
+    // low_confidence (do NOT pass the beds-based estimate as a known size).
+    const sizeRecovery = await recoverSizeSqft(propertyData);
+    const sizeSqft = (sizeRecovery.sizeSource === 'page' || sizeRecovery.sizeSource === 'ocr')
+      ? sizeRecovery.sizeSqft
+      : null;
 
     // The /api/predict-sale request contract (Inc3 input fields). Empty/absent size
     // is allowed — the route normalizes and surfaces estimated_size.
@@ -818,14 +894,19 @@
   async function displaySaleResult(r) {
     const askingPrice = r.asking_price;
     const fairValue = r.fair_value;
-    const premiumPct = fairValue
+    // POA (Price on application): the structural fix routes POA sales here with a null
+    // asking price (instead of the old "Could not parse price" bail). With no asking price
+    // there is no premium to compute and no confident verdict to show — render the asking
+    // as "POA" and force the low-confidence state.
+    const hasAsking = typeof askingPrice === 'number' && askingPrice > 0;
+    const premiumPct = (hasAsking && fairValue)
       ? Math.round((askingPrice / fairValue - 1) * 100 * 10) / 10
       : 0;
     const sign = premiumPct > 0 ? '+' : '';
 
-    // Suppress a confident verdict when the size was estimated or the location is
-    // unknown (mirrors the rental size-caveat discipline): show a neutral state.
-    const softVerdict = r.low_confidence || r.estimated_size;
+    // Suppress a confident verdict when the size was estimated, the location is unknown,
+    // or the asking price is POA (mirrors the rental size-caveat discipline): neutral state.
+    const softVerdict = r.low_confidence || r.estimated_size || !hasAsking;
     const assessment = premiumPct > 15 ? 'overpriced' : premiumPct < -10 ? 'good_deal' : 'fair';
     const colorClass = assessment === 'overpriced' ? 'rfv-overpriced' :
                        assessment === 'good_deal' ? 'rfv-good-deal' : 'rfv-fair';
@@ -863,7 +944,7 @@
         <div class="rfv-header">FOR SALE FAIR VALUE</div>
 
         <div class="rfv-label">Asking</div>
-        <div class="rfv-price">£${formatNum(askingPrice)}</div>
+        <div class="rfv-price">${hasAsking ? '£' + formatNum(askingPrice) : 'POA'}</div>
 
         <hr class="rfv-divider">
 
@@ -1240,12 +1321,28 @@
       }
     }
 
-    // Price — build the visible-style string parsePrice() expects.
-    if (typeof pd.pricePcm === 'number' && pd.pricePcm > 0) {
+    // Price — build the visible-style string parsePrice() expects. The label (pcm/pw vs
+    // bare lump sum) is TENURE-dependent, so split on the Foxtons sale marker first.
+    //
+    // SALE: instructionType==='sale' (rentals carry 'letting'). On a sale page pricePcm is
+    // null and the asking price lives in priceFrom (which may arrive as a STRING — coerce
+    // Number(String(priceFrom))). Surface it as a BARE LUMP SUM (NO pw/pcm) so parsePrice
+    // returns it untouched (no ×52/12). priceTo is the same lump sum on a fixed-price sale.
+    const isFoxtonsSale = String(pd.instructionType || '').toLowerCase() === 'sale' ||
+      String(pd.instructionTypeShort || pd.originalInstructionType || '').toUpperCase() === 'SAL';
+    if (isFoxtonsSale) {
+      const askRaw = (pd.priceFrom != null && pd.priceFrom !== '') ? pd.priceFrom
+        : (pd.priceTo != null ? pd.priceTo : null);
+      const ask = (askRaw != null) ? Number(String(askRaw).replace(/[£,\s]/g, '')) : NaN;
+      if (Number.isFinite(ask) && ask > 0) {
+        // Bare lump sum, no frequency token -> parsePrice keeps it as-is.
+        data.prices = { primaryPrice: `£${ask.toLocaleString('en-GB')}` };
+      }
+    } else if (typeof pd.pricePcm === 'number' && pd.pricePcm > 0) {
       data.prices = { primaryPrice: `£${pd.pricePcm.toLocaleString('en-GB')} pcm` };
     } else if (typeof pd.priceFrom === 'number' && pd.priceFrom > 0) {
-      // pricePcm unreliable (0) on price-range listings; priceFrom is the WEEKLY figure.
-      // Surface as "£X pw" -> parsePrice does ×52/12 to recover the pcm value.
+      // RENTAL: pricePcm unreliable (0) on price-range listings; priceFrom is the WEEKLY
+      // figure. Surface as "£X pw" -> parsePrice does ×52/12 to recover the pcm value.
       data.prices = { primaryPrice: `£${pd.priceFrom.toLocaleString('en-GB')} pw` };
     }
 
@@ -1480,8 +1577,10 @@
   // field may be undefined/null) or null if the subject object can't be found.
   function extractChestertonsSubjectFromFlight() {
     try {
-      // Numeric property id from the URL: /properties/<NUMID>/lettings/<REF>
-      const idMatch = window.location.pathname.match(/\/properties\/(\d+)\/lettings\//);
+      // Numeric property id from the URL: /properties/<NUMID>/(sales|lettings)/<REF>.
+      // Accept BOTH channels (?:sales|lettings) so subject extraction resolves on a
+      // for-sale PDP too; the numeric id alone anchors the subject object below.
+      const idMatch = window.location.pathname.match(/\/properties\/(\d+)\/(?:sales|lettings)\//);
       if (!idMatch) {
         log(' Chestertons flight: no numeric property id in URL');
         return null;
@@ -1994,8 +2093,10 @@
         return match ? match[1] : null;
       }
       case SITES.CHESTERTONS: {
-        // URL like: /properties/21142524/lettings/KNL220048
-        const match = pathname.match(/\/properties\/(\d+)\/lettings\/([a-zA-Z0-9]+)/);
+        // URL like: /properties/21142524/lettings/KNL220048 (rental) OR
+        //           /properties/21855578/sales/FUL250188   (for-sale).
+        // Accept BOTH channels (?:sales|lettings) — mirrors the spider seam.
+        const match = pathname.match(/\/properties\/(\d+)\/(?:sales|lettings)\/([a-zA-Z0-9]+)/);
         return match ? `${match[1]}_${match[2]}` : null;
       }
       case SITES.SAVILLS: {
@@ -2004,9 +2105,10 @@
         return match ? match[1] : null;
       }
       case SITES.FOXTONS: {
-        // URL like: /properties-to-rent/SW7/b2rc5264686 — the final ref segment is
-        // the stable id (letters+digits, e.g. b2rc5264686 / btrc0001663 / chpk0478367).
-        const match = pathname.match(/\/properties-to-rent\/[^/]+\/([a-zA-Z]*\d[a-zA-Z\d]*)\/?$/);
+        // URL like: /properties-to-rent/SW7/b2rc5264686 (rental) OR
+        //           /properties-for-sale/sw7/chpk2514513 (for-sale) — the final ref
+        // segment is the stable id (letters+digits, e.g. b2rc5264686 / chpk2514513).
+        const match = pathname.match(/\/properties-(?:to-rent|for-sale)\/[^/]+\/([a-zA-Z]*\d[a-zA-Z\d]*)\/?$/);
         return match ? match[1] : null;
       }
       default:

@@ -1,0 +1,19 @@
+{
+  "_note": "REAL-CAPTURED 2026-06-22 via curl from https://search.savills.com/property-detail/gbkgrsknu250108 (a /property-detail/ SALE page). Savills detail pages are a Next.js SSG shell: __NEXT_DATA__.props.pageProps is EMPTY (property data hydrates client-side from api.savills). The ONLY reliable static in-page SALE marker is the <head> og:title / meta description: 'Property for sale | Savills' vs the rental 'Property to rent | Savills'. In the LIVE hydrated DOM the main content also renders 'Guide Price \u00a3X' / 'Offers in Excess of \u00a3X' with NO pcm/pw frequency token (vs '\u00a3X pcm' for rent). detectTenure for Savills should read the og:title (head, available pre-hydration) and/or the hydrated price string's absence of a rental-frequency token.",
+  "url": "https://search.savills.com/property-detail/gbkgrsknu250108",
+  "section": "property-for-sale",
+  "head_meta": {
+    "og:title": "Wheelwright Cottage, Woore Road, Buerton, Cheshire, CW3 0DA | Property for sale | Savills",
+    "og:description": "Property details for Wheelwright Cottage, Woore Road. One of many properties for sale in Buerton, Cheshire, CW3 0DA from Savills, world leading estate agents.",
+    "description": "Property details for Wheelwright Cottage, Woore Road. One of many properties for sale in Buerton, Cheshire, CW3 0DA from Savills, world leading estate agents."
+  },
+  "next_data_query": {
+    "propertyId": "gbkgrsknu250108",
+    "url": "/property-detail/gbkgrsknu250108",
+    "searchParams": {}
+  },
+  "next_data_page": "/property",
+  "next_data_pageProps_empty": true,
+  "hydrated_dom_price_example_for_sale": "Guide Price \u00a31,750,000",
+  "hydrated_dom_price_example_for_rent": "\u00a33,250 pcm"
+}

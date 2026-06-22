@@ -41,6 +41,16 @@ const REQUIRED_HARNESSES = [
   'foxtons_ocr_skip_test.mjs',
   'similar_properties_test.mjs', // comps location HARD-gate (findSimilarProperties)
   'content_load_test.mjs',       // content.js load + log-recursion + SPA-retry guards
+  // Inc4 — For Sale Fair Value mode on real "to buy" detail pages (per-site detection +
+  // extraction, Chestertons /sales/ unblock, structural POA fork, shared sale OCR, rental
+  // regression). These are RED until the content.js writer lands the Inc4 fix.
+  'rightmove_sale_extract_test.mjs',
+  'foxtons_sale_extract_test.mjs',
+  'chestertons_sale_extract_test.mjs',
+  'savills_sale_extract_test.mjs',
+  'knightfrank_sale_extract_test.mjs',
+  'structural_sale_poa_test.mjs',
+  'rental_regression_guard_test.mjs',
   'sale_fixture_diff.mjs',       // SALE JS↔Python £/feature parity (Inc4a). NOTE: ends in
                                  // neither '_test.mjs' nor '== fixture_diff.mjs', so the
                                  // orphan glob (Invariant 2) does NOT match it — REQUIRED_HARNESSES

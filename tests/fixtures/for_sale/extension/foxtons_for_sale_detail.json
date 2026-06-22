@@ -1,0 +1,69 @@
+{
+  "_fixture_note": "REAL CAPTURED Foxtons FOR-SALE detail page __NEXT_DATA__ (trimmed). Captured 2026-06-22 from https://www.foxtons.co.uk/properties-for-sale/sw7/chpk2514513 via curl (HTTP 200, server-rendered Next.js). NOT derived. Sale marker: props.pageProps.propertyDetail.instructionType === 'sale' (rentals carry 'letting'); pricePcm is null on sale, priceFrom/priceTo hold the lump-sum asking price.",
+  "props": {
+    "pageProps": {
+      "propertyDetail": {
+        "propertyReference": "CHPK2514513",
+        "propertyId": "37958",
+        "instructionId": 1359006,
+        "instructionType": "sale",
+        "instructionTypeShort": "SAL",
+        "originalInstructionType": "SAL",
+        "tenure": "freehold",
+        "status": "INS",
+        "type": "house_terraced",
+        "class": "unit",
+        "priceAskingType": "ASPR",
+        "priceAskingTypeAugmented": "ASPR",
+        "priceFrom": 5150000,
+        "priceTo": 5150000,
+        "bedrooms": 5,
+        "bathrooms": 4,
+        "receptions": 3,
+        "floorArea": 3401,
+        "floorplan": {
+          "src": "https://web-prod-page-assets.foxtons.co.uk/protog/1779432782/31/54/152/chpk2514513/chpk2514513_floorplan.png"
+        },
+        "postcode": {
+          "name": "SW7 3RE"
+        },
+        "postcodeShort": "SW7",
+        "isNewHome": false,
+        "isUnderOffer": false,
+        "isAvailableForAuction": false,
+        "isReduced": false,
+        "addressLine1": "42 Roland Way",
+        "town": "London",
+        "street": "Roland Way",
+        "address": {
+          "streetName": "Roland Way",
+          "addressLine1": "42 Roland Way",
+          "addressLine2": ""
+        },
+        "lat": 51.489323,
+        "lng": -0.180804,
+        "latitude": 51.489323,
+        "longitude": -0.180804,
+        "location": {
+          "name": "South Kensington",
+          "lat": 51.489323,
+          "lon": -0.180804
+        },
+        "region": "West London",
+        "webName": "",
+        "bulletPoints": [
+          "Charming 5 bedroom family home in South Kensington",
+          "Located on a gated, secure cobbled mews",
+          "Spaciously arranged over 5 floors",
+          "Generous reception room with space to dine",
+          "Contemporary open-plan kitchen with integrated appliances",
+          "Benefits from 2 private patio gardens",
+          "Principal bedroom with dressing room and en-suite",
+          "Additional family room, play room and utility room"
+        ],
+        "features": [],
+        "shortDescription": "Offering a beautifully presented 5 bedroom family home, situated in a secure gated mews, benefitting from spacious interiors over 5 floors, contemporary open-plan kitchen and a private garden."
+      }
+    }
+  }
+}
