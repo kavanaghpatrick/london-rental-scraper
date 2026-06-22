@@ -1,0 +1,348 @@
+name: For-Sale Property Scrape
+
+# PRODUCTION for-sale scrape. Scrapes for-sale listings to output/sales.db on the runner,
+# then UPSERTs them into prod Neon `sale_listings` via the standalone, safety-hardened
+# scripts/sync_sales_to_postgres.py (the FIRST workflow to invoke a standalone sync SCRIPT
+# — the rental daily-scrape writes prod inline via `cli.main scrape --postgres`, which is
+# HARD-BLOCKED for sale at cli/main.py, which is exactly why sale uses a separate sync).
+#
+# ISOLATION (constraint #4): this workflow touches ONLY output/sales.db, the prod
+# `sale_listings` table, and scripts/sync_sales_to_postgres.py (+ read-only backup_neon.sh).
+# It NEVER reaches the rental SQLite DB, the rental listings table, retrain, or the rental sync.
+
+on:
+  schedule:
+    # 08:23 UTC — deliberately OFF :00/:30 and OFF rental's 06:00 to dodge the cron
+    # stampede and avoid runner/git contention with daily-scrape.yml.
+    - cron: '23 8 * * *'
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: 'Max pages per spider (blank = all). Use a small cap for ad-hoc test runs.'
+        required: false
+        default: ''
+      execute_sync:
+        description: 'Actually write prod Neon sale_listings (false = scrape + dry-run sync only).'
+        required: false
+        default: 'true'
+        type: boolean
+
+# Distinct group so a sale run never collides with itself or with the rental scrape.
+concurrency:
+  group: for-sale-scrape
+  cancel-in-progress: false   # never cancel a mid-flight prod sync
+
+# Least privilege: sale commits NO artifacts, so no `contents: write`.
+permissions:
+  contents: read
+  issues: write   # only for the notify-failure job
+
+env:
+  PYTHON_VERSION: '3.11'
+  # Same prod Neon secret the rental daily-scrape uses.
+  POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+
+jobs:
+  scrape-sale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        # REQUIRED — the savills/knightfrank/chestertons SALE spiders are Playwright.
+        # (No tesseract/OCR leg: there is no sale OCR in Inc2; sale sqft comes from detail pages.)
+        run: |
+          pip install playwright
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Install PostgreSQL 17 client (pg_dump) from PGDG
+        # Neon server is 17.x; Ubuntu's stock postgresql-client is 16.x and pg_dump REFUSES
+        # to dump a newer server. The sync's fail-closed backup (scripts/backup_neon.sh)
+        # shells out to bare pg_dump, so the versioned bindir must be AHEAD on PATH.
+        # $GITHUB_PATH persists it to the later sync step. (Mirrors the proven neon-backup.yml block.)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+          pg_dump --version   # expect 17.x
+
+      - name: Check Postgres connection (read-only sanity)
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              print("ERROR: POSTGRES_URL not set!")
+              raise SystemExit(1)
+
+          try:
+              conn = psycopg2.connect(url)
+              cur = conn.cursor()
+              cur.execute("SELECT 1")
+              cur.fetchone()
+              # to_regclass returns NULL when the table doesn't exist yet — EXPECTED and
+              # FINE on the first run (the sync's ensure_sale_table CREATEs it). Informational.
+              cur.execute("SELECT to_regclass('public.sale_listings')")
+              reg = cur.fetchone()[0]
+              if reg is None:
+                  print("Connected. sale_listings does not exist yet (first run — sync will CREATE it).")
+              else:
+                  cur.execute("SELECT COUNT(*) FROM sale_listings")
+                  print(f"Connected. sale_listings currently holds {cur.fetchone()[0]} rows.")
+              conn.close()
+          except Exception as e:
+              print(f"Database connection check failed (non-fatal at this stage): {e}")
+          EOF
+
+      - name: Scrape for-sale listings to sales.db
+        id: scrape
+        run: |
+          # NO --postgres (cli.main hard-exits on sale+--postgres; sale is SQLite-only on the
+          # runner). NO --full (that fires the rental-only enrich/dedupe tail on the rental DB).
+          # On scheduled runs max_pages is blank -> uncapped crawl; the dispatch input caps
+          # ad-hoc test runs.
+          MAXP="${{ github.event.inputs.max_pages }}"
+          ARGS="--all --listing-type sale"
+          if [ -n "$MAXP" ]; then
+            ARGS="$ARGS --max-pages $MAXP"
+          fi
+          echo "Running: python -m cli.main scrape $ARGS"
+          python -m cli.main scrape $ARGS 2>&1 | tee scrape_output.txt
+
+      - name: Show sales.db stats
+        run: |
+          python3 << 'EOF'
+          import os
+          import sqlite3
+          from cli.main import get_sale_db_path
+
+          db = get_sale_db_path()
+          if not os.path.exists(db):
+              print(f"sales.db not found at {db} (no rows scraped?).")
+              raise SystemExit(0)
+
+          conn = sqlite3.connect(db)
+          cur = conn.cursor()
+          print("=== sales.db per-source stats ===")
+          try:
+              cur.execute(
+                  "SELECT source, COUNT(*), "
+                  "SUM(CASE WHEN size_sqft > 0 THEN 1 ELSE 0 END) "
+                  "FROM sale_listings GROUP BY source ORDER BY COUNT(*) DESC"
+              )
+              for src, total, with_sqft in cur.fetchall():
+                  print(f"  {src}: {total} total, {with_sqft} with sqft")
+              cur.execute("SELECT COUNT(*) FROM sale_listings")
+              print(f"\nTotal sale listings scraped: {cur.fetchone()[0]}")
+          except Exception as e:
+              print(f"stats query failed (non-fatal): {e}")
+          conn.close()
+          EOF
+
+      - name: Sync sales.db -> prod Neon sale_listings
+        id: sync
+        # The core deliverable. The sync script is UPSERT-only on (source,property_id),
+        # JSON-backup-first, shrink/delta-aborting, dry-run by default + --execute gated.
+        # Gating is dispatch-aware: a dispatch can choose execute_sync=false for a dry run;
+        # scheduled runs have no inputs (EXEC empty) and default to the gated execute path.
+        run: |
+          EXEC="${{ github.event.inputs.execute_sync }}"
+          if [ "$EXEC" = "false" ]; then
+            echo "DRY-RUN sync (dispatch chose execute_sync=false) — no prod write."
+            python3 scripts/sync_sales_to_postgres.py --sqlite output/sales.db 2>&1 | tee sync_output.txt
+          else
+            echo "EXECUTE sync — writing prod Neon sale_listings (UPSERT-only, backup-first)."
+            python3 scripts/sync_sales_to_postgres.py --sqlite output/sales.db --execute --i-have-rotated-the-secret 2>&1 | tee sync_output.txt
+          fi
+
+      - name: Mark stale sale listings inactive (cycle-relative)
+        # Additive freshness step: the sync already refreshes last_seen on every upserted row,
+        # so the freshness window works without this; this retires rows that fell out of the
+        # latest crawl. CYCLE-RELATIVE cutoff (vs MAX(last_seen), NOT wall-clock NOW()) +
+        # >50% flip ABORT+rollback. Runs ONLY after a successful execute-sync. ONLY flips a
+        # reversible boolean on sale_listings — never removes a row.
+        if: steps.sync.outcome == 'success' && github.event.inputs.execute_sync != 'false'
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              raise SystemExit(0)
+
+          try:
+              conn = psycopg2.connect(url)
+              cur = conn.cursor()
+              # Anchor the cutoff to the DATA'S OWN latest last_seen, not NOW(): a frozen
+              # snapshot flips ZERO rows (nothing is >2 days older than the freshest row),
+              # so a re-sync can never re-wipe prod. NULL last_seen is excluded (left active).
+              cur.execute("""
+                  UPDATE sale_listings
+                  SET is_active = 0
+                  WHERE last_seen IS NOT NULL
+                  AND last_seen::timestamp
+                      < (SELECT MAX(last_seen::timestamp) FROM sale_listings)
+                        - INTERVAL '2 days'
+                  AND is_active = 1
+              """)
+              marked = cur.rowcount
+              # >50% ABORT (defense-in-depth). is_active is reversible, so rollback the flip
+              # and fail the step rather than commit a mass retire.
+              cur.execute("SELECT COUNT(*) FROM sale_listings WHERE is_active = 1")
+              active_after = cur.fetchone()[0]
+              active_before = active_after + marked
+              if active_before > 0 and marked > 0.5 * active_before:
+                  conn.rollback()
+                  conn.close()
+                  print(f"::error::mark-inactive would flip {marked}/{active_before} "
+                        f"({100*marked/active_before:.0f}%) of active sale listings (>50%) — "
+                        "refusing, rolled back")
+                  raise SystemExit(1)
+              conn.commit()
+              if marked > 0:
+                  print(f"Marked {marked} stale sale listings inactive (cycle-relative to MAX(last_seen)).")
+              else:
+                  print("No stale sale listings to mark inactive (cycle-relative cutoff).")
+              conn.close()
+          except SystemExit:
+              raise
+          except Exception as e:
+              print(f"Error marking sale listings inactive: {e}")
+          EOF
+
+      - name: Post-sync sanity (active sale comps now queryable)
+        if: steps.sync.outcome == 'success' && github.event.inputs.execute_sync != 'false'
+        run: |
+          python3 << 'EOF'
+          import os
+          import psycopg2
+
+          url = os.environ.get('POSTGRES_URL')
+          if not url:
+              raise SystemExit(0)
+
+          try:
+              conn = psycopg2.connect(url)
+              cur = conn.cursor()
+              cur.execute(
+                  "SELECT COUNT(*) FROM sale_listings "
+                  "WHERE is_active = 1 AND asking_price > 0 "
+                  "AND (is_under_offer IS NULL OR is_under_offer = 0)"
+              )
+              comps = cur.fetchone()[0]
+              msg = f"Active sale comps now queryable (priced, not under-offer): {comps}"
+              print(msg)
+              summary = os.environ.get('GITHUB_STEP_SUMMARY')
+              if summary:
+                  with open(summary, 'a') as fh:
+                      fh.write(f"\n- **Active sale comps:** {comps}\n")
+              conn.close()
+          except Exception as e:
+              print(f"Post-sync sanity query failed (non-fatal): {e}")
+          EOF
+
+      - name: Upload logs artifact
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: for-sale-scrape-logs
+          path: |
+            logs/*.log
+            scrape_output.txt
+            sync_output.txt
+            output/sales.db
+          retention-days: 7
+
+      - name: Create summary
+        if: always()
+        run: |
+          echo "## For-Sale Scrape Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target:** prod Neon \`sale_listings\` (UPSERT-only sync)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          python3 << 'EOF' >> $GITHUB_STEP_SUMMARY
+          import os
+          import sqlite3
+          try:
+              from cli.main import get_sale_db_path
+              db = get_sale_db_path()
+              if os.path.exists(db):
+                  conn = sqlite3.connect(db)
+                  cur = conn.cursor()
+                  print("### Scraped (sales.db)")
+                  print("| Source | Total | With sqft |")
+                  print("|--------|-------|-----------|")
+                  cur.execute(
+                      "SELECT source, COUNT(*), "
+                      "SUM(CASE WHEN size_sqft > 0 THEN 1 ELSE 0 END) "
+                      "FROM sale_listings GROUP BY source ORDER BY COUNT(*) DESC"
+                  )
+                  for src, total, with_sqft in cur.fetchall():
+                      print(f"| {src} | {total} | {with_sqft} |")
+                  conn.close()
+          except Exception as e:
+              print(f"summary failed (non-fatal): {e}")
+          EOF
+
+  notify-failure:
+    needs: scrape-sale
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - name: Open/refresh failure issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const title = `For-sale scrape failed: ${new Date().toISOString().split('T')[0]}`;
+            const body = [
+              'The for-sale property scrape workflow failed.',
+              '',
+              `**Workflow run:** [${context.runId}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+              '',
+              'This workflow scrapes for-sale listings and UPSERTs them into prod Neon `sale_listings`.',
+              'Check the logs (scrape / sync steps) for details.',
+            ].join('\n');
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'for-sale-scrape-failure',
+            });
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['for-sale-scrape-failure', 'automated'],
+              });
+            }

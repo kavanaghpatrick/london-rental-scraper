@@ -101,6 +101,27 @@ CRITICAL_TESTS = [
     #     that routes to the pure seam with the 0->None boundary). Pins the zero-regression
     #     default-rental section. CI-safe (no crawl/network; committed fixtures).
     "tests/test_for_sale_playwright_spider_mode.py",
+    #     Inc2 prod-scrape: the FOR-SALE GHA WORKFLOW meta-test (text-parse of
+    #     .github/workflows/for-sale-scrape.yml — no DB/PG/node). Pins the prod-write
+    #     SAFETY invariants of the scheduled sale scrape: scheduled+dispatch-ONLY triggers
+    #     (NO push/pull_request, so merging never auto-fires a prod write), the real
+    #     `sync_sales_to_postgres.py --execute --i-have-rotated-the-secret` invocation, NO
+    #     destructive SQL (TRUNCATE/DROP/DELETE/setval) anywhere in the body, scrape-before-
+    #     sync ordering, and the rental-isolation guard (no rentals.db/listings/retrain/
+    #     sync_sqlite_to_postgres.py). If this went dark, an unsafe prod-write workflow (or a
+    #     push-triggered auto-scrape of prod) could land unnoticed.
+    "tests/test_for_sale_scrape_workflow.py",
+    #     Inc2 prod-scrape: the IN-PROCESS sale-sync SAFETY layer (Layer-1; a SqlitePgCursor
+    #     adapter runs the REAL load_sale_table/backup_prod against an in-memory SQLite
+    #     stand-in prod — no PG binary/node). The always-green PR analogue of the real-PG
+    #     job: prod-only row survives the UPSERT, first_seen-never/last_seen-updated, backup-
+    #     before-write, >5% shrink delta-abort, idempotent re-run (zero dupes per
+    #     source/property_id), conflict-key RuntimeError refusal. If this went dark, a
+    #     destructive/clobbering sale-sync regression would be invisible in PR CI. (The
+    #     real-Postgres deepening, tests/test_sale_sync_real_pg.py, is NOT on this allowlist
+    #     because it skips without a PG container; it is pinned instead by the
+    #     sale-sync-pg ci.yml job-existence meta-assert below.)
+    "tests/test_sale_data_layer_safety.py",
     # --- Data-layer safety (the destructive-op guards / _safe_delete)
     "tests/test_safe_delete.py",
     "tests/test_data_layer_safety.py",
@@ -469,4 +490,137 @@ def test_wave2_route_harnesses_wired_into_ci_and_guard():
         + "\n  - ".join(problems)
         + "\n(Group SERVING creates these dashboard/test/*_test.mjs files; CI-CONFIG "
         "wires them into ci.yml + the guard so they cannot silently skip.)"
+    )
+
+
+# =================================================================================
+# INC2 PROD-SCRAPE — FOR-SALE GHA WORKFLOW CI WIRING (W2 + W3).
+#
+# The for-sale scheduled scrape writes PRODUCTION Neon `sale_listings` via the new
+# scripts/sync_sales_to_postgres.py. Its safety is pinned by THREE tests:
+#   * tests/test_for_sale_scrape_workflow.py — workflow meta-test (text-parse; on the
+#     CRITICAL_TESTS allowlist, always runs in PR CI).
+#   * tests/test_sale_data_layer_safety.py   — in-process (SqlitePgCursor) sync safety
+#     (on the allowlist; always runs in PR CI).
+#   * tests/test_sale_sync_real_pg.py        — the real-Postgres deepening. This one is
+#     NOT on the allowlist because it skips without a PG service container (the allowlist's
+#     not-skipped assertion would fail). Instead it is pinned by the DEDICATED `sale-sync-pg`
+#     ci.yml job below, which provides the `postgres:16` service container that runs it for
+#     real. This is the same pattern as the Wave-2 dashboard-routes / similar-query harness.
+#
+# These meta-asserts (W3) pin BOTH allowlist entries (W2) AND the real-PG job's existence,
+# so the prod-write safety net cannot be silently deleted. Pure text-parse of ci.yml
+# (no PyYAML / DB / PG / node) so they always run in PR CI.
+# =================================================================================
+
+
+def _ci_job_block(ci_text: str, job_name: str) -> str:
+    """Return the TEXT of a single ci.yml job block (`<job_name>:` header → next top-level
+    job header / EOF), so an assertion about a job's contents can't be vacuously satisfied
+    by an identical string living in a DIFFERENT job (e.g. `image: postgres:16` also appears
+    in the dashboard-routes job). Jobs are 2-space indented under `jobs:` and their steps are
+    more deeply indented, so the next `^  <name>:` line at exactly that indent ends the block.
+    """
+    lines = ci_text.splitlines(keepends=True)
+    header_re = re.compile(rf"^  {re.escape(job_name)}:\s*$")
+    job_header_re = re.compile(r"^  [A-Za-z0-9_-]+:\s*$")
+    start = None
+    for i, line in enumerate(lines):
+        if header_re.match(line):
+            start = i
+            break
+    if start is None:
+        return ""
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if job_header_re.match(lines[j]):
+            end = j
+            break
+    return "".join(lines[start:end])
+
+
+def test_for_sale_sync_critical_tests_in_allowlist():
+    """W2 — the two CI-safe for-sale prod-scrape guards must be on CRITICAL_TESTS.
+
+    The workflow meta-test (text-parse) and the in-process sync-safety test (SqlitePgCursor
+    stand-in prod) have no DB/PG/node dep, so they must always run in PR CI — pin them on the
+    allowlist so the anti-silent-skip guard ensures the prod-write safety net stays armed.
+    """
+    expected = [
+        "tests/test_for_sale_scrape_workflow.py",
+        "tests/test_sale_data_layer_safety.py",
+    ]
+    missing = [e for e in expected if e not in CRITICAL_TESTS]
+    assert not missing, (
+        "for-sale prod-scrape critical guards missing from CRITICAL_TESTS: "
+        + ", ".join(missing)
+        + ".\nAdd them so the workflow-safety meta-test and the in-process sync-safety test "
+        "always run in PR CI (they are CI-safe: text-parse / in-memory sqlite, no PG/node)."
+    )
+
+
+def test_sale_sync_real_pg_not_in_allowlist():
+    """W2 — the real-Postgres sale-sync test must NOT be on the allowlist.
+
+    tests/test_sale_sync_real_pg.py skips when POSTGRES_TEST_URL is unset (devs without a
+    PG container aren't blocked). Putting it on CRITICAL_TESTS would make the allowlist's
+    not-skipped assertion FAIL on the standard PR lane (no PG container). It is pinned
+    instead by the dedicated `sale-sync-pg` ci.yml job (see the W3 meta-assert below), which
+    supplies a postgres:16 service container so it runs for real.
+    """
+    assert "tests/test_sale_sync_real_pg.py" not in CRITICAL_TESTS, (
+        "tests/test_sale_sync_real_pg.py is on CRITICAL_TESTS but it REQUIRES a Postgres "
+        "service container (it pytest.skips without POSTGRES_TEST_URL). On the standard PR "
+        "lane it would be collected-but-skipped, tripping the anti-silent-skip allowlist "
+        "assertion. Remove it from CRITICAL_TESTS — it is pinned by the dedicated "
+        "`sale-sync-pg` ci.yml job instead (test_ci_has_sale_sync_pg_job)."
+    )
+
+
+def test_ci_has_sale_sync_pg_job():
+    """W3 — ci.yml must keep the dedicated `sale-sync-pg` real-Postgres job.
+
+    The real-PG sale-sync safety test (tests/test_sale_sync_real_pg.py) is deliberately OFF
+    the CRITICAL_TESTS allowlist (it skips without a DB), so the ONLY thing keeping it from
+    silently disappearing is this job. Pin, WITHIN the `sale-sync-pg` job block (so an
+    identical string in another job — `image: postgres:16` also lives in dashboard-routes —
+    can't satisfy it vacuously), that the job:
+      * exists as a top-level ci.yml job named `sale-sync-pg`,
+      * runs a `postgres:16` service container (so the test executes for REAL, not skipped),
+      * invokes `pytest tests/test_sale_sync_real_pg.py`.
+    Mirrors the INVOCATION + isolation discipline of test_ci_python_cov_includes_for_sale /
+    test_wave2_route_harnesses_wired_into_ci_and_guard. Pure text-parse (no PyYAML/PG/node).
+    """
+    ci_text = _CI_YML.read_text(encoding="utf-8")
+
+    assert re.search(r"^  sale-sync-pg:\s*$", ci_text, re.MULTILINE), (
+        "ci.yml has NO top-level `sale-sync-pg` job. The real-Postgres sale-sync safety "
+        "test (tests/test_sale_sync_real_pg.py) is OFF the CRITICAL_TESTS allowlist (it "
+        "skips without a PG container), so this dedicated job is the ONLY thing that runs "
+        "it. Add the `sale-sync-pg` job (mirror the dashboard-routes service-container block)."
+    )
+
+    block = _ci_job_block(ci_text, "sale-sync-pg")
+    assert block, "could not isolate the `sale-sync-pg` job block in ci.yml."
+
+    problems = []
+    if not re.search(r"image:\s*postgres:16\b", block):
+        problems.append(
+            "the `sale-sync-pg` job does not declare an `image: postgres:16` service "
+            "container — the real-PG test would skip (no POSTGRES_TEST_URL) instead of "
+            "exercising the prod-write UPSERT/backup/delta-abort path for real."
+        )
+    if not re.search(r"pytest\s+tests/test_sale_sync_real_pg\.py", block):
+        problems.append(
+            "the `sale-sync-pg` job does not invoke "
+            "`pytest tests/test_sale_sync_real_pg.py` — the real-Postgres sale-sync safety "
+            "assertions (CREATE-if-absent, non-destructive UPSERT, first_seen-never, "
+            "backup-first, delta-abort, conflict-key refusal) would never run."
+        )
+    assert not problems, (
+        "`sale-sync-pg` ci.yml job is present but incomplete:\n  - "
+        + "\n  - ".join(problems)
+        + "\n(This is the ONLY net for tests/test_sale_sync_real_pg.py, which is off the "
+        "CRITICAL_TESTS allowlist by design — it must run against a real postgres:16 "
+        "service container.)"
     )

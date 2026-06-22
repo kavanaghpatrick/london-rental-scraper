@@ -322,3 +322,55 @@ jobs:
           # coverage. (The similar harness must NOT have skipped for lack of a DB here —
           # the service container guarantees POSTGRES_TEST_URL is set + reachable.)
           node test/dashboard_routes_guard.mjs
+
+  # === 5. For-sale prod-write SYNC safety vs a REAL Postgres (Test A) ===
+  # The deepest layer of the for-sale prod-write safety net. The python-tests job
+  # has NO Postgres container, so the REAL-PG sale-sync safety suite
+  # (tests/test_sale_sync_real_pg.py) runs in this DEDICATED job against a
+  # `postgres:16` SERVICE CONTAINER — mirroring the dashboard-routes block exactly so
+  # the sync's CREATE-TABLE idempotency, BIGINT round-trip, UPSERT non-destructiveness,
+  # first_seen-immutability, backup-before-write and >5% delta-abort guards are proven
+  # against a genuine Postgres engine (not a SQLite stand-in). The in-process Layer-1
+  # gate (tests/test_sale_data_layer_safety.py) still runs in python-tests for the
+  # no-DB PR lane; this job is its real-PG deepening. The test GRACEFUL-SKIPS without
+  # POSTGRES_TEST_URL, so the service container here is what makes it run for real —
+  # the W3 meta-assert in tests/test_ci_critical_tests_run.py pins this job + its
+  # invocation + the postgres:16 image so it can't be silently deleted.
+  sale-sync-pg:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        # Wait until Postgres is accepting connections before the steps run.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # tests/test_sale_sync_real_pg.py reads this; points at the service container.
+      # (When unset the suite graceful-skips — the container guarantees it is set here.)
+      POSTGRES_TEST_URL: postgres://postgres:postgres@localhost:5432/testdb
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps (requirements.txt already pins psycopg2-binary; explicit too)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt psycopg2-binary
+          pip install pytest
+
+      - name: Test A — REAL-Postgres for-sale sync safety (A1–A9)
+        run: pytest tests/test_sale_sync_real_pg.py -v
