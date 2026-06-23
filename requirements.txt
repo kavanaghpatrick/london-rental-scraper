@@ -1,7 +1,15 @@
 # Scrapy Property Scraper - Dependencies
 
 # Core
-scrapy>=2.11.0
+# PINNED CEILING (load-bearing — do NOT loosen without migrating the spiders):
+# Scrapy 2.16.0 removed the legacy Spider.start() -> start_requests() bridge. Every
+# spider here defines only the sync start_requests() (no async start()), so on >=2.15
+# the engine reads the empty start_urls and emits ZERO start requests -> 0 items, a
+# SILENT scrape failure (both for-sale-scrape.yml and daily-scrape.yml went 0-items on
+# 2026-06-23 when unbounded scrapy resolved to 2.16.0). Local + validated env is 2.14.1.
+# tests/test_scrapy_version_pin.py guards this ceiling so a future drift fails in PR CI.
+# To raise this ceiling, first add `async def start()` to every spider, then bump here.
+scrapy>=2.11.0,<2.15
 itemadapter>=0.8.0
 
 # JavaScript rendering (Playwright for JS-heavy sites)

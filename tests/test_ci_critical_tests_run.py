@@ -45,6 +45,13 @@ CRITICAL_TESTS = [
     "tests/test_model_inference.py::test_coordless_row_distance_is_numeric_no_log1p_crash",
     # --- Spider selector-regression (site markup/JSON-shape drift)
     "tests/test_spider_parsing.py",
+    # --- Scrapy version contract (the start()->start_requests() bridge). Scrapy 2.16.0
+    #     removed that bridge, silently zeroing BOTH the for-sale + rental scrapes on
+    #     2026-06-23 (every spider builds URLs in the legacy sync start_requests() and
+    #     leaves start_urls empty). PR CI cannot run a real crawl, so this pure-unit guard
+    #     (version ceiling + base-start bridge-source + spider start_requests non-empty) is
+    #     the only PR-time net for a silent dependency upgrade. Must never go dark.
+    "tests/test_scrapy_version_pin.py",
     # --- FOR-SALE vertical data layer (the separate sale-price tool's foundation):
     #     the for-sale parse seam + isolated sale_listings schema. CI-safe (reads the
     #     committed for-sale __NEXT_DATA__ fixture + in-memory sqlite; no DB/PG/OCR/node)
