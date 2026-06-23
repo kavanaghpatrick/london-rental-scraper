@@ -57,6 +57,13 @@ _ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SAMPLE = _ROOT / "tests" / "fixtures" / "for_sale" / "sale_training_sample.json"
 SALES_DB = _ROOT / "output" / "sales.db"
 
+# Absolute real-data floor: a real sales.db that yields fewer usable rows than this is a
+# too-thin crawl and must NOT ship a model. Deliberately below the synthetic sample's
+# n_train (224) so a thin-but-real FIRST crawl can still ship, but a near-empty one cannot.
+# Applies ONLY to the DB branch of load_sale_rows; the synthetic sample is unaffected, so
+# Inc3/Inc4 stay deterministic.
+MIN_REAL_SALE_ROWS = 150
+
 # Reuse the sale_price_model output dir so the pickle pair lands beside the sidecars. All
 # sale-named, never the rental artifact / chrome-extension/api dir.
 OUTPUT_DIR = sale_price_model.OUTPUT_DIR
@@ -126,23 +133,33 @@ def _plausible(row: dict) -> bool:
 
 
 def load_sale_rows(
-    db_path: Path | str = SALES_DB,
-    sample_path: Path | str = DEFAULT_SAMPLE,
+    db_path: Path | str | None = None,
+    sample_path: Path | str | None = None,
+    *,
+    allow_synthetic: bool = False,
 ) -> list[dict]:
     """Load the for-sale training rows — network-free, deterministic, no RNG.
 
     * If `db_path` exists: read via sale_data.fetch_sale_listings(active_only=True), then
       apply the deterministic DATA-LOAD FILTERS (no asking_price → drop; under-offer/SSTC →
       drop; implausible sale price / ppsf → drop) and a stable, RNG-free de-dup by
-      (source, property_id) keep-first (belt-and-braces over the table's UNIQUE).
-    * Else (the CI path — output/sales.db does not exist): json.loads the committed sample.
-      The sample is pre-cleaned (300 rows / zero nulls) but the SAME plausibility filter is
-      applied for parity with the DB branch.
+      (source, property_id) keep-first (belt-and-braces over the table's UNIQUE). If the DB
+      yields fewer than MIN_REAL_SALE_ROWS usable rows it RAISES — a too-thin crawl must
+      never ship a model.
+    * Else (no real DB): the committed synthetic sample is UNIT-TEST-ONLY. The synthetic
+      fallback RAISES loudly unless `allow_synthetic=True` is passed explicitly (tests only).
+      Production (the GHA workflow + this module's __main__) never passes it, so it can only
+      train on a real, non-trivial sales.db or hard-fail.
+
+    `db_path` / `sample_path` default to None → resolved from THIS module's SALES_DB /
+    DEFAULT_SAMPLE globals AT CALL TIME (not bound at import), so the inc3/inc4 test harness
+    can monkeypatch retrain_mod.SALES_DB to a guaranteed-absent path and have that redirect
+    actually take effect on the default-arg call path (BLOCKER 1 determinism fix).
 
     Returns list[dict]. NETWORK-FREE either branch.
     """
-    db_path = Path(db_path)
-    sample_path = Path(sample_path)
+    db_path = Path(db_path) if db_path is not None else Path(SALES_DB)
+    sample_path = Path(sample_path) if sample_path is not None else Path(DEFAULT_SAMPLE)
 
     if db_path.exists():
         conn = sqlite3.connect(str(db_path))
@@ -169,9 +186,27 @@ def load_sale_rows(
                 continue
             seen.add(key)
             deduped.append(r)
+        # REAL-DATA FLOOR (DB branch only): refuse a too-thin crawl loudly. The synthetic
+        # sample (224 plausible rows) never reaches here, so Inc3/Inc4 stay deterministic.
+        if len(deduped) < MIN_REAL_SALE_ROWS:
+            raise RuntimeError(
+                f"Refusing to train the sale model: real sales DB {db_path} yielded only "
+                f"{len(deduped)} usable rows (< MIN_REAL_SALE_ROWS={MIN_REAL_SALE_ROWS}). "
+                f"A too-thin crawl must not ship a model. Re-run the for-sale-scrape workflow."
+            )
         return deduped
 
-    # CI / fixture path.
+    # No real DB → the synthetic sample. UNIT-TEST-ONLY: refuse loudly unless explicitly
+    # opted in. This is the production-safety seam — the GHA retrain runs under
+    # GITHUB_ACTIONS=true and MUST refuse synthetic there, which an env gate would wrongly
+    # permit; an explicit default-False keyword cannot be tripped by the CI environment.
+    if not allow_synthetic:
+        raise RuntimeError(
+            f"Refusing to train the sale model on the synthetic sample {sample_path}: "
+            f"real sales DB not found at {db_path}. Synthetic data is UNIT-TEST-ONLY; pass "
+            f"allow_synthetic=True (tests only), or run the for-sale-scrape workflow to "
+            f"populate output/sales.db."
+        )
     raw = json.loads(sample_path.read_text())
     return [r for r in raw if _plausible(r)]
 
@@ -418,29 +453,38 @@ def gen_sale_feature_parity_golden(
 
 
 def run_sale_retrain(
-    db_path: Path | str = SALES_DB,
-    sample_path: Path | str = DEFAULT_SAMPLE,
+    db_path: Path | str | None = None,
+    sample_path: Path | str | None = None,
     seed: int = SEED,
     *,
     write: bool = True,
+    allow_synthetic: bool = False,
 ) -> dict:
     """Full deterministic retrain entrypoint for the for-sale model (mirrors
     retrain_canonical STRUCTURE, sale-isolated).
 
     Steps:
-      1. rows = load_sale_rows(db_path, sample_path)
+      1. rows = load_sale_rows(db_path, sample_path, allow_synthetic=allow_synthetic)
       2. result = sale_price_model.train(rows, seed=seed)
       3. if write: save the pickle pair + meta + inference sidecar + sale_api Booster/features
          + the parity golden — all to the (possibly monkeypatched-to-tmp) module paths.
       4. return result.
 
+    `allow_synthetic` (default False) is threaded straight to load_sale_rows: production
+    NEVER passes it, so a missing/thin real sales.db hard-fails with a RuntimeError instead
+    of silently training on the synthetic sample. Only the named unit tests pass True.
+
+    `db_path` / `sample_path` default to None → resolved from THIS module's SALES_DB /
+    DEFAULT_SAMPLE globals at call time, so a monkeypatched-to-absent SALES_DB redirects the
+    default-arg call path deterministically (BLOCKER 1 fix).
+
     db_source in the meta is DERIVED from the actual load source (sales.db when present, else
     the sample fixture) — NOT a hardcoded constant (the Retrain-readiness V2 footgun).
     """
-    db_path = Path(db_path)
-    sample_path = Path(sample_path)
+    db_path = Path(db_path) if db_path is not None else Path(SALES_DB)
+    sample_path = Path(sample_path) if sample_path is not None else Path(DEFAULT_SAMPLE)
 
-    rows = load_sale_rows(db_path, sample_path)
+    rows = load_sale_rows(db_path, sample_path, allow_synthetic=allow_synthetic)
     result = sale_price_model.train(rows, seed=seed)
 
     if not write:
@@ -494,6 +538,7 @@ def run_sale_retrain(
 
 
 if __name__ == "__main__":  # pragma: no cover — manual regeneration entrypoint
+    # NO allow_synthetic -> hard-fails if output/sales.db is absent (production safety).
     res = run_sale_retrain(write=True)
     print(
         f"[sale_retrain] trained sale_v1: n_train={res['n_train']} "

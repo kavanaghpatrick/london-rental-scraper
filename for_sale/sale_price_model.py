@@ -232,6 +232,18 @@ def build_features(
     df = pd.DataFrame(rows).copy()
     n = len(df)
 
+    # Empty-frame guard (AMENDMENT): a 0-row frame makes df.get(<col>) return a scalar
+    # default instead of a Series, so the very next `.fillna(...)` raises the cryptic
+    # 'numpy.float64 object has no attribute fillna' AttributeError. Fail LOUDLY and clearly
+    # instead. The MIN_REAL_SALE_ROWS floor in load_sale_rows fires first on the prod path,
+    # but train()/build_features can be handed [] from other call paths.
+    if n == 0:
+        raise RuntimeError(
+            "build_features received no rows (empty input): cannot build a feature matrix "
+            "from 0 rows. A real training set must be non-empty — check the row loader / "
+            "the sales DB crawl produced usable rows."
+        )
+
     # Core numerics with safe fills (mirror rental fillna conventions).
     df["bedrooms"] = pd.to_numeric(df.get("bedrooms"), errors="coerce").fillna(1).astype(float)
     df["bathrooms"] = pd.to_numeric(df.get("bathrooms"), errors="coerce").fillna(1).astype(float)

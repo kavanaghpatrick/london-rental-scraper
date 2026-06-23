@@ -209,6 +209,11 @@ def test_b7_playwright_chromium_installed():
 # B8 — ISOLATION (constraint #4 — zero cross-vertical reach)
 # ---------------------------------------------------------------------------
 def test_b8_isolation_no_rental_references():
+    """RENTAL-isolation invariant: the sale workflow must never reach into the rental
+    vertical. The workflow now retrains + commits the SALE model, so the sale-scoped
+    tokens `fixture_diff` (node chrome-extension/sale_fixture_diff.mjs) and `git push`
+    (the SALE model commit step) are LEGITIMATE and explicitly allowed — they operate on
+    sale_* artifacts only. The rental tokens below stay HARD-FORBIDDEN."""
     text = _read(FOR_SALE_YML)
     forbidden = [
         "rentals.db",
@@ -217,15 +222,108 @@ def test_b8_isolation_no_rental_references():
         "--listing-type rent",
         "enrich-floorplans",
         "ocr_enrich",
-        "fixture_diff",
         "sync_sqlite_to_postgres.py",
-        "git push",
     ]
     for token in forbidden:
         assert token not in text, (
-            f"for-sale-scrape.yml must NOT reference {token!r} — it touches ONLY "
-            "sales.db / sale_listings / sync_sales_to_postgres.py (constraint #4)."
+            f"for-sale-scrape.yml must NOT reference {token!r} — it touches ONLY the SALE "
+            "vertical (sales.db / sale_listings / sync_sales_to_postgres.py + sale_* model "
+            "artifacts); it must never reach the rental DB, table, retrain, or sync "
+            "(constraint #4)."
         )
+
+    # The sale workflow legitimately uses the SALE-scoped parity gate and a SALE model
+    # commit; assert those are the *sale* variants, never the rental ones.
+    if "fixture_diff" in text:
+        assert "sale_fixture_diff.mjs" in text, (
+            "the only `fixture_diff` reference allowed is the SALE parity gate "
+            "`chrome-extension/sale_fixture_diff.mjs` — never the rental fixture_diff.mjs."
+        )
+        assert "chrome-extension/fixture_diff.mjs" not in text, (
+            "the RENTAL fixture_diff.mjs must never appear in the sale workflow."
+        )
+
+
+# ---------------------------------------------------------------------------
+# B8b — SALE RETRAIN + COMMIT CONTRACT (the new §3 W0 contract this workflow now carries)
+# ---------------------------------------------------------------------------
+def test_b8b_sale_retrain_and_commit_contract():
+    """After W0 the workflow retrains the SALE model on the REAL sales.db and commits the
+    served matched set back to main. These are the load-bearing properties of that contract;
+    they would vanish silently on an edit, so the meta-test locks them."""
+    text = _read(FOR_SALE_YML)
+
+    # contents: write (mirrors daily-scrape) — required to push the model commit.
+    assert re.search(r"(?m)^\s*contents:\s*write\b", text), (
+        "for-sale-scrape.yml must declare `contents: write` — it now commits the SALE "
+        "model matched set back to main."
+    )
+
+    # The REAL-data retrain must actually run (invocation, not a `- name:` mention) and
+    # train the sale model.
+    assert ("run_sale_retrain" in text) or ("for_sale.sale_retrain" in text), (
+        "for-sale-scrape.yml must RUN the sale retrain (for_sale.sale_retrain / "
+        "run_sale_retrain) on the real sales.db."
+    )
+
+    # Synthetic-leak detector: the workflow gate asserts the model was trained on real data.
+    assert 'db_source"].endswith("sales.db")' in text or 'endswith("sales.db")' in text, (
+        "the retrain step must assert meta.db_source endswith 'sales.db' — the "
+        "synthetic-leak detector (a synthetic run ends in 'sale_training_sample.json')."
+    )
+    # Quality band on R2 so a degenerate model never ships.
+    assert "MIN_REAL_SALE_ROWS" in text, (
+        "the retrain gate must assert n_train >= MIN_REAL_SALE_ROWS."
+    )
+    assert "0.999" in text and "0.5" in text, (
+        "the retrain gate must assert the R2 sane band 0.5 <= r2 <= 0.999."
+    )
+
+    # The parity gate must run BOTH legs (JS==inference + the sale fixture diff).
+    assert "sync_sale_js_freq_maps.py --check" in text, (
+        "the parity gate must run `sync_sale_js_freq_maps.py --check` (JS == inference)."
+    )
+    assert "node chrome-extension/sale_fixture_diff.mjs" in text, (
+        "the parity gate must run `node chrome-extension/sale_fixture_diff.mjs` (0/0 gate)."
+    )
+
+    # Node toolchain for the parity gate.
+    assert "actions/setup-node" in text, (
+        "for-sale-scrape.yml must set up Node (actions/setup-node) — the parity gate runs "
+        "`node chrome-extension/sale_fixture_diff.mjs`."
+    )
+
+    # COMMIT step: explicit named `git add` of the SALE matched set only — never `git add -A`,
+    # never the runner's populated sales.db.
+    assert "git push" in text, (
+        "the workflow must `git push` the committed SALE model matched set."
+    )
+    assert "git add -A" not in text and "git add ." not in text, (
+        "the commit step must use explicit named `git add` paths — NEVER `git add -A`/"
+        "`git add .` (the runner's sales.db / logs must never be committed)."
+    )
+    for art in (
+        "output/sale_api/model.json",
+        "output/sale_api/features.json",
+        "output/sale_model_inference.json",
+        "output/sale_feature_parity_golden.json",
+        "chrome-extension/sale_xgboost.js",
+        "dashboard/src/app/api/predict-sale/sale_xgboost.predictor.js",
+        "output/sale_model.pkl",
+        "output/sale_model_meta.json",
+    ):
+        assert art in text, (
+            f"the commit step must `git add` the SALE artifact {art!r} (the served matched set)."
+        )
+    # The gitignored pkls must be force-added.
+    assert "git add -f" in text and "output/sale_model.pkl" in text, (
+        "the gitignored sale pkls must be `git add -f`'d."
+    )
+    # NEVER commit the runner's populated DB.
+    assert not re.search(r"git add[^\n]*output/sales\.db", text), (
+        "the commit step must NEVER `git add output/sales.db` — the runner's populated DB "
+        "must stay out of the commit."
+    )
 
 
 # ---------------------------------------------------------------------------

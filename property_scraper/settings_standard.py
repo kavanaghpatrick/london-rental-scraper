@@ -68,8 +68,14 @@ USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
 ]
 
-# Extensions (audit logging for remote monitoring)
+# Extensions
 EXTENSIONS = {
+    # LOCAL-SCRAPE-BAN: abort any REAL crawl started outside CI (covers `scrapy crawl`,
+    # run_full_scrape.sh, and the CLI subprocess — every entrypoint, both verticals).
+    # Priority 0 so the refusal fires first on engine_started. Override (dev-only):
+    # ALLOW_LOCAL_SCRAPE=1. Workflows: for-sale-scrape.yml / daily-scrape.yml.
+    'property_scraper.extensions.local_scrape_guard.LocalScrapeGuard': 0,
+    # Audit logging for remote monitoring
     'property_scraper.extensions.audit_logger.AuditLoggerExtension': 100,
 }
 

@@ -98,6 +98,11 @@ def _redirect_outputs(monkeypatch, retrain_mod, tmp_path):
     monkeypatch.setattr(retrain_mod, "INFERENCE_PATH", out / "sale_model_inference.json", raising=False)
     monkeypatch.setattr(retrain_mod, "SALE_API_DIR", api, raising=False)
     monkeypatch.setattr(retrain_mod, "GOLDEN_PATH", out / "sale_feature_parity_golden.json", raising=False)
+    # Point SALES_DB at a guaranteed-ABSENT path so run_sale_retrain (called below with the
+    # default db_path=SALES_DB) deterministically takes the synthetic branch REGARDLESS of any
+    # leftover scratch output/sales.db on disk. The call sites pass allow_synthetic=True, the
+    # explicit unit-test opt-in, so the synthetic refusal does not fire.
+    monkeypatch.setattr(retrain_mod, "SALES_DB", tmp_path / "absent_sales.db", raising=False)
     return out
 
 
@@ -129,7 +134,7 @@ def test_run_sale_retrain_writes_all_artifacts(monkeypatch, retrain_mod, tmp_pat
     (monkeypatched-to-tmp) output dir: pickle pair, meta + inference sidecars, the
     sale_api Booster + features JSON, and the parity golden (gate G3/G6)."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
     for rel in (
         "sale_model.pkl",
         "sale_model_features.pkl",
@@ -147,7 +152,7 @@ def test_inference_json_default_shape_invariant(monkeypatch, retrain_mod, tmp_pa
     each top-level *_default is a NUMBER == min(map), and the map embeds NO nested
     'default' key — for BOTH district_freq and postcode_area_freq (gate G3)."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
     stats = json.loads((out / "sale_model_inference.json").read_text())
     for base in ("district_freq", "postcode_area_freq"):
         fmap, dflt = stats[base], stats[f"{base}_default"]
@@ -164,7 +169,7 @@ def test_meta_json_structural_backstop(monkeypatch, retrain_mod, trained, tmp_pa
     is DERIVED from the load source (ENDS with the sample filename, NOT a hardcoded
     constant — the Retrain-readiness V2 footgun); canonical_version == 'sale_v1' (G6)."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
     meta = json.loads((out / "sale_model_meta.json").read_text())
     feats = json.loads((out / "sale_api" / "features.json").read_text())
     assert meta["n_features"] == len(feats)
@@ -180,7 +185,7 @@ def test_sale_api_model_json_is_booster_and_features_match(monkeypatch, retrain_
     tree-walker can read; NOT the sklearn-wrapper pickle), and sale_api/features.json is
     the feature_cols list in EXACT order (gate G3 / Inc4 unblock)."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    result = retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    result = retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
     booster = json.loads((out / "sale_api" / "model.json").read_text())
     assert "learner" in booster, "sale_api/model.json is not Booster JSON (no 'learner' key)"
     feats = json.loads((out / "sale_api" / "features.json").read_text())
@@ -193,7 +198,7 @@ def test_artifact_round_trip_identical(monkeypatch, retrain_mod, model_mod, tmp_
     BIT-IDENTICAL (np.isclose rtol=0, atol=1e-9) to the in-memory model — the serving
     artifact is faithful (gate G3)."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    result = retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    result = retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
     in_mem = result["model"]
     cols = result["feature_cols"]
 
@@ -216,7 +221,7 @@ def test_predict_one_default_lazy_loads_and_returns_plausible(monkeypatch, retra
     predicted_price is a finite £ in the sane sale range; a normal SW3 3-bed flat with a
     real size is NOT low_confidence (gate G2)."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
 
     res = predict_mod.predict_one_default(
         postcode="SW3", bedrooms=3, bathrooms=2, size_sqft=1200, property_type="flat",
@@ -235,7 +240,7 @@ def test_predict_one_default_missing_postcode_low_confidence(monkeypatch, retrai
     """postcode=None → district 'UNKNOWN', a finite plausible price, low_confidence True,
     no crash (gate G2 / Finding 3 #6)."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
 
     res = predict_mod.predict_one_default(
         postcode=None, bedrooms=2, bathrooms=2, size_sqft=900, property_type="flat",
@@ -253,7 +258,7 @@ def test_predict_one_default_missing_size_flags_estimated(monkeypatch, retrain_m
     """A missing/zero size_sqft → estimated_size True AND low_confidence True, with a
     still-finite plausible price (gate G2 / UX low-confidence guard)."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
 
     res = predict_mod.predict_one_default(
         postcode="SW3", bedrooms=2, bathrooms=2, size_sqft=0, property_type="flat",
@@ -300,7 +305,7 @@ def test_n_features_in_assert_catches_drift(monkeypatch, retrain_mod, predict_mo
     canonical_predict :189): feeding a feature_cols list with one EXTRA name must raise
     ValueError on load, never silently mispredict."""
     out = _redirect_outputs(monkeypatch, retrain_mod, tmp_path)
-    result = retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True)
+    result = retrain_mod.run_sale_retrain(sample_path=SAMPLE, seed=42, write=True, allow_synthetic=True)
 
     # Save a deliberately DRIFTED features file (one extra column name) next to the model.
     bad_features = out / "drift_features.pkl"

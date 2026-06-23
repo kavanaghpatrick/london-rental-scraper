@@ -1,14 +1,23 @@
 name: For-Sale Property Scrape
 
-# PRODUCTION for-sale scrape. Scrapes for-sale listings to output/sales.db on the runner,
-# then UPSERTs them into prod Neon `sale_listings` via the standalone, safety-hardened
+# PRODUCTION for-sale scrape + RETRAIN. Scrapes for-sale listings to output/sales.db on the
+# runner, UPSERTs them into prod Neon `sale_listings` via the standalone, safety-hardened
 # scripts/sync_sales_to_postgres.py (the FIRST workflow to invoke a standalone sync SCRIPT
 # — the rental daily-scrape writes prod inline via `cli.main scrape --postgres`, which is
-# HARD-BLOCKED for sale at cli/main.py, which is exactly why sale uses a separate sync).
+# HARD-BLOCKED for sale at cli/main.py, which is exactly why sale uses a separate sync), and
+# then RETRAINS the SALE price model on the REAL sales.db, re-bakes + re-vendors the SALE JS
+# predictor, passes the JS<->Python parity gate (0/0) and a quality gate, and COMMITS the
+# served SALE matched set back to main (model.json/features.json/inference.json/golden +
+# sale_xgboost.js + the vendored predictor + the -f'd pkls + meta). A synthetic or degenerate
+# model is NEVER shipped: the retrain runs WITHOUT allow_synthetic, so an absent/too-thin
+# sales.db hard-fails the job before any commit, and the gate asserts db_source endswith
+# sales.db + n_train >= MIN_REAL_SALE_ROWS + a sane R2 band.
 #
 # ISOLATION (constraint #4): this workflow touches ONLY output/sales.db, the prod
-# `sale_listings` table, and scripts/sync_sales_to_postgres.py (+ read-only backup_neon.sh).
-# It NEVER reaches the rental SQLite DB, the rental listings table, retrain, or the rental sync.
+# `sale_listings` table, scripts/sync_sales_to_postgres.py (+ read-only backup_neon.sh), and
+# the SALE model artifacts (output/sale_*, chrome-extension/sale_xgboost.js, the predict-sale
+# vendored copy). It NEVER reaches the rental SQLite DB, the rental listings table, the rental
+# model retrain, the rental sync, or any rental model artifact.
 
 on:
   schedule:
@@ -32,9 +41,12 @@ concurrency:
   group: for-sale-scrape
   cancel-in-progress: false   # never cancel a mid-flight prod sync
 
-# Least privilege: sale commits NO artifacts, so no `contents: write`.
+# `contents: write` so the post-scrape retrain can commit the served SALE model matched set
+# back to main (mirrors daily-scrape.yml). Only sale_* artifacts are ever committed — see the
+# "Commit SALE model matched set" step's explicit named per-file stage paths (never an
+# all-changes stage, never output/sales.db).
 permissions:
-  contents: read
+  contents: write
   issues: write   # only for the notify-failure job
 
 env:
@@ -56,6 +68,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
+
+      # Node is needed for the post-retrain SALE JS<->Python parity gate
+      # (chrome-extension/sale_fixture_diff.mjs), which blocks the model commit if a retrain
+      # desyncs the served SALE JS predictor (mirrors daily-scrape.yml).
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
 
       - name: Install dependencies
         run: |
@@ -164,6 +184,58 @@ jobs:
               print(f"stats query failed (non-fatal): {e}")
           conn.close()
           EOF
+
+      # =========================================================================
+      # REAL-DATA SALE RETRAIN + REGEN + GATE (synthetic + degenerate models banned)
+      # ------------------------------------------------------------------------
+      # Runs on the REAL output/sales.db produced above. NO allow_synthetic is passed, so
+      # load_sale_rows hard-fails the job if the DB is absent or yields < MIN_REAL_SALE_ROWS
+      # rows — a synthetic or too-thin model can NEVER be shipped. These steps are sequential:
+      # any retrain / quality-gate / parity-gate failure aborts the job BEFORE the final
+      # "Commit SALE model matched set" step, so a bad commit never lands. (The Neon sync below
+      # is model-independent — comps land regardless — but it follows the retrain so a retrain
+      # failure still fails the overall job.)
+      # =========================================================================
+      - name: Install model deps (xgboost/sklearn)
+        run: pip3 install xgboost scikit-learn pandas numpy
+
+      - name: Retrain SALE model on REAL sales.db (synthetic-refusal enforced)
+        id: retrain
+        run: |
+          python3 - <<'EOF'
+          from pathlib import Path
+          import json
+          from for_sale.sale_retrain import run_sale_retrain, SALES_DB, MIN_REAL_SALE_ROWS
+          db = Path("output/sales.db")
+          if not db.exists():
+              raise SystemExit(
+                  "REFUSED: output/sales.db absent — scrape produced no real data; "
+                  "refusing to ship a synthetic model."
+              )
+          # NO allow_synthetic -> load_sale_rows raises if the DB is missing/thin. Real-DB
+          # branch only: this can ONLY train on real sales rows or hard-fail.
+          res = run_sale_retrain(db_path=db, write=True)
+          meta = json.loads(Path("output/sale_model_meta.json").read_text())
+          # --- WORKFLOW-LEVEL QUALITY GATE (belt-and-braces over the code guard) ---
+          # Synthetic-leak detector: a synthetic fallback would set db_source to the sample
+          # JSON (…/sale_training_sample.json); a real run ends in sales.db.
+          assert meta["db_source"].endswith("sales.db"), f"SYNTHETIC LEAK: db_source={meta['db_source']!r}"
+          assert meta["n_train"] >= MIN_REAL_SALE_ROWS, f"too few rows: n_train={meta['n_train']}"
+          r2 = float(meta["metrics"]["r2"])
+          assert 0.5 <= r2 <= 0.999, f"R2 out of sane band: {r2}"
+          print(f"[sale_retrain] REAL model OK: n_train={meta['n_train']} r2={r2:.4f} src={meta['db_source']}")
+          EOF
+
+      - name: Re-bake + re-vendor SALE JS predictor
+        run: python3 scripts/sync_sale_js_freq_maps.py
+
+      - name: Verify SALE JS<->Python parity (gate, 0/0)
+        # Both legs must exit 0. The --check leg asserts the baked JS maps == inference.json;
+        # sale_fixture_diff.mjs re-scores the committed Booster vs the golden (0 feature + 0 £
+        # mismatch or exit 1). Any non-zero here aborts the job before the commit step.
+        run: |
+          python3 scripts/sync_sale_js_freq_maps.py --check   # belt: JS == inference
+          node chrome-extension/sale_fixture_diff.mjs         # 0 feature + 0 £ mismatch or exit 1
 
       - name: Sync sales.db -> prod Neon sale_listings
         id: sync
@@ -310,6 +382,39 @@ jobs:
           except Exception as e:
               print(f"summary failed (non-fatal): {e}")
           EOF
+
+      # =========================================================================
+      # COMMIT the served SALE model matched set back to main.
+      # ------------------------------------------------------------------------
+      # LAST step (no `if: always()`): runs ONLY if every prior step — retrain, quality gate,
+      # both parity-gate legs — succeeded, so a synthetic / degenerate / desynced model can
+      # never be committed. Explicit named per-file stage paths ONLY (never an all-changes
+      # stage) so the runner's populated output/sales.db, scrape_output.txt, sync_output.txt,
+      # and logs are never committed. output/sales.db is NEVER staged. The gitignored pkls are
+      # force-added.
+      # =========================================================================
+      - name: Commit SALE model matched set
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Served extension/dashboard artifacts (git-tracked).
+          git add output/sale_api/model.json output/sale_api/features.json
+          git add output/sale_model_inference.json output/sale_feature_parity_golden.json
+          git add chrome-extension/sale_xgboost.js
+          git add dashboard/src/app/api/predict-sale/sale_xgboost.predictor.js
+          # Gitignored pkls + the (first-time-committed) provenance meta need -f.
+          git add -f output/sale_model.pkl output/sale_model_features.pkl output/sale_model_meta.json
+          # NEVER stage all changes and NEVER add output/sales.db — keep the runner's
+          # populated DB and the scrape/sync logs out of the commit.
+
+          if git diff --staged --quiet; then
+            echo "No sale-model changes to commit"
+          else
+            git commit -m "Auto-update SALE model $(date +%Y-%m-%d) [skip ci]"
+            git push
+            echo "Sale model matched set committed + pushed"
+          fi
 
   notify-failure:
     needs: scrape-sale

@@ -61,8 +61,12 @@ def test_inc4_artifacts_regenerate_network_free(tmp_path, monkeypatch):
     monkeypatch.setattr(rt, "INFERENCE_PATH", out / "sale_model_inference.json", raising=False)
     monkeypatch.setattr(rt, "SALE_API_DIR", api, raising=False)
     monkeypatch.setattr(rt, "GOLDEN_PATH", out / "sale_feature_parity_golden.json", raising=False)
+    # Point SALES_DB at a guaranteed-ABSENT path so run_sale_retrain (default db_path=SALES_DB)
+    # deterministically takes the synthetic branch REGARDLESS of any scratch output/sales.db;
+    # allow_synthetic=True is the explicit unit-test opt-in past the production synthetic refusal.
+    monkeypatch.setattr(rt, "SALES_DB", tmp_path / "absent_sales.db", raising=False)
 
-    rt.run_sale_retrain(write=True)
+    rt.run_sale_retrain(write=True, allow_synthetic=True)
 
     model = json.loads((api / "model.json").read_text())
     assert model["learner"]["gradient_booster"]["model"]["trees"], "Booster JSON must carry trees"
