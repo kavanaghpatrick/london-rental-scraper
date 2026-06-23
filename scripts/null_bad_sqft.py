@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
-"""Guarded, reusable one-time cleanup: NULL out-of-range size_sqft values.
+"""Guarded, reusable one-time cleanup: NULL economically-bad size_sqft values.
 
 WHY: floorplan-OCR writers (now gated — see scripts/ocr_enrich.py.sqft_passes_sanity_gate)
 historically persisted square-METRES magnitudes (sub-150) and max()-of-garbage (>10000)
 as if they were a flat's size_sqft. Those become bad model inputs and absurd £/sqft on
 the served /api/similar peers. This script NULLs them so they are treated as "unknown"
 (re-OCR can recover the true value later from the preserved size_sqm / floorplan_url).
+
+ECONOMICS-AWARE: a flat 10,000 cliff would wrongly NULL real prime-London mega-mansions
+(verified in prod: e.g. 12,415 sqft / 8 bed / £150,000 pcm = £12.08/sqft — genuine). The
+discriminator between a real mansion and OCR garbage above 10,000 is £/sqft/month: real
+London is £3-30; the garbage rows are all < £3/sqft. So the bad-row predicate is:
+
+    size_sqft < 150                                          # sqm-as-sqft / room dim
+    OR size_sqft > 14000                                     # above any real London home
+    OR (size_sqft > 10000 AND price_pcm > 0                  # in the 10k-14k mansion band
+        AND price_pcm / size_sqft < 3.0)                     #   but uneconomic -> garbage
+
+This KEEPS the £>=3/sqft mansions in [10000,14000] and NULLs the sub-£3/sqft garbage,
+while still unconditionally NULLing everything <150 or >14000.
 
 SAFETY CONTRACT:
   * DRY-RUN BY DEFAULT. Mutates only with explicit --execute.
@@ -15,21 +28,23 @@ SAFETY CONTRACT:
   * Does NOT touch size_sqm, floorplan_url, room_details — those let re-OCR recover.
   * Takes a timestamped file-copy backup of the DB BEFORE any --execute mutation.
   * Aborts if the candidate count exceeds --max-rows (default 500). The known bad set
-    is ~202 rightmove (241 all-source); a 10x blowup means a bad predicate.
+    is ~222 sub-150 + a handful of >10000 garbage; a 10x blowup means a bad predicate.
   * Idempotent: a second run finds 0 candidates.
-
-PREDICATE (matches the G5 retrain gate exactly):
-    size_sqft IS NOT NULL AND size_sqft > 0 AND (size_sqft < 150 OR size_sqft > 10000)
 
 Usage:
     python3 scripts/null_bad_sqft.py --db output/rentals.db                 # dry-run, all sources
     python3 scripts/null_bad_sqft.py --db output/rentals.db --execute       # mutate (backup first)
     python3 scripts/null_bad_sqft.py --db output/rentals.db --source rightmove --execute
 
-PROD (NOT run by this script — describable guarded path, see the FIX SPEC §5):
-    backup_neon.sh ; then on Neon:
-    UPDATE listings SET size_sqft=NULL WHERE source='rightmove'
-      AND size_sqft IS NOT NULL AND size_sqft>0 AND (size_sqft<150 OR size_sqft>10000);
+PROD (NOT run by this script — describable guarded path, see the FIX SPEC §5).
+    backup_neon.sh ; then on Neon (parameterized; %(src)s optional, omit for all sources):
+    UPDATE listings SET size_sqft = NULL
+     WHERE size_sqft IS NOT NULL AND size_sqft > 0
+       AND ( size_sqft < 150
+             OR size_sqft > 14000
+             OR ( size_sqft > 10000 AND price_pcm IS NOT NULL AND price_pcm > 0
+                  AND price_pcm::float / size_sqft < 3.0 ) )
+       AND ( %(src)s IS NULL OR source = %(src)s );
 """
 from __future__ import annotations
 
@@ -41,14 +56,26 @@ from datetime import datetime
 from pathlib import Path
 
 # Bounds — kept in sync with scripts/ocr_enrich.py SQFT_SANITY_MIN/MAX and the G5 gate.
+# SQFT_MAX is the COARSE outer rail (14000) admitting real ~13,246 sqft mansions; the
+# economic discrimination above 10,000 is by £/sqft (PPSF_MIN), matching the write-time
+# gate's PPSF_MIN of 3.
 SQFT_MIN = 150
-SQFT_MAX = 10000
+SQFT_MAX = 14000
+SQFT_ECON_FLOOR = 10000   # above this, a sub-£3/sqft reading is OCR garbage, not a mansion
+PPSF_MIN = 3.0            # monthly £/sqft below which a >10k reading is uneconomic garbage
 DEFAULT_MAX_ROWS = 500
 
-# The clause that defines an out-of-range (bad) size_sqft. Bind nothing — pure SQL.
+# The clause that defines an economically-bad size_sqft. Bind nothing — pure SQL.
+# Branch 1: below the absolute floor (sqm-as-sqft / room dim).
+# Branch 2: above the coarse outer rail (no real London home is this big).
+# Branch 3: in the 10k-14k mega-mansion band BUT uneconomic (£/sqft < 3) -> garbage.
+#   CAST to REAL so the division is float (SQLite integer division would floor to 0).
 _BAD_CLAUSE = (
     "size_sqft IS NOT NULL AND size_sqft > 0 "
-    f"AND (size_sqft < {SQFT_MIN} OR size_sqft > {SQFT_MAX})"
+    f"AND (size_sqft < {SQFT_MIN} "
+    f"OR size_sqft > {SQFT_MAX} "
+    f"OR (size_sqft > {SQFT_ECON_FLOOR} AND price_pcm IS NOT NULL AND price_pcm > 0 "
+    f"AND CAST(price_pcm AS REAL) / size_sqft < {PPSF_MIN}))"
 )
 
 
@@ -127,7 +154,7 @@ def run_cleanup(
 
         if verbose:
             print("=" * 70)
-            print("NULL BAD SQFT — out-of-[150,10000] size_sqft cleanup")
+            print("NULL BAD SQFT — economics-aware (<150, >14000, or >10000 & £/sqft<3) cleanup")
             print("=" * 70)
             print(f"[DB]        {path}")
             print(f"[SOURCE]    {source or 'ALL (reporting per-source)'}")
@@ -217,7 +244,8 @@ def run_cleanup(
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="NULL out-of-[150,10000] size_sqft values (guarded).")
+    ap = argparse.ArgumentParser(
+        description="NULL economically-bad size_sqft (<150, >14000, or >10000 & £/sqft<3) (guarded).")
     ap.add_argument("--db", default="output/rentals.db", help="SQLite DB path")
     ap.add_argument("--source", default=None, help="restrict to one source (default: all)")
     ap.add_argument("--execute", action="store_true", help="apply the NULLs (default: dry-run)")

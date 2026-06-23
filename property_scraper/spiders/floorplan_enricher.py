@@ -34,7 +34,7 @@ except ImportError:
 
 def _load_sqft_sanity_gate():
     """Import sqft_passes_sanity_gate from scripts/ocr_enrich.py (single source of
-    truth for the [150,10000]+ppsf/spb window). scripts/ is not a package, so load it
+    truth for the [150,14000]+ppsf/spb window). scripts/ is not a package, so load it
     by path — same pattern as tests/test_ocr_enrich_guards.py. Importing it (not
     redefining the constants) keeps every writer on ONE gate."""
     import importlib.util
@@ -336,7 +336,7 @@ class FloorplanEnricherSpider(scrapy.Spider):
                     floorplan_url
                 )
                 # Gate the OCR value through the single sanity gate BEFORE writing:
-                # an out-of-[150,10000] (or economically impossible) reading is a
+                # an out-of-[150,14000] (or economically impossible) reading is a
                 # sqm-as-sqft / scan artifact and must be NULLED-not-written. beds +
                 # price are already in meta; pass None where absent (gate skips that check).
                 gated = sqft_passes_sanity_gate(

@@ -63,7 +63,10 @@ class TestSqftSanityGate:
     def test_above_absolute_max_rejected(self):
         # A scan-artifact number well above any London home.
         assert ocr.sqft_passes_sanity_gate(50000, 5, 50000) is None
+        # SQFT_SANITY_MAX is now 14000 (real mega-mansions reach ~13246); one above the
+        # ceiling is still rejected on the absolute window, regardless of cross-checks.
         assert ocr.sqft_passes_sanity_gate(ocr.SQFT_SANITY_MAX + 1, 4, None) is None
+        assert ocr.sqft_passes_sanity_gate(14001, 8, 168000) is None  # 14001 > 14000 ceiling
 
     def test_ppsf_too_low_rejected(self):
         # 8000 sqft at £2000 pcm -> ppsf=0.25 (< 3): economically impossible, reject.
@@ -90,16 +93,26 @@ class TestSqftSanityGate:
         assert ocr.sqft_passes_sanity_gate(500, 0, 3000) == 500
         assert ocr.sqft_passes_sanity_gate(500, None, 3000) == 500
 
+    def test_real_mega_mansion_above_10000_accepted(self):
+        # ECONOMICS-GOVERNED CEILING: real London mega-mansions reach ~13,246 sqft. The
+        # ceiling is the economic cross-check (£/sqft in [3,30] + sqft-per-bed in
+        # [80,4000]), NOT a hard 10,000 cliff. 12415 sqft / 8 bed / £150,000 pcm
+        # = £12.08/sqft, 1552 sqft-per-bed — a genuine prime-London mansion, KEEP it.
+        assert ocr.sqft_passes_sanity_gate(12415, 8, 150000) == 12415
+        # 13246 sqft / 8 bed / £108,333 pcm = £8.18/sqft, 1656 spb — also real, KEEP.
+        assert ocr.sqft_passes_sanity_gate(13246, 8, 108333) == 13246
+
     def test_observed_rightmove_garbage_rejected(self):
-        # T1 — the REAL bad values found in output/rentals.db (202 rightmove rows).
-        # 84/120/149 are square-METRES captured by the sqft regex (sub-150 floor leak);
-        # 12415/10737 are max()-of-garbage on multi-page floorplans (>10000 ceiling).
-        # Each MUST be nulled-not-written.
+        # T1 — the REAL bad values found in output/rentals.db (222 sub-150 + garbage >10000).
+        # 84/120/149 are square-METRES captured by the sqft regex (sub-150 floor leak).
+        # The big-number garbage is now caught by the ECONOMIC cross-checks, not a hard
+        # 10,000 cliff: 27225/5/4901 has sqft-per-bed 5445 (>4000) AND £0.18/sqft (<3);
+        # 10737/7/28000 is £2.61/sqft (<3). Each MUST be nulled-not-written.
         assert ocr.sqft_passes_sanity_gate(84, 1, 950) is None          # sqm-as-sqft
         assert ocr.sqft_passes_sanity_gate(120, 3, 8000) is None        # sqm-as-sqft
         assert ocr.sqft_passes_sanity_gate(149, None, None) is None     # just below floor
-        assert ocr.sqft_passes_sanity_gate(12415, 8, 150000) is None    # >10000 garbage
-        assert ocr.sqft_passes_sanity_gate(10737, 7, 28000) is None     # >10000 garbage
+        assert ocr.sqft_passes_sanity_gate(27225, 5, 4901) is None      # spb 5445>4000 & £0.18/sqft
+        assert ocr.sqft_passes_sanity_gate(10737, 7, 28000) is None     # £2.61/sqft < 3
 
 
 # ---------------------------------------------------------------------------------

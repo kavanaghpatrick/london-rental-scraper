@@ -422,7 +422,9 @@ class FloorplanExtractor:
                 # Floor 150 (not 100): a sub-150 number here is almost always a
                 # square-METRES magnitude captured when OCR drops the imperial token
                 # ("103 sq m / 1109 sq ft" -> "118"), or a page marker / room dim.
-                # Matches the downstream sanity-gate window [150, 10000].
+                # This 100000 is a loose pre-gate ceiling only; the real economic
+                # discrimination (downstream sanity-gate window [150, 14000] + £/sqft +
+                # sqft-per-bed) runs at write time in sqft_passes_sanity_gate.
                 if 150 <= sqft < 100000:
                     sqm = self._extract_sqm(full_text)
                     return sqft, sqm

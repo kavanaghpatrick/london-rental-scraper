@@ -216,7 +216,7 @@ class RightmoveEnricherSpider(scrapy.Spider):
 
         self.stats['enriched'] += 1
 
-        # Gate the sqft through the single sanity gate — an out-of-[150,10000] (or
+        # Gate the sqft through the single sanity gate — an out-of-[150,14000] (or
         # economically impossible) value is a sqm-as-sqft/scan artifact: NULL it, never
         # write it. beds + price come from meta; gate skips a check when its input is None.
         gated_sqft = sqft_passes_sanity_gate(

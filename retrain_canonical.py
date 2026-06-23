@@ -43,7 +43,10 @@ META_PATH = OUT / 'rental_model_canonical_meta.json'
 # Shared quality-filter constants (DATA_LAYER_CONTRACT §5: NO is_active filter)
 PPSF_MIN, PPSF_MAX = 3, 30
 PRICE_MIN_PCM = 500
-SQFT_MIN, SQFT_MAX = 150, 10000
+# 14000 (was 10000): keep genuine 7-9 bed prime mansions in the training set — the
+# write-time sqft_passes_sanity_gate (ppsf 3-30 + sqft-per-bed 80-4000) rejects garbage,
+# so this range filter no longer needs to drop real >10000 sqft mansions.
+SQFT_MIN, SQFT_MAX = 150, 14000
 SQFT_PER_BED_MIN = 70
 
 

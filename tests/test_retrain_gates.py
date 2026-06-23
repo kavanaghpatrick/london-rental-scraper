@@ -391,8 +391,11 @@ def test_gate_sqft_coverage_increased():
 
     Against the live DB (immutable read): active-no-sqft Rightmove rows must DROP below the
     pre-OCR baseline 1,932, trainable Rightmove sqft rows must RISE above 3,272, and the
-    model's n_samples must exceed the shipped 7420. All recovered sqft must be sane (the
-    retrain's own quality gate: 150<=sqft<=10000) so a garbage OCR value can't pad coverage.
+    model's n_samples must exceed the shipped 7420. All recovered sqft must be sane (a
+    COARSE range proxy: 150<=sqft<=14000) so a wildly-out-of-range OCR value can't pad
+    coverage. 14000 (not 10000) admits real prime-London mega-mansions up to ~13,246 sqft;
+    the precise economic check (£/sqft, sqft-per-bed) lives at write time in
+    sqft_passes_sanity_gate, not in this coarse gate.
     """
     _require_retrain()
     if not _db_available():
@@ -408,10 +411,10 @@ def test_gate_sqft_coverage_increased():
             "SELECT COUNT(*) FROM listings WHERE source='rightmove' AND is_active=1 "
             "AND (size_sqft IS NULL OR size_sqft = 0)"
         ).fetchone()
-        # Sanity: no recovered Rightmove sqft falls outside the retrain's training bounds.
+        # Sanity: no recovered Rightmove sqft falls outside the retrain's coarse range proxy.
         n_insane, = conn.execute(
             "SELECT COUNT(*) FROM listings WHERE source='rightmove' AND size_sqft IS NOT NULL "
-            "AND size_sqft > 0 AND (size_sqft < 150 OR size_sqft > 10000)"
+            "AND size_sqft > 0 AND (size_sqft < 150 OR size_sqft > 14000)"
         ).fetchone()
     finally:
         conn.close()
@@ -425,7 +428,7 @@ def test_gate_sqft_coverage_increased():
         f"{BEFORE_RM_ACTIVE_SQFT}"
     )
     assert n_insane == 0, (
-        f"{n_insane} recovered Rightmove sqft values fall outside [150,10000] — bad OCR "
+        f"{n_insane} recovered Rightmove sqft values fall outside [150,14000] — bad OCR "
         f"would become bad training rows"
     )
 

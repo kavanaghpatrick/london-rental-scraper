@@ -63,8 +63,13 @@ DB_PATH = Path(__file__).parent.parent / 'output' / 'rentals.db'
 
 # Absolute plausible-area window for a London flat/house total (sq ft). Outside this a
 # number is almost certainly a room dimension mis-read as the total, or a scan artifact.
+# The MAX is a COARSE outer rail only — real prime-London mega-mansions reach ~13,246 sqft
+# (verified against the prod listings table), so the ceiling sits at 14,000 to admit them.
+# The economic discrimination between a real mansion and OCR garbage is done by the
+# £/sqft + sqft-per-bed CROSS-CHECKS below (real London is £3-30/sqft; garbage rows like
+# 27,225 sqft are rejected on sqft-per-bed 5445>4000 or £/sqft<3), NOT by this rail.
 SQFT_SANITY_MIN = 150
-SQFT_SANITY_MAX = 10000
+SQFT_SANITY_MAX = 14000
 # Secondary cross-checks against price/beds so a number that is *in range* but
 # economically impossible (e.g. £/sqft of 0.5 or 500 sqft-per-bed of 12) is rejected.
 PPSF_MIN, PPSF_MAX = 3, 30          # monthly £ per sqft

@@ -45,7 +45,7 @@ correctly abstained rather than inventing a number).
 BAD-EXTRACTION DETECTOR (`is_implausible_sqft`)
 -----------------------------------------------
 Independent of ground truth, a recovered sqft is flagged garbage if:
-    - outside [150, 10000]  (matches retrain_canonical SQFT_MIN/MAX), or
+    - outside [150, 14000]  (matches retrain_canonical SQFT_MIN/MAX), or
     - sqft/beds < 70        (matches retrain_canonical SQFT_PER_BED_MIN), or
     - sqft/beds > 4000      (one bedroom in a 4000+ sqft "room" => mis-parse).
 This is the cheap, no-network guard the retrain's own quality filter ALSO applies, so a
@@ -93,7 +93,7 @@ MAX_MEDIAN_ABS_ERR_PCT = 5.0
 MIN_GTA_SAMPLE = 5          # need at least this many raw-text-anchored rows to gate
 
 # ── Bad-extraction detector bounds (mirror retrain_canonical quality filter) ─
-SQFT_MIN, SQFT_MAX = 150, 10000
+SQFT_MIN, SQFT_MAX = 150, 14000
 SQFT_PER_BED_MIN = 70
 SQFT_PER_BED_MAX = 4000
 
