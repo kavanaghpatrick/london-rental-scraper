@@ -1,15 +1,15 @@
 {
   "canonical_version": "sale_v1",
-  "trained_at": "2026-10-07T16:11:48",
+  "trained_at": "2026-10-08T16:16:10",
   "db_source": "output/sales.db",
-  "n_train": 7175,
-  "n_test": 2392,
+  "n_train": 7198,
+  "n_test": 2400,
   "n_features": 34,
   "target": "log1p(asking_price), inverse expm1",
   "metrics": {
-    "r2": 0.8353366384716949,
-    "mae": 710715.5260765051,
-    "median_ape": 0.19584521114369494
+    "r2": 0.8481284047021086,
+    "mae": 668726.0639388021,
+    "median_ape": 0.19678985278165184
   },
   "seed": 42,
   "xgb_params": {
